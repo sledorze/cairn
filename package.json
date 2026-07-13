@@ -39,12 +39,14 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint",
+    "prepare": "lefthook install || true",
     "prepublishOnly": "pnpm build",
     "release": "changeset publish",
     "stamp": "tsx src/cli.ts check --summaries-only --stamp",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check"
   },
   "dependencies": {
     "@effect/platform": "^0.96.2",
@@ -54,11 +56,17 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
     "@types/node": "^25.3.3",
+    "lefthook": "^2.1.0",
     "oxlint": "1.73.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "lefthook"
+    ]
   },
   "publishConfig": {
     "access": "public",
