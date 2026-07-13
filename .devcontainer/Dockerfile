@@ -38,6 +38,18 @@ RUN wget --progress=dot:giga "https://github.com/gitleaks/gitleaks/releases/down
     rm "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
 
 # ============================================
+# ZSH — developer shell (agnoster + plugins)
+# ============================================
+RUN sh -c "$(wget --progress=dot:giga -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.1/zsh-in-docker.sh)" -- \
+    -t agnoster \
+    -p git \
+    -p node \
+    -p npm \
+    -p https://github.com/zsh-users/zsh-autosuggestions \
+    -p https://github.com/zsh-users/zsh-completions \
+    -p https://github.com/zsh-users/zsh-syntax-highlighting
+
+# ============================================
 # HADOLINT — Dockerfile linter (lefthook pre-commit)
 # ============================================
 ENV HADOLINT_VERSION="2.12.0"
