@@ -1,0 +1,66 @@
+{
+  "name": "@sledorze/cairn",
+  "version": "0.1.0",
+  "description": "Hierarchical documentation summary consolidation with content-hash freshness (clone/CI-proof) and dead-link checking. Agent-agnostic CLI; scaffolds guidance for Claude Code and GitHub Copilot.",
+  "keywords": [
+    "documentation",
+    "summary",
+    "markdown",
+    "dead-links",
+    "effect",
+    "claude",
+    "copilot",
+    "agents"
+  ],
+  "license": "MIT",
+  "author": "Stéphane Le Dorze",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "cairn": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsx src/cli.ts check",
+    "dev": "tsx src/cli.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint",
+    "prepublishOnly": "pnpm build",
+    "release": "changeset publish",
+    "stamp": "tsx src/cli.ts check --summaries-only --stamp",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform": "^0.96.2",
+    "@effect/platform-node": "^0.107.0",
+    "effect": "^3.21.4"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "@types/node": "^25.3.3",
+    "oxlint": "1.73.0",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
