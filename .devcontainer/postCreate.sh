@@ -9,10 +9,12 @@ if [ -f "package.json" ]; then
   pnpm install --frozen-lockfile
 fi
 
-# Install git hooks
+# Install git hooks. lefthook is a local devDependency (not global), so invoke it
+# through pnpm. `pnpm install` already runs this via the `prepare` script; we
+# repeat it explicitly so the step is visible and independent.
 if [ -f "lefthook.yml" ]; then
   echo "Installing lefthook git hooks..."
-  lefthook install
+  pnpm exec lefthook install
 fi
 
 echo ""
@@ -22,7 +24,7 @@ echo "   - pnpm:      $(pnpm --version)"
 echo "   - gh:        $(gh --version | head -1)"
 echo "   - gitleaks:  $(gitleaks version 2>/dev/null || echo 'n/a')"
 echo "   - hadolint:  $(hadolint --version 2>/dev/null || echo 'n/a')"
-echo "   - lefthook:  $(lefthook --version 2>/dev/null || echo 'n/a')"
+echo "   - lefthook:  $(pnpm exec lefthook version 2>/dev/null || echo 'n/a')"
 echo ""
 echo "Verify everything: pnpm verify"
 echo "=== setup complete ==="
