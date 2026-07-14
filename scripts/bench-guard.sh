@@ -9,7 +9,12 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-HOT_PATHS='^src/core/(SummaryTree|glob|MarkdownLinks|DocSummaries)\.ts$|^src/io/DocsFs\.ts$|^src/program/CheckSummaries\.ts$'
+# Also src/cli.ts and package.json (a `typescript`/`esbuild` devDependency bump, or a
+# direct cli.ts edit, is exactly what the CLI-startup synthetic benchmark below exists
+# to catch — confirmed by testing: without these two, a real injected startup
+# regression in cli.ts was silently skipped since it isn't itself a benchmarked
+# src/core/*.ts hot path).
+HOT_PATHS='^src/core/(SummaryTree|glob|MarkdownLinks|DocSummaries)\.ts$|^src/io/DocsFs\.ts$|^src/program/CheckSummaries\.ts$|^src/cli\.ts$|^package\.json$'
 
 BASE_REF="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 if [ -z "$BASE_REF" ]; then
@@ -43,13 +48,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Uses THIS checkout's (HEAD's) copy of bench-cli-startup.ts for both timings, same
+# reasoning as bench.yml (see that workflow's comment): the worktree at MERGE_BASE
+# won't have the script yet the first time this lands, and cross-referencing HEAD's
+# copy from the worktree's own directory keeps dist/cli.js resolving to that ref's
+# own build either way.
+HEAD_DIR="$(pwd)"
 git worktree add --detach --quiet "$WORKTREE_DIR" "$MERGE_BASE"
 (
   cd "$WORKTREE_DIR"
   pnpm install --frozen-lockfile --silent
   pnpm exec vitest bench --run --outputJson "$TMP_DIR/before.json" >/dev/null
+  pnpm build >/dev/null
+  pnpm exec tsx "$HEAD_DIR/scripts/bench-cli-startup.ts" "$TMP_DIR/before.json" >/dev/null
 )
 
 pnpm exec vitest bench --run --outputJson "$TMP_DIR/after.json" >/dev/null
+pnpm build >/dev/null
+pnpm exec tsx scripts/bench-cli-startup.ts "$TMP_DIR/after.json" >/dev/null
 
 pnpm exec tsx scripts/bench-assert.ts "$TMP_DIR/before.json" "$TMP_DIR/after.json"
