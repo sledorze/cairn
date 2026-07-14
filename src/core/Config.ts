@@ -116,8 +116,11 @@ export interface ChecksConfig {
 /** Report language. English is the default for broad reuse; French mirrors the tool's
  * origin. Defined here (not in `program/locale.ts`, which re-exports it) because it's a
  * config field type, and `core/` cannot depend on `program/` (the dependency points the
- * other way: `program/` orchestrates IO around `core/`, never the reverse). */
-export type Locale = 'en' | 'fr'
+ * other way: `program/` orchestrates IO around `core/`, never the reverse).
+ * Derived from `LocaleSchema.literals` so the type and the runtime list of valid values
+ * (e.g. the CLI's `--locale` choice list) can never drift apart. */
+export const LOCALES = LocaleSchema.literals
+export type Locale = (typeof LOCALES)[number]
 
 /** Same reasoning as `Locale` above: `program/CheckSummaries.ts` needs this constant
  * too, and it can't be defined there, since `core/` can't depend on `program/`. */

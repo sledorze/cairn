@@ -16,7 +16,7 @@ import { globToRegExp } from './core/glob.ts'
 import { toPosix } from './core/paths.ts'
 
 export type { CairnConfigInput, ChecksConfig, Locale, Overrides, ResolvedConfig } from './core/Config.ts'
-export { CairnConfigSchema, DEFAULT_CONFIG, decodeConfig, formatConfigError } from './core/Config.ts'
+export { CairnConfigSchema, DEFAULT_CONFIG, decodeConfig, formatConfigError, LOCALES } from './core/Config.ts'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -107,17 +107,36 @@ const resolveLayer = (
   return layerConfig(withExtends, decoded)
 }
 
-/** Load the resolved config: defaults <- extends chain <- file/package.json <- CLI overrides. */
-export const loadConfig = (cwd: string, overrides: Overrides = {}, explicitPath?: string): ResolvedConfig => {
+export interface ResolvedConfigWithSource {
+  readonly config: ResolvedConfig
+  readonly sourceFile: string
+}
+
+/** Shown as provenance when no `.cairnrc(.json)` or `package.json#cairn` was found. */
+export const DEFAULTS_SOURCE = 'defaults (no config found)'
+
+/** Load the resolved config: defaults <- extends chain <- file/package.json <- CLI overrides,
+ * plus which file it came from (an rc file, `<package.json>#cairn`, or `DEFAULTS_SOURCE`).
+ * Powers the `cairn config` debug command's "why aren't my docs being checked" answer. */
+export const loadConfigWithSource = (
+  cwd: string,
+  overrides: Overrides = {},
+  explicitPath?: string,
+): ResolvedConfigWithSource => {
   const found = readRawConfig(cwd, explicitPath)
   const merged = found === null ? DEFAULT_CONFIG : resolveLayer(cwd, found.raw, found.file)
-  return {
+  const config: ResolvedConfig = {
     ...merged,
     ...(overrides.locale === undefined ? {} : { locale: overrides.locale }),
     ...(overrides.roots === undefined || overrides.roots.length === 0 ? {} : { roots: overrides.roots }),
     ...(overrides.thresholdLines === undefined ? {} : { thresholdLines: overrides.thresholdLines }),
   }
+  return { config, sourceFile: found?.file ?? DEFAULTS_SOURCE }
 }
+
+/** Load just the resolved config: defaults <- extends chain <- file/package.json <- CLI overrides. */
+export const loadConfig = (cwd: string, overrides: Overrides = {}, explicitPath?: string): ResolvedConfig =>
+  loadConfigWithSource(cwd, overrides, explicitPath).config
 
 const hasGlob = (segment: string): boolean => segment.includes('*') || segment.includes('?')
 

@@ -61,6 +61,7 @@ export interface PlanArgs {
 
 export interface SummaryPlan {
   readonly nodes: readonly PlanNode[]
+  readonly orphans: readonly string[]
   readonly todo: readonly PlanNode[]
 }
 
@@ -134,7 +135,8 @@ export const planSummaries = ({
   }
 
   if (!requireDirSummaries) {
-    return { nodes: fileNodes, todo: fileNodes.filter((n) => n.status !== 'ok') }
+    const orphans = findOrphans({ files, ignore, naming, nodes: fileNodes, requireDirSummaries })
+    return { nodes: fileNodes, orphans, todo: fileNodes.filter((n) => n.status !== 'ok') }
   }
 
   // --- directories in scope ---
@@ -190,5 +192,33 @@ export const planSummaries = ({
   dirNodes.sort((a, b) => depth(b.path) - depth(a.path) || a.path.localeCompare(b.path))
 
   const nodes = [...fileNodes, ...dirNodes]
-  return { nodes, todo: nodes.filter((n) => n.status !== 'ok') }
+  const orphans = findOrphans({ files, ignore, naming, nodes, requireDirSummaries })
+  return { nodes, orphans, todo: nodes.filter((n) => n.status !== 'ok') }
 }
+
+interface FindOrphansArgs {
+  readonly files: ReadonlyMap<string, string>
+  readonly ignore: readonly string[]
+  readonly naming: Naming
+  readonly nodes: readonly PlanNode[]
+  readonly requireDirSummaries: boolean
+}
+
+/**
+ * A `.summary.md`/`_SUMMARY.md` on disk that no longer corresponds to any
+ * expected node — its source doc was deleted, renamed, or (for file summaries)
+ * dropped below the threshold. Excludes paths matching `ignore`. When
+ * `requireDirSummaries` is false, directory summaries are never expected, so
+ * they are never flagged as orphans.
+ */
+const findOrphans = ({ files, ignore, naming, nodes, requireDirSummaries }: FindOrphansArgs): string[] => {
+  const expected = new Set(nodes.map((n) => n.path))
+  const actualSummaries = [...files.keys()].filter(
+    (p) => isManagedSummaryPath(p, naming, requireDirSummaries) && !matchesAny(p, ignore),
+  )
+  return actualSummaries.filter((p) => !expected.has(p)).toSorted()
+}
+
+/** A path cairn manages as a summary artifact under `naming` — a file summary always, a directory summary only when required. */
+const isManagedSummaryPath = (p: string, naming: Naming, requireDirSummaries: boolean): boolean =>
+  isSummaryFile(p, naming) || (requireDirSummaries && isDirSummary(p, naming))

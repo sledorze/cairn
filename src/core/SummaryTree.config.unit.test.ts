@@ -73,4 +73,61 @@ describe('planSummaries() with requireDirSummaries: false', () => {
     expect(plan.nodes.every((n) => n.kind === 'file')).toBeTruthy()
     expect(plan.nodes.map((n) => n.path)).toEqual(['/r/docs/sub/a.summary.md'])
   })
+
+  it('does not flag a leftover _SUMMARY.md as an orphan when dir summaries are not required', () => {
+    const files = new Map<string, string>([
+      ['/r/docs/sub/a.md', big],
+      ['/r/docs/sub/_SUMMARY.md', '# stale index'],
+    ])
+    const plan = planSummaries({
+      files,
+      requireDirSummaries: false,
+      roots: ['/r/docs'],
+      thresholdLines: 30,
+    })
+    expect(plan.orphans).toEqual([])
+  })
+})
+
+describe('planSummaries() orphan detection', () => {
+  it('flags a file summary whose source doc was deleted or renamed', () => {
+    const files = new Map<string, string>([['/r/docs/gone.summary.md', '# stale']])
+    const plan = planSummaries({ files, roots: ['/r/docs'], thresholdLines: 30 })
+    expect(plan.orphans).toEqual(['/r/docs/gone.summary.md'])
+  })
+
+  it('flags a directory summary whose directory no longer has any docs', () => {
+    const files = new Map<string, string>([['/r/docs/sub/_SUMMARY.md', '# stale index']])
+    const plan = planSummaries({ files, roots: ['/r/docs'], thresholdLines: 30 })
+    expect(plan.orphans).toEqual(['/r/docs/sub/_SUMMARY.md'])
+  })
+
+  it('flags a summary whose source dropped below the line threshold', () => {
+    const small = 'one line'
+    const files = new Map<string, string>([
+      ['/r/docs/a.md', small],
+      ['/r/docs/a.summary.md', '# now orphaned'],
+    ])
+    const plan = planSummaries({ files, roots: ['/r/docs'], thresholdLines: 30 })
+    expect(plan.orphans).toContain('/r/docs/a.summary.md')
+  })
+
+  it('does not flag an orphan matching an ignore glob', () => {
+    const files = new Map<string, string>([['/r/docs/CHANGELOG.summary.md', '# stale']])
+    const plan = planSummaries({ files, ignore: ['**/CHANGELOG.summary.md'], roots: ['/r/docs'], thresholdLines: 30 })
+    expect(plan.orphans).toEqual([])
+  })
+
+  it('respects custom naming when detecting orphans', () => {
+    const naming: Naming = { dirSummary: 'INDEX.md', fileSummarySuffix: '.digest.md' }
+    const files = new Map<string, string>([['/r/docs/gone.digest.md', '# stale']])
+    const plan = planSummaries({ files, naming, roots: ['/r/docs'], thresholdLines: 30 })
+    expect(plan.orphans).toEqual(['/r/docs/gone.digest.md'])
+  })
+
+  it('does not flag a fresh, expected summary as an orphan', () => {
+    const files = new Map<string, string>([['/r/docs/a.md', big]])
+    const plan = planSummaries({ files, roots: ['/r/docs'], thresholdLines: 30 })
+    expect(plan.orphans).toEqual([])
+  })
 })

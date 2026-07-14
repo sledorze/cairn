@@ -56,6 +56,34 @@ describe('runInit(--agent claude)', () => {
   })
 })
 
+// OpenCode reads AGENTS.md natively (falling back from CLAUDE.md), so `--agent opencode`
+// is a thin alias for `--agent agents`: same AGENTS.md block, no separate file format,
+// and (unlike --agent claude) no CLAUDE.md import.
+describe('runInit(--agent opencode)', () => {
+  let cwd: string
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'cairn-init-opencode-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { force: true, recursive: true })
+  })
+
+  it('writes the AGENTS.md block', () => {
+    runInit({ agent: 'opencode', cwd, roots: ['docs'] })
+    const agentsMd = fs.readFileSync(path.join(cwd, 'AGENTS.md'), 'utf8')
+    expect(agentsMd).toContain('<!-- cairn:start -->')
+  })
+
+  it('does not write CLAUDE.md, Claude rules, or Copilot instructions', () => {
+    runInit({ agent: 'opencode', cwd, roots: ['docs'] })
+    expect(fs.existsSync(path.join(cwd, 'CLAUDE.md'))).toBeFalsy()
+    expect(fs.existsSync(path.join(cwd, '.claude/rules/docs-summaries.md'))).toBeFalsy()
+    expect(fs.existsSync(path.join(cwd, '.github/instructions/docs-summaries.instructions.md'))).toBeFalsy()
+  })
+})
+
 // The starter `.cairnrc.json` scaffolds a `$schema` pointer so adopters get editor
 // autocomplete/validation from day one (see the shipped schema/cairn.schema.json). Pinned
 // by decoding it through the real config decoder — if the scaffold ever drifts out of
