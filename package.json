@@ -1,6 +1,6 @@
 {
   "name": "@sledorze/cairn",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hierarchical documentation summary consolidation with content-hash freshness (clone/CI-proof) and dead-link checking. Agent-agnostic CLI; scaffolds guidance for Claude Code and GitHub Copilot.",
   "keywords": [
     "documentation",
