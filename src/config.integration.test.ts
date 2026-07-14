@@ -87,6 +87,50 @@ describe('loadConfig()', () => {
     expect(loadConfig(cwd).thresholdLines).toBe(99)
   })
 
+  it('merges multiple `extends` array entries instead of the last one clobbering earlier ones', () => {
+    const cwd = mkTmp('cairn-extends-array-merge-')
+    fs.writeFileSync(path.join(cwd, 'b.cairnrc.json'), JSON.stringify({ thresholdLines: 99 }))
+    fs.writeFileSync(path.join(cwd, 'c.cairnrc.json'), JSON.stringify({ requireDirSummaries: false }))
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ extends: ['./b.cairnrc.json', './c.cairnrc.json'] }),
+    )
+    const config = loadConfig(cwd)
+    expect(config.thresholdLines).toBe(99) // from b — must survive c being merged in after it
+    expect(config.requireDirSummaries).toBeFalsy() // from c
+  })
+
+  it('deep-merges `checks` across multiple `extends` array entries', () => {
+    const cwd = mkTmp('cairn-extends-array-checks-')
+    fs.writeFileSync(path.join(cwd, 'b.cairnrc.json'), JSON.stringify({ checks: { links: false } }))
+    fs.writeFileSync(path.join(cwd, 'c.cairnrc.json'), JSON.stringify({ checks: { summaries: false } }))
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ extends: ['./b.cairnrc.json', './c.cairnrc.json'] }),
+    )
+    expect(loadConfig(cwd).checks).toEqual({ links: false, summaries: false })
+  })
+
+  it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', () => {
+    const cwd = mkTmp('cairn-extends-diamond-')
+    fs.writeFileSync(path.join(cwd, 'shared.cairnrc.json'), JSON.stringify({ locale: 'fr' }))
+    fs.writeFileSync(
+      path.join(cwd, 'a.cairnrc.json'),
+      JSON.stringify({ extends: './shared.cairnrc.json', thresholdLines: 11 }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, 'b.cairnrc.json'),
+      JSON.stringify({ extends: './shared.cairnrc.json', thresholdLines: 22 }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ extends: ['./a.cairnrc.json', './b.cairnrc.json'] }),
+    )
+    const config = loadConfig(cwd)
+    expect(config.locale).toBe('fr') // inherited via both branches
+    expect(config.thresholdLines).toBe(22) // b resolved after a, so b wins
+  })
+
   it('throws a clear error when an `extends` target does not exist', () => {
     const cwd = mkTmp('cairn-extends-missing-')
     fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ extends: './missing.json' }))

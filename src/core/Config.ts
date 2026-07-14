@@ -152,14 +152,19 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
 }
 
 /** Strictly decode one raw (untrusted) config layer: unknown keys and wrong-typed values
- * are rejected via a `Left` — never silently ignored or defaulted. Total and pure: this
- * never throws. `effect/Schema` already hands back an `Either`; collapsing it into a
- * thrown exception here (as an earlier version of this function did) would be a purity
- * leak inside a module documented as "no IO" — the throw/catch decision belongs to
- * whichever caller is equipped to make it (the edge, in `../config.ts`), not to the
- * decoder. Formatting a `Left` for a human is a separate, equally pure concern
- * (`formatConfigError`, below): decoding has no business knowing which file it came
- * from — that's the caller's context, not the decoder's. */
+ * are rejected via a `Left` — never silently ignored or defaulted. Total and pure over
+ * its actual domain, any value `JSON.parse` can produce (the only inputs this module's
+ * callers ever pass, including circular-reference-free by construction): `effect/Schema`
+ * already hands back an `Either`, so collapsing it into a thrown exception here (as an
+ * earlier version of this function did) would be a purity leak inside a module
+ * documented as "no IO" — the throw/catch decision belongs to whichever caller is
+ * equipped to make it (the edge, in `../config.ts`), not to the decoder. (Not total over
+ * *every* JS value of type `unknown`: an object with a throwing property getter would
+ * still propagate that throw — out of scope for a config decoder, not worth the
+ * complexity of catching arbitrary property-access exceptions from a value no real
+ * caller constructs.) Formatting a `Left` for a human is a separate, equally pure
+ * concern (`formatConfigError`, below): decoding has no business knowing which file it
+ * came from — that's the caller's context, not the decoder's. */
 export const decodeConfig = (raw: unknown): Either.Either<CairnConfigInput, ParseResult.ParseError> =>
   Schema.decodeUnknownEither(CairnConfigSchema, { errors: 'all', onExcessProperty: 'error' })(raw)
 
