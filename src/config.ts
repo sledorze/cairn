@@ -49,15 +49,27 @@ const readRawConfig = (cwd: string, explicitPath?: string): { file: string; raw:
   return null
 }
 
-/** Resolve one `extends` specifier (a path, relative to the file that references it) into
- * its own fully-resolved config, recursing into its own `extends` chain first. `visited`
- * (resolved absolute paths of every file in the chain so far) guards against a cycle —
- * without it, `a` extends `b` extends `a` would recurse until the call stack overflows. */
+/** Resolve one `extends` specifier (a path, relative to the file that references it),
+ * folding it onto `acc` — the single running accumulator threaded through the *entire*
+ * resolution — and return the updated accumulator. `visited` (resolved absolute paths of
+ * every file in the chain so far) guards against a cycle: without it, `a` extends `b`
+ * extends `a` would recurse until the call stack overflows.
+ *
+ * Threading one accumulator (rather than resolving each `extends` target independently
+ * against `DEFAULT_CONFIG` and merging the fully-resolved results together) matters for
+ * correctness, not just style: a fully-resolved `ResolvedConfig` has every field
+ * populated — including fields a given target never actually set, now holding *its own*
+ * defaults — so merging two such snapshots together makes the second silently clobber
+ * every field the first one set, not just the ones it overrides. Every field assignment
+ * here instead goes through `layerConfig(acc, decoded)`, where `decoded` is always a
+ * genuine partial `CairnConfigInput` (only the fields that file actually specified), so
+ * "unset" and "set to the default" stay distinguishable all the way through. */
 const resolveExtendsTarget = (
   cwd: string,
   specifier: string,
   fromFile: string,
   visited: readonly string[],
+  acc: ResolvedConfig,
 ): ResolvedConfig => {
   const resolved = path.isAbsolute(specifier) ? specifier : path.resolve(path.dirname(fromFile), specifier)
   if (!fs.existsSync(resolved)) {
@@ -68,14 +80,20 @@ const resolveExtendsTarget = (
   if (visited.includes(resolved)) {
     throw new Error(`cairn: invalid config in ${fromFile}: circular extends: ${[...visited, resolved].join(' -> ')}`)
   }
-  return resolveLayer(cwd, parseRcJson(fs.readFileSync(resolved, 'utf8'), resolved), resolved, visited)
+  return resolveLayer(cwd, parseRcJson(fs.readFileSync(resolved, 'utf8'), resolved), resolved, visited, acc)
 }
 
 /** Decode one raw layer, fold in its own `extends` chain (base presets applied first, in
- * order, then this layer's own fields last), and return the fully-resolved result.
- * `decodeConfig` is pure and total (it returns a `Left` on failure, never throws) — the
- * edge is where that `Left` becomes a thrown, human-readable error. */
-const resolveLayer = (cwd: string, raw: unknown, file: string, visited: readonly string[] = []): ResolvedConfig => {
+ * order, onto `acc`, then this layer's own fields last), and return the updated
+ * accumulator. `decodeConfig` is pure and total (it returns a `Left` on failure, never
+ * throws) — the edge is where that `Left` becomes a thrown, human-readable error. */
+const resolveLayer = (
+  cwd: string,
+  raw: unknown,
+  file: string,
+  visited: readonly string[] = [],
+  acc: ResolvedConfig = DEFAULT_CONFIG,
+): ResolvedConfig => {
   const result = decodeConfig(raw)
   if (Either.isLeft(result)) {
     throw new Error(formatConfigError(result.left, file))
@@ -83,8 +101,8 @@ const resolveLayer = (cwd: string, raw: unknown, file: string, visited: readonly
   const decoded = result.right
   const nextVisited = [...visited, file]
   const withExtends = (decoded.extends ?? []).reduce(
-    (acc, specifier) => layerConfig(acc, resolveExtendsTarget(cwd, specifier, file, nextVisited)),
-    DEFAULT_CONFIG,
+    (innerAcc, specifier) => resolveExtendsTarget(cwd, specifier, file, nextVisited, innerAcc),
+    acc,
   )
   return layerConfig(withExtends, decoded)
 }
