@@ -11,7 +11,7 @@ import { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 import type { Naming } from '../core/DocSummaries.ts'
 import { countLines, withSourceHash } from '../core/DocSummaries.ts'
 import type { PlanArgs, PlanNode, SummaryPlan } from '../core/SummaryTree.ts'
-import { planSummaries } from '../core/SummaryTree.ts'
+import { nodeExpectedHash, planSummaries } from '../core/SummaryTree.ts'
 import { DocsFs } from '../io/DocsFs.ts'
 import type { Locale } from './locale.ts'
 import { enOnly, pick } from './locale.ts'
@@ -209,8 +209,7 @@ export const explainSummaries = (
   })
 
 /**
- * Stamp every EXISTING summary with its current source/manifest hash, bottom-up,
- * recomputing the plan after each write so parents see freshly-stamped children.
+ * Stamp every EXISTING summary with its current source/manifest hash, bottom-up.
  * Summaries whose content has not been authored yet are returned as `missing`.
  */
 export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampResult, never, DocsFs> =>
@@ -226,13 +225,14 @@ export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampRes
         missing.push(node)
         continue
       }
-      // Recompute against current (already-stamped children) state.
-      const fresh = planSummaries(toPlanArgs(files, args))
-      const current = fresh.nodes.find((n) => n.path === node.path)
-      if (!current) {
-        continue
-      }
-      const stampedContent = withSourceHash(files.get(node.path) ?? '', current.expectedHash)
+      // A node's `inputs` are structurally stable (only summary CONTENT changes
+      // during stamping, never which paths feed a node) — so its hash can be
+      // recomputed directly from `inputs` + their current content. Bottom-up
+      // order guarantees any child this node depends on was already stamped
+      // above, so `files` already reflects it. This avoids a full replan of the
+      // whole tree per node (previously O(nodes) work repeated once per node).
+      const expectedHash = nodeExpectedHash({ files, inputs: node.inputs, kind: node.kind, path: node.path })
+      const stampedContent = withSourceHash(files.get(node.path) ?? '', expectedHash)
       files.set(node.path, stampedContent)
       yield* dfs.writeFile(node.path, stampedContent)
       stamped += 1

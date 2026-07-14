@@ -1,0 +1,78 @@
+name: Bench
+
+# Perf-regression gate for the hot paths in src/core/*.bench.ts. Mirrors
+# scripts/bench-guard.sh's local pre-push hook (same script, scripts/bench-assert.ts):
+# a same-job, back-to-back comparison of the PR's base ref against its head, NOT a
+# comparison against a historical cross-run baseline (that style of tool, e.g.
+# benchmark-action/github-action-benchmark, needs a very loose threshold — its own
+# default is 200% — to survive GitHub's shared-runner timing variance across separate
+# jobs/days). Checking out both refs into the same job and benchmarking back-to-back
+# removes that cross-run noise, so a tight threshold is trustworthy.
+#
+# This is the ONLY non-fakeable check: the local pre-push hook is convenience/fast
+# feedback, but its "pass" can't be trusted on its own — it's skippable
+# (--no-verify), and a contributor working from a fork may never have installed it.
+# CI recomputing the comparison independently, from the actual pushed commits, is
+# what makes this evidence trustworthy rather than a self-reported claim.
+#
+# NOTE: running here does not yet BLOCK a bad merge — that requires this job
+# ("bench") to be added to the repo's branch protection required status checks
+# (currently only "build-test" is required). That's a separate, explicit repo-settings
+# change, not bundled into this workflow file.
+on:
+  pull_request:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - name: Checkout head ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+      # Explicit version, not autodetected from a root package.json's `packageManager`
+      # field: base/ and head/ are checked out into subdirectories (needed so both
+      # refs coexist in the same job), so there's no package.json at the workspace
+      # root for pnpm/action-setup's own autodetection to find (confirmed by a real
+      # CI failure: "No pnpm version is specified... in the package.json with the key
+      # packageManager" — package.json exists, just one level down from where the
+      # action looks by default).
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            base/pnpm-lock.yaml
+            head/pnpm-lock.yaml
+      # `vitest bench` exits 1 (not 0) when a ref has zero *.bench.ts files — real for
+      # THIS PR specifically, since it's the one introducing the bench suite, so the
+      # base ref (main, pre-merge) legitimately has none yet. It still writes a valid
+      # (empty) --outputJson report before exiting, so `|| true` here + failing only
+      # if that file is actually missing distinguishes "ran, found nothing" from "the
+      # command itself never completed." bench-assert.ts's own comparedCount===0 check
+      # (see that script) is what actually judges whether an empty/partial comparison
+      # is acceptable — this step just has to not crash the job outright either way.
+      - name: Bench base ref
+        working-directory: base
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/before.json" || true
+          test -f "$RUNNER_TEMP/before.json" || { echo "vitest bench produced no report for the base ref"; exit 1; }
+      - name: Bench head ref
+        working-directory: head
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/after.json" || true
+          test -f "$RUNNER_TEMP/after.json" || { echo "vitest bench produced no report for the head ref"; exit 1; }
+      - name: Assert no regression
+        working-directory: head
+        run: pnpm exec tsx scripts/bench-assert.ts "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json"

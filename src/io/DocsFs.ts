@@ -30,6 +30,14 @@ export const DocsFsLive = Layer.effect(
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
+    // `FileSystem.readDirectory` returns bare names (no Dirent-style type info),
+    // so telling files from directories still costs one `stat` per entry — but
+    // those stats are independent, so bounding their concurrency (rather than
+    // awaiting them one at a time) lets the underlying I/O overlap instead of
+    // serializing on a tree with many entries. 32 caps outstanding file
+    // descriptors well clear of typical `ulimit -n` defaults.
+    const STAT_CONCURRENCY = 32
+
     const listFiles = (roots: readonly string[]): Effect.Effect<readonly string[]> =>
       Effect.gen(function* () {
         const out: string[] = []
@@ -39,10 +47,16 @@ export const DocsFsLive = Layer.effect(
             continue
           }
           const entries = yield* fs.readDirectory(root, { recursive: true })
-          for (const entry of entries) {
-            const abs = path.join(root, entry)
-            const info = yield* fs.stat(abs)
-            if (info.type === 'File') {
+          const abses = yield* Effect.forEach(
+            entries,
+            (entry) => {
+              const abs = path.join(root, entry)
+              return fs.stat(abs).pipe(Effect.map((info) => (info.type === 'File' ? abs : null)))
+            },
+            { concurrency: STAT_CONCURRENCY },
+          )
+          for (const abs of abses) {
+            if (abs !== null) {
               // Normalise to POSIX so the pure planners see `/` paths on every OS.
               out.push(toPosix(abs))
             }
