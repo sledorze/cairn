@@ -3,14 +3,15 @@ import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_CONFIG, decodeConfig, formatConfigError } from './Config.ts'
 
-// `decodeConfig` is total and pure: it never throws (it's `effect/Schema` under a thin
-// wrapper — Schema already hands back an `Either`, so collapsing that into a thrown
-// exception inside a module documented as "no IO, pure decision logic" would be a purity
-// leak). Unknown keys and wrong-typed values are rejected via a `Left`, never silently
-// ignored (`onExcessProperty: 'error'`) — a config guarantee that quietly ignores a typo
-// isn't a guarantee. Formatting a `Left` into a human-readable, file-scoped message is a
-// separate, equally pure concern (`formatConfigError`) — decoding has no business knowing
-// which file it came from; that's the caller's context, not the decoder's.
+// `decodeConfig` is total and pure over its actual domain — any value JSON.parse can
+// produce — and never throws for it: `effect/Schema` already hands back an `Either`, so
+// collapsing that into a thrown exception inside a module documented as "no IO, pure
+// decision logic" would be a purity leak. Unknown keys and wrong-typed values are
+// rejected via a `Left`, never silently ignored (`onExcessProperty: 'error'`) — a config
+// guarantee that quietly ignores a typo isn't a guarantee. Formatting a `Left` into a
+// human-readable, file-scoped message is a separate, equally pure concern
+// (`formatConfigError`) — decoding has no business knowing which file it came from;
+// that's the caller's context, not the decoder's.
 describe('decodeConfig()', () => {
   it('decodes an empty object to a Right of an empty object (defaults apply at resolution time, not here)', () => {
     const result = decodeConfig({})
@@ -26,6 +27,16 @@ describe('decodeConfig()', () => {
   it('returns a Left (never throws) on a non-object', () => {
     expect(Either.isLeft(decodeConfig(42))).toBeTruthy()
     expect(Either.isLeft(decodeConfig(null))).toBeTruthy()
+  })
+
+  it('returns a Left (never throws) on a circular-referencing object', () => {
+    // Not something JSON.parse can produce, but a careless caller of this public API
+    // could construct one — decodeConfig is total over any value shaped like this,
+    // just not over pathological values with side-effecting property access (out of
+    // scope; see the decodeConfig docstring).
+    const circular: Record<string, unknown> = { thresholdLines: 5 }
+    circular['self'] = circular
+    expect(Either.isLeft(decodeConfig(circular))).toBeTruthy()
   })
 
   it('returns a Left on an unknown top-level key instead of silently ignoring it', () => {
