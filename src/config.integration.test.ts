@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { toPosix } from './core/paths.ts'
-import { expandRoots, loadConfig } from './config.ts'
+import { DEFAULTS_SOURCE, expandRoots, loadConfig, loadConfigWithSource } from './config.ts'
 
 // Exercises real-filesystem root-glob expansion, including the pruning of heavy
 // directories (`node_modules`, `.git`) during `**` traversal.
@@ -174,5 +174,42 @@ describe('loadConfig()', () => {
     const cwd = mkTmp('cairn-bad-key-')
     fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ thresholdLins: 10 }))
     expect(() => loadConfig(cwd)).toThrow(/invalid config in.*\.cairnrc\.json/)
+  })
+})
+
+describe('loadConfigWithSource()', () => {
+  let dir = ''
+
+  afterEach(() => {
+    if (dir) {
+      fs.rmSync(dir, { force: true, recursive: true })
+    }
+  })
+
+  const mkTmp = (prefix: string): string => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+    return dir
+  }
+
+  it('reports the rc file as the source', () => {
+    const cwd = mkTmp('cairn-source-rc-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ thresholdLines: 5 }))
+    const { config, sourceFile } = loadConfigWithSource(cwd)
+    expect(sourceFile).toBe(path.join(cwd, '.cairnrc.json'))
+    expect(config.thresholdLines).toBe(5)
+  })
+
+  it('reports `<package.json>#cairn` as the source when falling back to package.json', () => {
+    const cwd = mkTmp('cairn-source-pkg-')
+    fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ cairn: { thresholdLines: 42 } }))
+    const { sourceFile } = loadConfigWithSource(cwd)
+    expect(sourceFile).toBe(`${path.join(cwd, 'package.json')}#cairn`)
+  })
+
+  it('reports the defaults source when no config is found at all', () => {
+    const cwd = mkTmp('cairn-source-defaults-')
+    const { config, sourceFile } = loadConfigWithSource(cwd)
+    expect(sourceFile).toBe(DEFAULTS_SOURCE)
+    expect(config.thresholdLines).toBe(30)
   })
 })

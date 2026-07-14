@@ -2,20 +2,27 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { makeTestDocsFs } from '../io/DocsFs.ts'
-import { checkSummaries, formatSummaryReport, stampSummaries, summaryExitCode } from './CheckSummaries.ts'
+import {
+  checkSummaries,
+  explainSummaries,
+  formatSummaryReport,
+  pruneOrphans,
+  stampSummaries,
+  summaryExitCode,
+} from './CheckSummaries.ts'
 
 const big = Array.from({ length: 40 }, (_, i) => `ligne ${i}`).join('\n')
 const tf = (content: string): { content: string; mtimeMs: number } => ({ content, mtimeMs: 0 })
 
 describe('formatSummaryReport()', () => {
   it('reports success when nothing is pending (English by default)', () => {
-    expect(formatSummaryReport({ nodes: [{} as never, {} as never], todo: [] })).toEqual([
+    expect(formatSummaryReport({ nodes: [{} as never, {} as never], orphans: [], todo: [] })).toEqual([
       '✅ Hierarchical summaries OK (2 summary/ies checked).',
     ])
   })
 
   it('localises success to French when asked', () => {
-    expect(formatSummaryReport({ nodes: [{} as never], todo: [] }, { locale: 'fr' })).toEqual([
+    expect(formatSummaryReport({ nodes: [{} as never], orphans: [], todo: [] }, { locale: 'fr' })).toEqual([
       '✅ Résumés hiérarchiques OK (1 résumé(s) vérifié(s)).',
     ])
   })
@@ -24,6 +31,7 @@ describe('formatSummaryReport()', () => {
     const lines = formatSummaryReport(
       {
         nodes: [],
+        orphans: [],
         todo: [
           {
             expectedHash: 'x',
@@ -63,6 +71,73 @@ describe('checkSummaries()', () => {
     )
     expect(plan.todo.map((n) => n.path)).toEqual(['/r/docs/a.summary.md', '/r/docs/_SUMMARY.md'])
     expect(summaryExitCode(plan)).toBe(1)
+  })
+
+  it('fails with orphans even when nothing is missing/stale', async () => {
+    const layer = makeTestDocsFs({ '/r/docs/gone.summary.md': tf('# stale') })
+    const plan = await Effect.runPromise(
+      checkSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(plan.todo).toEqual([])
+    expect(plan.orphans).toEqual(['/r/docs/gone.summary.md'])
+    expect(summaryExitCode(plan)).toBe(1)
+  })
+})
+
+describe('explainSummaries()', () => {
+  it('shows the source outline and hash pair for a stale/missing file summary', async () => {
+    const withHeadings = `${big}\n## Configuration\nmore text`
+    const layer = makeTestDocsFs({ '/r/docs/a.md': tf(withHeadings) })
+    const lines = await Effect.runPromise(
+      explainSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    const text = lines.join('\n')
+    expect(text).toContain('file /r/docs/a.summary.md (missing):')
+    expect(text).toContain('expected')
+    expect(text).toContain('recorded none')
+    expect(text).toContain('source: /r/docs/a.md')
+    expect(text).toContain('## Configuration')
+  })
+
+  it('names the stale child driving a directory summary stale', async () => {
+    const layer = makeTestDocsFs({ '/r/docs/a.md': tf(big) })
+    const lines = await Effect.runPromise(
+      explainSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    const dirBlock = lines.join('\n')
+    expect(dirBlock).toContain('dir /r/docs/_SUMMARY.md (missing):')
+    expect(dirBlock).toContain('driven by stale/missing child: /r/docs/a.summary.md')
+  })
+
+  it('reports nothing to explain when everything is fresh', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf('# résumé du dossier\n\nVoir [a](./a.md)'),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf('# résumé de a'),
+    })
+    await Effect.runPromise(stampSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)))
+    const lines = await Effect.runPromise(
+      explainSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(lines).toEqual(['Nothing to explain — all summaries are fresh.'])
+  })
+})
+
+describe('pruneOrphans()', () => {
+  it('deletes orphan summaries and reports the count', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a.md': tf(big),
+      '/r/docs/gone.summary.md': tf('# stale'),
+    })
+    const removed = await Effect.runPromise(
+      pruneOrphans({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(removed).toBe(1)
+
+    const after = await Effect.runPromise(
+      checkSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(after.orphans).toEqual([])
   })
 })
 

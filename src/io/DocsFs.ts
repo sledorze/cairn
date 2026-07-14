@@ -13,6 +13,7 @@ export interface FileStat {
 }
 
 export interface DocsFsService {
+  readonly deleteFile: (abs: string) => Effect.Effect<void>
   readonly exists: (abs: string) => Effect.Effect<boolean>
   readonly listFiles: (roots: readonly string[]) => Effect.Effect<readonly string[]>
   readonly readFile: (abs: string) => Effect.Effect<string>
@@ -60,6 +61,7 @@ export const DocsFsLive = Layer.effect(
       )
 
     return {
+      deleteFile: (abs) => fs.remove(abs).pipe(Effect.orDie),
       exists: (abs) => fs.exists(abs).pipe(Effect.orDie),
       listFiles,
       readFile: (abs) => fs.readFileString(abs).pipe(Effect.orDie),
@@ -94,6 +96,7 @@ export const makeTestDocsFs = (files: Record<string, TestFile>): Layer.Layer<Doc
   }
 
   const service: DocsFsService = {
+    deleteFile: (abs) => Effect.sync(() => void store.delete(abs)),
     exists: (abs) => Effect.sync(() => store.has(abs) || dirsOf().has(abs)),
     listFiles: (roots) =>
       Effect.sync(() => [...store.keys()].filter((p) => roots.some((r) => p.startsWith(`${r}/`) || p === r))),

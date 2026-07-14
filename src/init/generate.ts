@@ -2,7 +2,9 @@
 // The SAME convention body is rendered into the format each agent reads:
 //  - Claude Code:   .claude/rules/docs-summaries.md          (frontmatter `paths:`)
 //  - GitHub Copilot: .github/instructions/docs-summaries.instructions.md (`applyTo:`)
-//  - Cross-tool:    a marked block in AGENTS.md
+//  - Cross-tool:    a marked block in AGENTS.md — the file OpenCode (and Codex) read
+//    natively, so `--agent opencode` is a thin alias for `--agent agents`: no separate
+//    file format, just this block.
 //  - Claude/Codex:  .claude/skills/cairn/SKILL.md            (the writing methodology)
 //  - Claude Code:   a marked `@AGENTS.md` import in CLAUDE.md — Claude Code auto-loads
 //    CLAUDE.md at session start but never reads AGENTS.md on its own, so without this
@@ -14,7 +16,10 @@ import * as path from 'node:path'
 
 import { CONVENTION_BODY, SKILL_BODY } from './content.ts'
 
-export type AgentTarget = 'agents' | 'all' | 'claude' | 'copilot'
+// Single source of truth for valid `--agent` values, so the CLI's choice list
+// (src/cli.ts) can never drift from what `runInit` actually understands.
+export const AGENT_TARGETS = ['agents', 'all', 'claude', 'copilot', 'opencode'] as const
+export type AgentTarget = (typeof AGENT_TARGETS)[number]
 
 export interface InitArgs {
   readonly agent: AgentTarget
@@ -124,7 +129,7 @@ export const runInit = ({ agent, cwd, roots }: InitArgs): InitResult => {
 
   const doClaude = agent === 'claude' || agent === 'all'
   const doCopilot = agent === 'copilot' || agent === 'all'
-  const doAgents = agent === 'agents' || agent === 'all'
+  const doAgents = agent === 'agents' || agent === 'opencode' || agent === 'all'
 
   if (doClaude) {
     write(path.join(cwd, '.claude/rules/docs-summaries.md'), claudeRule(globs), written)

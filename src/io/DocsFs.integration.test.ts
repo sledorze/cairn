@@ -75,4 +75,17 @@ describe('DocsFsLive()', () => {
     )
     expect(content).toBe('# written')
   })
+
+  it('deletes a file so it no longer exists', async () => {
+    const target = path.join(root, 'a', 'to-delete.md')
+    const existsAfter = await run(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        yield* dfs.writeFile(target, '# temp')
+        yield* dfs.deleteFile(target)
+        return yield* dfs.exists(target)
+      }),
+    )
+    expect(existsAfter).toBeFalsy()
+  })
 })

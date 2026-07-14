@@ -9,12 +9,12 @@ import { Effect } from 'effect'
 
 import { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 import type { Naming } from '../core/DocSummaries.ts'
-import { withSourceHash } from '../core/DocSummaries.ts'
+import { countLines, withSourceHash } from '../core/DocSummaries.ts'
 import type { PlanArgs, PlanNode, SummaryPlan } from '../core/SummaryTree.ts'
 import { planSummaries } from '../core/SummaryTree.ts'
 import { DocsFs } from '../io/DocsFs.ts'
 import type { Locale } from './locale.ts'
-import { pick } from './locale.ts'
+import { enOnly, pick } from './locale.ts'
 
 export { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 
@@ -59,19 +59,34 @@ const readMarkdown = (roots: readonly string[]): Effect.Effect<Map<string, strin
     return files
   })
 
-/** 0 when nothing is missing/stale, 1 otherwise. */
-export const summaryExitCode = (plan: SummaryPlan): number => (plan.todo.length > 0 ? 1 : 0)
+/** 0 when nothing is missing/stale and no orphans remain, 1 otherwise. */
+export const summaryExitCode = (plan: SummaryPlan): number => (plan.todo.length > 0 || plan.orphans.length > 0 ? 1 : 0)
 
 /** Report lines: methodology + the bottom-up update order, for a one-pass fix. */
 export const formatSummaryReport = (plan: SummaryPlan, options: SummaryReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
   const stampCommand = options.stampCommand ?? DEFAULT_STAMP_COMMAND
-  if (plan.todo.length === 0) {
+  if (plan.todo.length === 0 && plan.orphans.length === 0) {
     return [
       pick(locale, {
         en: `✅ Hierarchical summaries OK (${plan.nodes.length} summary/ies checked).`,
         fr: `✅ Résumés hiérarchiques OK (${plan.nodes.length} résumé(s) vérifié(s)).`,
       }),
+    ]
+  }
+  const orphanLines = plan.orphans.map((p) =>
+    pick(locale, {
+      en: `  ✗ orphan summary (source gone): ${p}`,
+      fr: `  ✗ résumé orphelin (source disparue) : ${p}`,
+    }),
+  )
+  if (plan.todo.length === 0) {
+    return [
+      pick(locale, {
+        en: `❌ ${plan.orphans.length} orphan summary/ies (source doc deleted, renamed, or below threshold):`,
+        fr: `❌ ${plan.orphans.length} résumé(s) orphelin(s) (source supprimée, renommée, ou sous le seuil) :`,
+      }),
+      ...orphanLines,
     ]
   }
   const lines = pick(locale, {
@@ -113,6 +128,66 @@ export const formatSummaryReport = (plan: SummaryPlan, options: SummaryReportOpt
     }
     lines.push(`  - [${tag}] ${node.path} : ${reason}`)
   }
+  if (plan.orphans.length > 0) {
+    lines.push(
+      '',
+      pick(locale, {
+        en: `${plan.orphans.length} orphan summary/ies (source doc deleted, renamed, or below threshold):`,
+        fr: `${plan.orphans.length} résumé(s) orphelin(s) (source supprimée, renommée, ou sous le seuil) :`,
+      }),
+      ...orphanLines,
+    )
+  }
+  return lines
+}
+
+const shortHash = (h: string | null): string => (h === null ? 'none' : `${h.slice(0, 8)}…`)
+
+/** Markdown headings in `content`, in order, for a quick outline of what changed. */
+const headings = (content: string): string[] =>
+  content
+    .split('\n')
+    .filter((line) => /^#{1,6}\s/.test(line))
+    .map((line) => line.trim())
+
+/**
+ * Explain why each `todo` node is not ok. cairn stores only a content hash, not
+ * prior source text, so this cannot diff against the previously-summarized
+ * version — it surfaces what IS derivable: the expected/recorded hash pair, the
+ * changed source's current outline (file summaries), or which stale/missing
+ * child is driving a directory summary stale (dir summaries).
+ */
+const explainPlan = (
+  plan: SummaryPlan,
+  files: ReadonlyMap<string, string>,
+  options: SummaryReportOptions,
+): string[] => {
+  const locale = options.locale ?? 'en'
+  if (plan.todo.length === 0) {
+    return [pick(locale, enOnly('Nothing to explain — all summaries are fresh.'))]
+  }
+  const byPath = new Map(plan.nodes.map((n) => [n.path, n]))
+  const lines: string[] = []
+  for (const node of plan.todo) {
+    lines.push(
+      `${node.kind} ${node.path} (${node.status}):`,
+      `  expected ${shortHash(node.expectedHash)}  recorded ${shortHash(node.recordedHash)}`,
+    )
+    if (node.kind === 'file') {
+      const source = node.inputs[0]
+      const content = source === undefined ? '' : (files.get(source) ?? '')
+      lines.push(`  source: ${source} (${countLines(content)} lines)`, ...headings(content).map((h) => `    ${h}`))
+    } else {
+      const staleInputs = node.inputs.filter((input) => byPath.get(input)?.status !== 'ok')
+      if (staleInputs.length > 0) {
+        lines.push(`  driven by stale/missing child: ${staleInputs.join(', ')}`)
+      }
+      if (node.missingLinks.length > 0) {
+        lines.push(`  missing links to: ${node.missingLinks.join(', ')}`)
+      }
+    }
+    lines.push('')
+  }
   return lines
 }
 
@@ -120,6 +195,17 @@ export const checkSummaries = (args: CheckSummariesArgs): Effect.Effect<SummaryP
   Effect.gen(function* () {
     const files = yield* readMarkdown(args.roots)
     return planSummaries(toPlanArgs(files, args))
+  })
+
+/** `--explain`: why each todo node is not ok (see `explainPlan` for what this can and cannot show). */
+export const explainSummaries = (
+  args: CheckSummariesArgs,
+  options: SummaryReportOptions = {},
+): Effect.Effect<string[], never, DocsFs> =>
+  Effect.gen(function* () {
+    const files = yield* readMarkdown(args.roots)
+    const plan = planSummaries(toPlanArgs(files, args))
+    return explainPlan(plan, files, options)
   })
 
 /**
@@ -152,6 +238,18 @@ export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampRes
       stamped += 1
     }
     return { missing, stamped }
+  })
+
+/** Delete every orphan summary (source doc gone) and report how many were removed. */
+export const pruneOrphans = (args: CheckSummariesArgs): Effect.Effect<number, never, DocsFs> =>
+  Effect.gen(function* () {
+    const dfs = yield* DocsFs
+    const files = yield* readMarkdown(args.roots)
+    const plan = planSummaries(toPlanArgs(files, args))
+    for (const orphan of plan.orphans) {
+      yield* dfs.deleteFile(orphan)
+    }
+    return plan.orphans.length
   })
 
 // Re-exported so callers can recognise summary files without importing two modules.
