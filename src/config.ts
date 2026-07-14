@@ -1,83 +1,24 @@
 // Configuration loading & root-glob expansion for the CLI. This is the Node
 // (impure) edge of the tool: it reads `.cairnrc(.json)` or the
-// `cairn` key of `package.json`, merges with defaults, and expands
-// `roots` globs to concrete directories. The pure planners never see this — they
-// receive already-resolved values.
+// `cairn` key of `package.json` from disk, decodes it via the pure `core/Config.ts`
+// schema, resolves `extends` chains (also disk IO), and expands `roots` globs to
+// concrete directories. The pure planners never see this — they receive
+// already-resolved values.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import type { Naming } from './core/DocSummaries.ts'
-import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './core/DocSummaries.ts'
+import { Either } from 'effect'
+
+import type { Overrides, ResolvedConfig } from './core/Config.ts'
+import { DEFAULT_CONFIG, decodeConfig, formatConfigError, layerConfig } from './core/Config.ts'
 import { globToRegExp } from './core/glob.ts'
 import { toPosix } from './core/paths.ts'
-import { DEFAULT_STAMP_COMMAND } from './program/CheckSummaries.ts'
-import type { Locale } from './program/locale.ts'
 
-export interface ChecksConfig {
-  readonly links: boolean
-  readonly summaries: boolean
-}
-
-export interface ResolvedConfig {
-  readonly checks: ChecksConfig
-  readonly ignore: readonly string[]
-  readonly locale: Locale
-  readonly naming: Naming
-  readonly requireDirSummaries: boolean
-  readonly roots: readonly string[]
-  readonly stampCommand: string
-  readonly thresholdLines: number
-}
-
-export const DEFAULT_CONFIG: ResolvedConfig = {
-  checks: { links: true, summaries: true },
-  ignore: ['**/node_modules/**'],
-  locale: 'en',
-  naming: DEFAULT_NAMING,
-  requireDirSummaries: true,
-  roots: ['docs'],
-  stampCommand: DEFAULT_STAMP_COMMAND,
-  thresholdLines: DEFAULT_THRESHOLD_LINES,
-}
-
-export interface Overrides {
-  readonly locale?: Locale
-  readonly roots?: readonly string[]
-  readonly thresholdLines?: number
-}
+export type { CairnConfigInput, ChecksConfig, Locale, Overrides, ResolvedConfig } from './core/Config.ts'
+export { CairnConfigSchema, DEFAULT_CONFIG, decodeConfig, formatConfigError } from './core/Config.ts'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-
-const asStringArray = (v: unknown): readonly string[] | undefined =>
-  Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : undefined
-
-/** Merge a parsed (untrusted) config object over the defaults. */
-export const mergeConfig = (raw: unknown, base: ResolvedConfig = DEFAULT_CONFIG): ResolvedConfig => {
-  if (!isRecord(raw)) {
-    return base
-  }
-  const naming = isRecord(raw['naming']) ? raw['naming'] : {}
-  const checks = isRecord(raw['checks']) ? raw['checks'] : {}
-  return {
-    checks: {
-      links: typeof checks['links'] === 'boolean' ? checks['links'] : base.checks.links,
-      summaries: typeof checks['summaries'] === 'boolean' ? checks['summaries'] : base.checks.summaries,
-    },
-    ignore: asStringArray(raw['ignore']) ?? base.ignore,
-    locale: raw['locale'] === 'fr' || raw['locale'] === 'en' ? raw['locale'] : base.locale,
-    naming: {
-      dirSummary: typeof naming['dirSummary'] === 'string' ? naming['dirSummary'] : base.naming.dirSummary,
-      fileSummarySuffix:
-        typeof naming['fileSummarySuffix'] === 'string' ? naming['fileSummarySuffix'] : base.naming.fileSummarySuffix,
-    },
-    requireDirSummaries:
-      typeof raw['requireDirSummaries'] === 'boolean' ? raw['requireDirSummaries'] : base.requireDirSummaries,
-    roots: asStringArray(raw['roots']) ?? base.roots,
-    stampCommand: typeof raw['stampCommand'] === 'string' ? raw['stampCommand'] : base.stampCommand,
-    thresholdLines: typeof raw['thresholdLines'] === 'number' ? raw['thresholdLines'] : base.thresholdLines,
-  }
-}
 
 const CONFIG_FILENAMES = ['.cairnrc.json', '.cairnrc']
 
@@ -90,27 +31,68 @@ export const parseRcJson = (text: string, file: string): unknown => {
   }
 }
 
-/** Read raw config from a rc file, the package.json key, or null. */
-const readRawConfig = (cwd: string, explicitPath?: string): unknown => {
+/** Read the raw config plus the file it came from: an rc file, the package.json key, or null. */
+const readRawConfig = (cwd: string, explicitPath?: string): { file: string; raw: unknown } | null => {
   const candidates = explicitPath ? [path.resolve(cwd, explicitPath)] : CONFIG_FILENAMES.map((f) => path.join(cwd, f))
   for (const file of candidates) {
     if (fs.existsSync(file)) {
-      return parseRcJson(fs.readFileSync(file, 'utf8'), file)
+      return { file, raw: parseRcJson(fs.readFileSync(file, 'utf8'), file) }
     }
   }
   const pkgPath = path.join(cwd, 'package.json')
   if (fs.existsSync(pkgPath)) {
     const pkg = parseRcJson(fs.readFileSync(pkgPath, 'utf8'), pkgPath)
     if (isRecord(pkg) && isRecord(pkg['cairn'])) {
-      return pkg['cairn']
+      return { file: `${pkgPath}#cairn`, raw: pkg['cairn'] }
     }
   }
   return null
 }
 
-/** Load the resolved config: defaults <- file/package.json <- CLI overrides. */
+/** Resolve one `extends` specifier (a path, relative to the file that references it) into
+ * its own fully-resolved config, recursing into its own `extends` chain first. `visited`
+ * (resolved absolute paths of every file in the chain so far) guards against a cycle —
+ * without it, `a` extends `b` extends `a` would recurse until the call stack overflows. */
+const resolveExtendsTarget = (
+  cwd: string,
+  specifier: string,
+  fromFile: string,
+  visited: readonly string[],
+): ResolvedConfig => {
+  const resolved = path.isAbsolute(specifier) ? specifier : path.resolve(path.dirname(fromFile), specifier)
+  if (!fs.existsSync(resolved)) {
+    throw new Error(
+      `cairn: invalid config in ${fromFile}: extends target not found: ${specifier} (resolved to ${resolved})`,
+    )
+  }
+  if (visited.includes(resolved)) {
+    throw new Error(`cairn: invalid config in ${fromFile}: circular extends: ${[...visited, resolved].join(' -> ')}`)
+  }
+  return resolveLayer(cwd, parseRcJson(fs.readFileSync(resolved, 'utf8'), resolved), resolved, visited)
+}
+
+/** Decode one raw layer, fold in its own `extends` chain (base presets applied first, in
+ * order, then this layer's own fields last), and return the fully-resolved result.
+ * `decodeConfig` is pure and total (it returns a `Left` on failure, never throws) — the
+ * edge is where that `Left` becomes a thrown, human-readable error. */
+const resolveLayer = (cwd: string, raw: unknown, file: string, visited: readonly string[] = []): ResolvedConfig => {
+  const result = decodeConfig(raw)
+  if (Either.isLeft(result)) {
+    throw new Error(formatConfigError(result.left, file))
+  }
+  const decoded = result.right
+  const nextVisited = [...visited, file]
+  const withExtends = (decoded.extends ?? []).reduce(
+    (acc, specifier) => layerConfig(acc, resolveExtendsTarget(cwd, specifier, file, nextVisited)),
+    DEFAULT_CONFIG,
+  )
+  return layerConfig(withExtends, decoded)
+}
+
+/** Load the resolved config: defaults <- extends chain <- file/package.json <- CLI overrides. */
 export const loadConfig = (cwd: string, overrides: Overrides = {}, explicitPath?: string): ResolvedConfig => {
-  const merged = mergeConfig(readRawConfig(cwd, explicitPath))
+  const found = readRawConfig(cwd, explicitPath)
+  const merged = found === null ? DEFAULT_CONFIG : resolveLayer(cwd, found.raw, found.file)
   return {
     ...merged,
     ...(overrides.locale === undefined ? {} : { locale: overrides.locale }),

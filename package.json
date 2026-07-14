@@ -30,14 +30,16 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "schema"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm run generate-schema && tsc -p tsconfig.build.json",
     "check": "tsx src/cli.ts check",
     "dev": "tsx src/cli.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "generate-schema": "tsx scripts/generate-schema.ts",
     "lint": "oxlint",
     "prepare": "lefthook install || true",
     "prepublishOnly": "pnpm build",

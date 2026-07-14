@@ -7,6 +7,7 @@
 
 import { Effect } from 'effect'
 
+import { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 import type { Naming } from '../core/DocSummaries.ts'
 import { withSourceHash } from '../core/DocSummaries.ts'
 import type { PlanArgs, PlanNode, SummaryPlan } from '../core/SummaryTree.ts'
@@ -15,7 +16,7 @@ import { DocsFs } from '../io/DocsFs.ts'
 import type { Locale } from './locale.ts'
 import { pick } from './locale.ts'
 
-export const DEFAULT_STAMP_COMMAND = 'npx cairn check --summaries-only --stamp'
+export { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 
 export interface CheckSummariesArgs {
   readonly ignore?: readonly string[]

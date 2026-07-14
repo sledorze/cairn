@@ -2,8 +2,10 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
+import { Either } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+import { decodeConfig } from '../core/Config.ts'
 import { runInit } from './generate.ts'
 
 // `--agent claude` must leave Claude Code able to actually discover the convention:
@@ -51,5 +53,36 @@ describe('runInit(--agent claude)', () => {
   it('does not write CLAUDE.md for --agent copilot or --agent agents', () => {
     runInit({ agent: 'copilot', cwd, roots: ['docs'] })
     expect(fs.existsSync(path.join(cwd, 'CLAUDE.md'))).toBeFalsy()
+  })
+})
+
+// The starter `.cairnrc.json` scaffolds a `$schema` pointer so adopters get editor
+// autocomplete/validation from day one (see the shipped schema/cairn.schema.json). Pinned
+// by decoding it through the real config decoder — if the scaffold ever drifts out of
+// sync with CairnConfigSchema, this fails loudly instead of shipping a broken example.
+describe('runInit() — starter .cairnrc.json', () => {
+  let cwd: string
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'cairn-init-rc-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { force: true, recursive: true })
+  })
+
+  it('scaffolds a $schema pointer into node_modules, and the result decodes cleanly', () => {
+    runInit({ agent: 'all', cwd, roots: ['docs'] })
+    const rc = fs.readFileSync(path.join(cwd, '.cairnrc.json'), 'utf8')
+    const parsed: unknown = JSON.parse(rc)
+    expect(parsed).toMatchObject({ $schema: './node_modules/@sledorze/cairn/schema/cairn.schema.json' })
+    expect(Either.isRight(decodeConfig(parsed))).toBeTruthy()
+  })
+
+  it('leaves an existing .cairnrc.json untouched and reports it as skipped', () => {
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), '{}\n')
+    const result = runInit({ agent: 'all', cwd, roots: ['docs'] })
+    expect(fs.readFileSync(path.join(cwd, '.cairnrc.json'), 'utf8')).toBe('{}\n')
+    expect(result.skipped).toContain(path.join(cwd, '.cairnrc.json'))
   })
 })

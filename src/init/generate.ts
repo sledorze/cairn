@@ -106,6 +106,7 @@ const upsertClaudeMdImport = (cwd: string, written: string[], skipped: string[])
 const starterConfig = (roots: readonly string[]): string =>
   `${JSON.stringify(
     {
+      $schema: './node_modules/@sledorze/cairn/schema/cairn.schema.json',
       ignore: ['**/node_modules/**'],
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },
       roots,
