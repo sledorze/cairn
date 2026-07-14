@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="120" height="120" alt="Cairn logo">
+</p>
+
 # @sledorze/cairn
 
 Keep your documentation summaries honest. `cairn` enforces a hierarchical,

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Cairn logo" fill="currentColor">
+  <title>Cairn</title>
+  <circle cx="100" cy="100" r="96" fill="none" stroke="currentColor" stroke-width="2" opacity="0.35"/>
+  <polygon points="41,161 63,139 106,139 106,161"/>
+  <polygon points="106,161 106,139 149,139 171,161" opacity="0.75"/>
+  <polygon points="27,136 39,114 63,114 63,136"/>
+  <polygon points="63,136 63,114 87,114 99,136" opacity="0.75"/>
+  <polygon points="67,111 74,89 87,89 87,111"/>
+  <polygon points="87,111 87,89 100,89 107,111" opacity="0.75"/>
+  <polygon points="64,86 67,64 74,64 74,86"/>
+  <polygon points="74,86 74,64 81,64 84,86" opacity="0.75"/>
+  <polygon points="76,61 78,39 81,39 81,61"/>
+  <polygon points="81,61 81,39 84,39 86,61" opacity="0.75"/>
+</svg>
