@@ -4,7 +4,7 @@ import * as path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { decodeConfig } from '../config.ts'
+import { decodeConfig } from '../core/Config.ts'
 import { runInit } from './generate.ts'
 
 // `--agent claude` must leave Claude Code able to actually discover the convention:

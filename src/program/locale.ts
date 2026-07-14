@@ -1,7 +1,10 @@
-// Report language. English is the default for broad reuse; French mirrors the
-// tool's origin. Only user-facing report strings are localised.
+// Report language. Only user-facing report strings are localised. `Locale` itself
+// lives in `core/Config.ts` (it's a config field type) and is re-exported here so
+// existing `program/`-relative imports keep working.
 
-export type Locale = 'en' | 'fr'
+import type { Locale } from '../core/Config.ts'
+
+export type { Locale } from '../core/Config.ts'
 
 /** Pick the value for `locale` from an `{ en, fr }` pair. */
 export const pick = <T>(locale: Locale, values: { readonly en: T; readonly fr: T }): T => values[locale]

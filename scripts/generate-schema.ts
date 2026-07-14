@@ -1,6 +1,6 @@
-// Regenerates `schema/cairn.schema.json` from `CairnConfigSchema` (src/config.ts), the
-// single source of truth for the config's TS type, runtime decode, AND this file. Run via
-// `pnpm run generate-schema`; wired into `pnpm build` so the committed file can never
+// Regenerates `schema/cairn.schema.json` from `CairnConfigSchema` (src/core/Config.ts),
+// the single source of truth for the config's TS type, runtime decode, AND this file. Run
+// via `pnpm run generate-schema`; wired into `pnpm build` so the committed file can never
 // silently drift from the schema it's generated from (checked by
 // src/config.schema.integration.test.ts, which fails CI if they differ).
 
@@ -10,7 +10,7 @@ import * as path from 'node:path'
 import { Console, Effect, JSONSchema } from 'effect'
 import * as prettier from 'prettier'
 
-import { CairnConfigSchema } from '../src/config.ts'
+import { CairnConfigSchema } from '../src/core/Config.ts'
 
 const outFile = path.resolve(import.meta.dirname, '../schema/cairn.schema.json')
 

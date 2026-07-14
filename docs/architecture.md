@@ -6,7 +6,10 @@ of the codebase.
 
 ## Layers
 
-1. **`core/` — pure decision logic (no IO, no dependencies beyond `node:` builtins).**
+1. **`core/` — pure decision logic (no IO; `node:` builtins and `effect`'s pure,
+   synchronous combinator modules — `Schema`, `Either`, `ParseResult` — are the only
+   dependencies allowed. Not `Effect`/`Layer`/`Runtime`: those represent the
+   scheduled, effectful part of the library and belong in `program/`.).**
    - `DocSummaries.ts` — freshness primitives: content hashing, the `source-sha256`
      stamp, line counting, summary classification (`missing | ok | stale`).
    - `MarkdownLinks.ts` — link extraction, checkable-target rules, ambiguity-aware
@@ -14,6 +17,11 @@ of the codebase.
    - `SummaryTree.ts` — the hierarchical planner: expected file/directory summaries,
      their manifest hashes, the link-completeness invariant, and the bottom-up order.
    - `glob.ts` — a tiny dependency-free glob matcher for `ignore` and root expansion.
+   - `Config.ts` — the config domain: `CairnConfigSchema` (via `effect/Schema`, also
+     the source the shipped JSON Schema is generated from), the strict decode,
+     `extends`-layer merging, and the resolved-config defaults/types. Owns `Locale`
+     too (`program/locale.ts` re-exports it) — `core/` cannot depend on `program/`,
+     so a type used by both has to live at or below the lower layer.
 
 2. **`io/` — the filesystem capability, expressed as an Effect service.**
    - `DocsFs.ts` — `DocsFsLive` binds to the real Node platform; `makeTestDocsFs`
@@ -25,8 +33,9 @@ of the codebase.
    - `locale.ts` — report localisation (English default, French mirror).
 
 4. **Edge — config and CLI.**
-   - `config.ts` — load `.cairnrc.json` / `package.json` key, merge over defaults,
-     expand root globs to concrete directories.
+   - `config.ts` — reads `.cairnrc.json` / `package.json`'s `cairn` key and `extends`
+     targets from disk, decodes each through `core/Config.ts`, and expands root globs
+     to concrete directories. The disk IO is the only reason this isn't in `core/`.
    - `cli.ts` — argument parsing and the Node/Effect bootstrap.
    - `init/` — scaffold agent guidance from a single convention body.
 
