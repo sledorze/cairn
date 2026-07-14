@@ -53,7 +53,12 @@ jobs:
       # "unable to find version v2" on a real run.
       - uses: changesets/action@v1.9.0
         with:
-          publish-script: pnpm release
+          # `publish`, not `publish-script` (the latter is silently ignored, not an
+          # error — a real run showed the warning and would have skipped publishing
+          # entirely). Confirmed against the actual action.yml for this pinned v1.9.0
+          # tag: valid inputs are camelCase (publish, setupGitUser, createGithubReleases,
+          # commitMode), not the kebab-case names a general README fetch had suggested.
+          publish: pnpm release
         env:
           # A real PAT, not the default GITHUB_TOKEN: GitHub deliberately does not
           # trigger other workflows on pushes authenticated by the default token (an
