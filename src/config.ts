@@ -19,6 +19,7 @@ import * as path from 'node:path'
 
 import { Either, ParseResult, Schema } from 'effect'
 
+import type { Naming } from './core/DocSummaries.ts'
 import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './core/DocSummaries.ts'
 import { globToRegExp } from './core/glob.ts'
 import { toPosix } from './core/paths.ts'
@@ -105,7 +106,7 @@ export interface ResolvedConfig {
   readonly checks: ChecksConfig
   readonly ignore: readonly string[]
   readonly locale: Locale
-  readonly naming: { readonly dirSummary: string; readonly fileSummarySuffix: string }
+  readonly naming: Naming
   readonly requireDirSummaries: boolean
   readonly roots: readonly string[]
   readonly stampCommand: string
@@ -194,25 +195,36 @@ const readRawConfig = (cwd: string, explicitPath?: string): { file: string; raw:
 }
 
 /** Resolve one `extends` specifier (a path, relative to the file that references it) into
- * its own fully-resolved config, recursing into its own `extends` chain first. */
-const resolveExtendsTarget = (cwd: string, specifier: string, fromFile: string): ResolvedConfig => {
+ * its own fully-resolved config, recursing into its own `extends` chain first. `visited`
+ * (resolved absolute paths of every file in the chain so far) guards against a cycle —
+ * without it, `a` extends `b` extends `a` would recurse until the call stack overflows. */
+const resolveExtendsTarget = (
+  cwd: string,
+  specifier: string,
+  fromFile: string,
+  visited: readonly string[],
+): ResolvedConfig => {
   const resolved = path.isAbsolute(specifier) ? specifier : path.resolve(path.dirname(fromFile), specifier)
   if (!fs.existsSync(resolved)) {
     throw new Error(
       `cairn: invalid config in ${fromFile}: extends target not found: ${specifier} (resolved to ${resolved})`,
     )
   }
-  return resolveLayer(cwd, parseRcJson(fs.readFileSync(resolved, 'utf8'), resolved), resolved)
+  if (visited.includes(resolved)) {
+    throw new Error(`cairn: invalid config in ${fromFile}: circular extends: ${[...visited, resolved].join(' -> ')}`)
+  }
+  return resolveLayer(cwd, parseRcJson(fs.readFileSync(resolved, 'utf8'), resolved), resolved, visited)
 }
 
 /** Decode one raw layer, fold in its own `extends` chain (base presets applied first, in
  * order, then this layer's own fields last), and return the fully-resolved result. */
-const resolveLayer = (cwd: string, raw: unknown, file: string): ResolvedConfig => {
+const resolveLayer = (cwd: string, raw: unknown, file: string, visited: readonly string[] = []): ResolvedConfig => {
   const decoded = decodeConfig(raw, file)
   const specifiers =
     decoded.extends === undefined ? [] : Array.isArray(decoded.extends) ? decoded.extends : [decoded.extends]
+  const nextVisited = [...visited, file]
   const withExtends = specifiers.reduce(
-    (acc, specifier) => layerConfig(acc, resolveExtendsTarget(cwd, specifier, file)),
+    (acc, specifier) => layerConfig(acc, resolveExtendsTarget(cwd, specifier, file, nextVisited)),
     DEFAULT_CONFIG,
   )
   return layerConfig(withExtends, decoded)

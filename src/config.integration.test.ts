@@ -93,6 +93,20 @@ describe('loadConfig()', () => {
     expect(() => loadConfig(cwd)).toThrow(/extends target not found/)
   })
 
+  it('throws a clear error on a self-referencing `extends` instead of overflowing the stack', () => {
+    const cwd = mkTmp('cairn-extends-self-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ extends: './.cairnrc.json' }))
+    expect(() => loadConfig(cwd)).toThrow(/circular extends/)
+  })
+
+  it('throws a clear error on a two-file `extends` cycle instead of overflowing the stack', () => {
+    const cwd = mkTmp('cairn-extends-cycle-')
+    fs.writeFileSync(path.join(cwd, 'a.cairnrc.json'), JSON.stringify({ extends: './b.cairnrc.json' }))
+    fs.writeFileSync(path.join(cwd, 'b.cairnrc.json'), JSON.stringify({ extends: './a.cairnrc.json' }))
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ extends: './a.cairnrc.json' }))
+    expect(() => loadConfig(cwd)).toThrow(/circular extends/)
+  })
+
   it('resolves a chain of `extends` (base presets applied before the extending file)', () => {
     const cwd = mkTmp('cairn-extends-chain-')
     fs.writeFileSync(path.join(cwd, 'root.cairnrc.json'), JSON.stringify({ locale: 'fr', thresholdLines: 10 }))
