@@ -1,0 +1,59 @@
+name: Bench
+
+# Perf-regression gate for the hot paths in src/core/*.bench.ts. Mirrors
+# scripts/bench-guard.sh's local pre-push hook (same script, scripts/bench-assert.ts):
+# a same-job, back-to-back comparison of the PR's base ref against its head, NOT a
+# comparison against a historical cross-run baseline (that style of tool, e.g.
+# benchmark-action/github-action-benchmark, needs a very loose threshold — its own
+# default is 200% — to survive GitHub's shared-runner timing variance across separate
+# jobs/days). Checking out both refs into the same job and benchmarking back-to-back
+# removes that cross-run noise, so a tight threshold is trustworthy.
+#
+# This is the ONLY non-fakeable check: the local pre-push hook is convenience/fast
+# feedback, but its "pass" can't be trusted on its own — it's skippable
+# (--no-verify), and a contributor working from a fork may never have installed it.
+# CI recomputing the comparison independently, from the actual pushed commits, is
+# what makes this evidence trustworthy rather than a self-reported claim.
+#
+# NOTE: running here does not yet BLOCK a bad merge — that requires this job
+# ("bench") to be added to the repo's branch protection required status checks
+# (currently only "build-test" is required). That's a separate, explicit repo-settings
+# change, not bundled into this workflow file.
+on:
+  pull_request:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - name: Checkout head ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            base/pnpm-lock.yaml
+            head/pnpm-lock.yaml
+      - name: Bench base ref
+        working-directory: base
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/before.json"
+      - name: Bench head ref
+        working-directory: head
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/after.json"
+      - name: Assert no regression
+        working-directory: head
+        run: pnpm exec tsx scripts/bench-assert.ts "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json"

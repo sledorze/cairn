@@ -57,3 +57,10 @@ pre-push:
     docs:
       priority: 2
       run: pnpm check
+    # Perf regression gate: only runs when a hot-path file changed (see
+    # scripts/bench-guard.sh), comparing the push's base ref against HEAD in a
+    # scratch worktree on this machine — a same-runner, back-to-back comparison
+    # so the threshold can be tight without CI-noise false positives.
+    bench:
+      priority: 3
+      run: ./scripts/bench-guard.sh
