@@ -61,18 +61,35 @@ jobs:
       # command itself never completed." bench-assert.ts's own comparedCount===0 check
       # (see that script) is what actually judges whether an empty/partial comparison
       # is acceptable — this step just has to not crash the job outright either way.
+      #
+      # Also builds each ref and times the ACTUAL dist/cli.js (scripts/bench-cli-startup.ts,
+      # appended into the same report) — src/core/*.bench.ts alone only exercises
+      # source-level functions via vitest's own esbuild transform, never the real
+      # tsc + esbuild-bundle build toolchain, so a regression introduced there (e.g. a
+      # `typescript` or `esbuild` devDependency bump) would otherwise be invisible to
+      # this gate. Confirmed directly: `bench` reported clean on a TypeScript major-
+      # version-bump PR despite never invoking tsc.
+      #
+      # base/ won't have bench-cli-startup.ts yet in the PR that introduces it (same
+      # bootstrapping situation as the *.bench.ts files) — both timings use head's copy
+      # of the script (already the pattern for the final assert step below), invoked
+      # from each ref's own directory so dist/cli.js resolves to that ref's own build.
       - name: Bench base ref
         working-directory: base
         run: |
           pnpm install --frozen-lockfile
           pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/before.json" || true
           test -f "$RUNNER_TEMP/before.json" || { echo "vitest bench produced no report for the base ref"; exit 1; }
+          pnpm build
+          pnpm exec tsx ../head/scripts/bench-cli-startup.ts "$RUNNER_TEMP/before.json"
       - name: Bench head ref
         working-directory: head
         run: |
           pnpm install --frozen-lockfile
           pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/after.json" || true
           test -f "$RUNNER_TEMP/after.json" || { echo "vitest bench produced no report for the head ref"; exit 1; }
+          pnpm build
+          pnpm exec tsx scripts/bench-cli-startup.ts "$RUNNER_TEMP/after.json"
       - name: Assert no regression
         working-directory: head
         run: pnpm exec tsx scripts/bench-assert.ts "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json"
