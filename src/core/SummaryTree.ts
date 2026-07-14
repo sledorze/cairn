@@ -96,6 +96,33 @@ const statusOf = (exists: boolean, recorded: string | null, expected: string): S
   return 'ok'
 }
 
+export interface NodeHashArgs {
+  readonly files: ReadonlyMap<string, string>
+  readonly inputs: readonly string[]
+  readonly kind: 'dir' | 'file'
+  readonly path: string
+}
+
+/**
+ * A single node's expected hash, computed directly from its (structurally
+ * stable — doesn't change while stamping) `inputs` and their CURRENT content —
+ * without re-deriving the whole directory graph. `planSummaries` uses this to
+ * build each node; `stampSummaries` reuses it to recompute just-stamped nodes'
+ * parents against freshly-written children, without a full replan per node
+ * (previously O(nodes) work repeated once per node, i.e. O(nodes^2) overall).
+ */
+export const nodeExpectedHash = ({ files, inputs, kind, path: nodeAtPath }: NodeHashArgs): string => {
+  if (kind === 'file') {
+    return hashContent(files.get(inputs[0] ?? '') ?? '')
+  }
+  const dir = path.dirname(nodeAtPath)
+  const manifest = inputs
+    .map((input) => `${path.relative(dir, input)}:${hashContent(files.get(input) ?? '')}`)
+    .toSorted()
+    .join('\n')
+  return hashContent(manifest)
+}
+
 /** Compute the full hierarchical summary plan from the current file contents. */
 export const planSummaries = ({
   files,
@@ -106,13 +133,16 @@ export const planSummaries = ({
   thresholdLines = DEFAULT_THRESHOLD_LINES,
 }: PlanArgs): SummaryPlan => {
   const allPaths = [...files.keys()]
-  const contentHash = (p: string): string => hashContent(files.get(p) ?? '')
   const recorded = (p: string): string | null => (files.has(p) ? extractSourceHash(files.get(p) ?? '') : null)
 
   const sourceDocs = allPaths.filter(
     (p) => p.endsWith('.md') && !isSummaryFile(p, naming) && !isDirSummary(p, naming) && !matchesAny(p, ignore),
   )
-  const isBig = (doc: string): boolean => countLines(files.get(doc) ?? '') > thresholdLines
+  // Computed once per doc up front (a Set lookup below) rather than via a
+  // countLines() call at each of the two sites that ask "is this doc big" — the
+  // file-node filter and the dir-manifest input mapping both need the answer.
+  const bigDocs = new Set(sourceDocs.filter((doc) => countLines(files.get(doc) ?? '') > thresholdLines))
+  const isBig = (doc: string): boolean => bigDocs.has(doc)
 
   // --- file summaries ---
   const fileNodes: PlanNode[] = []
@@ -121,7 +151,7 @@ export const planSummaries = ({
       continue
     }
     const sp = summaryPathFor(doc, naming)
-    const expectedHash = contentHash(doc)
+    const expectedHash = nodeExpectedHash({ files, inputs: [doc], kind: 'file', path: sp })
     const recordedHash = recorded(sp)
     fileNodes.push({
       expectedHash,
@@ -154,21 +184,41 @@ export const planSummaries = ({
     }
   }
 
+  // --- bucket each doc/dir under its parent once, instead of re-filtering
+  // `sourceDocs`/`dirs` from scratch inside the loop below (which was
+  // O(dirs x docs) + O(dirs^2) on a large tree). ---
+  const docsByParent = new Map<string, string[]>()
+  for (const doc of sourceDocs) {
+    const parent = path.dirname(doc)
+    const bucket = docsByParent.get(parent)
+    if (bucket) {
+      bucket.push(doc)
+    } else {
+      docsByParent.set(parent, [doc])
+    }
+  }
+  const dirsByParent = new Map<string, string[]>()
+  for (const d of dirs) {
+    const parent = path.dirname(d)
+    const bucket = dirsByParent.get(parent)
+    if (bucket) {
+      bucket.push(d)
+    } else {
+      dirsByParent.set(parent, [d])
+    }
+  }
+
   // --- directory summaries ---
   const dirNodes: PlanNode[] = []
   for (const dir of dirs) {
-    const childDocs = sourceDocs.filter((p) => path.dirname(p) === dir)
-    const childDirs = [...dirs].filter((p) => path.dirname(p) === dir)
+    const childDocs = docsByParent.get(dir) ?? []
+    const childDirs = dirsByParent.get(dir) ?? []
     const inputs = [
       ...childDocs.map((doc) => (isBig(doc) ? summaryPathFor(doc, naming) : doc)),
       ...childDirs.map((sub) => path.join(sub, naming.dirSummary)),
     ]
-    const manifest = inputs
-      .map((input) => `${path.relative(dir, input)}:${contentHash(input)}`)
-      .toSorted()
-      .join('\n')
     const dsp = path.join(dir, naming.dirSummary)
-    const expectedHash = hashContent(manifest)
+    const expectedHash = nodeExpectedHash({ files, inputs, kind: 'dir', path: dsp })
     const recordedHash = recorded(dsp)
     const exists = files.has(dsp)
     // A directory summary must link every direct sub-file AND sub-folder.

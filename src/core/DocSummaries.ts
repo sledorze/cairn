@@ -13,7 +13,7 @@
 // defaults below reproduce the original behaviour. Unit-tested in
 // DocSummaries.unit.test.ts; the Effect program is in ../program/CheckSummaries.ts.
 
-import { createHash } from 'node:crypto'
+import { hash as hashHex } from 'node:crypto'
 
 export type SummaryStatus = 'missing' | 'ok' | 'stale'
 
@@ -82,8 +82,12 @@ export const needsSummary = ({
   return lineCount > thresholdLines
 }
 
+// One-shot `crypto.hash` (Node >=20.12) skips the streaming Hash object's
+// internal state entirely — faster than `createHash().update().digest()` for
+// the KB-sized markdown content this hashes, at the scale this runs at (once
+// per file/manifest per plan).
 /** Deterministic content hash used to stamp and verify summaries. */
-export const hashContent = (content: string): string => createHash('sha256').update(content).digest('hex')
+export const hashContent = (content: string): string => hashHex('sha256', content, 'hex')
 
 /** The HTML-comment stamp a summary must carry to declare which source it reflects. */
 export const sourceHashTag = (hash: string): string => `<!-- source-sha256: ${hash} -->`
