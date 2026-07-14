@@ -1,0 +1,28 @@
+name: Release
+
+# Manual, opt-in publish to npm. Requires an NPM_TOKEN repository secret.
+# Publishes the current version if it is not already on the registry
+# (changeset publish is a no-op when nothing new needs releasing).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # npm provenance (see publishConfig.provenance)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+      - run: pnpm release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
