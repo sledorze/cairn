@@ -16,7 +16,8 @@
 // the effectful, scheduled part of the library) — so it stays within `core/`'s "no
 // IO" contract despite depending on `effect`.
 
-import { Either, ParseResult, Schema } from 'effect'
+import type { Either } from 'effect'
+import { ParseResult, Schema } from 'effect'
 
 import type { Naming } from './DocSummaries.ts'
 import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './DocSummaries.ts'
@@ -45,7 +46,24 @@ const LocaleSchema = Schema.Literal('en', 'fr').annotations({
   description: 'Prose locale for generated guidance and report strings. Default "en".',
 })
 
-const ExtendsSchema = Schema.Union(Schema.String, Schema.Array(Schema.String)).annotations({
+// "Make illegal states unrepresentable": thresholdLines is compared as `lineCount >
+// thresholdLines` (core/DocSummaries.ts) — negative or fractional values are nonsensical,
+// not just unusual, so they're rejected at the schema level instead of quietly
+// misbehaving downstream.
+const ThresholdLinesSchema = Schema.Number.pipe(Schema.int(), Schema.nonNegative()).annotations({
+  description: 'Line count above which a file needs a summary. Non-negative integer. Default 30.',
+})
+
+// "Parse, don't validate": raw JSON may write a bare string OR an array (ergonomics —
+// one preset shouldn't force array syntax), but the *decoded* value is always an array.
+// The union is collapsed once, here, instead of every consumer re-deriving
+// `Array.isArray(x) ? x : [x]` for itself.
+const ExtendsInputSchema = Schema.Union(Schema.String, Schema.Array(Schema.String))
+const ExtendsOutputSchema = Schema.Array(Schema.String)
+const ExtendsSchema = Schema.transform(ExtendsInputSchema, ExtendsOutputSchema, {
+  decode: (value) => (Array.isArray(value) ? value : [value]),
+  encode: (value) => value,
+}).annotations({
   description:
     'One or more config files (paths, relative to this file) to inherit from. Local fields win over inherited ones.',
 })
@@ -80,9 +98,7 @@ export const CairnConfigSchema = Schema.Struct({
   stampCommand: Schema.optional(
     Schema.String.annotations({ description: 'Command agents should run to stamp hashes after editing docs.' }),
   ),
-  thresholdLines: Schema.optional(
-    Schema.Number.annotations({ description: 'Line count above which a file needs a summary. Default 30.' }),
-  ),
+  thresholdLines: Schema.optional(ThresholdLinesSchema),
 }).annotations({
   description: 'Configuration for the cairn CLI (.cairnrc.json, .cairnrc, or the "cairn" key of package.json).',
   identifier: 'CairnConfig',
@@ -136,16 +152,20 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
 }
 
 /** Strictly decode one raw (untrusted) config layer: unknown keys and wrong-typed values
- * are rejected with a clear, actionable message — never silently ignored or defaulted. */
-export const decodeConfig = (raw: unknown, file: string): CairnConfigInput => {
-  const result = Schema.decodeUnknownEither(CairnConfigSchema, { errors: 'all', onExcessProperty: 'error' })(raw)
-  if (Either.isLeft(result)) {
-    throw new Error(`cairn: invalid config in ${file}:\n${ParseResult.TreeFormatter.formatErrorSync(result.left)}`, {
-      cause: result.left,
-    })
-  }
-  return result.right
-}
+ * are rejected via a `Left` — never silently ignored or defaulted. Total and pure: this
+ * never throws. `effect/Schema` already hands back an `Either`; collapsing it into a
+ * thrown exception here (as an earlier version of this function did) would be a purity
+ * leak inside a module documented as "no IO" — the throw/catch decision belongs to
+ * whichever caller is equipped to make it (the edge, in `../config.ts`), not to the
+ * decoder. Formatting a `Left` for a human is a separate, equally pure concern
+ * (`formatConfigError`, below): decoding has no business knowing which file it came
+ * from — that's the caller's context, not the decoder's. */
+export const decodeConfig = (raw: unknown): Either.Either<CairnConfigInput, ParseResult.ParseError> =>
+  Schema.decodeUnknownEither(CairnConfigSchema, { errors: 'all', onExcessProperty: 'error' })(raw)
+
+/** Render a decode failure into a clear, actionable, file-scoped message. */
+export const formatConfigError = (error: ParseResult.ParseError, file: string): string =>
+  `cairn: invalid config in ${file}:\n${ParseResult.TreeFormatter.formatErrorSync(error)}`
 
 /** Layer a decoded config over a resolved base: `checks`/`naming` deep-merge field by
  * field, everything else replaces when present. Used for `extends` presets, the local

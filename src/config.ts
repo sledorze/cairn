@@ -8,13 +8,15 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
+import { Either } from 'effect'
+
 import type { Overrides, ResolvedConfig } from './core/Config.ts'
-import { DEFAULT_CONFIG, decodeConfig, layerConfig } from './core/Config.ts'
+import { DEFAULT_CONFIG, decodeConfig, formatConfigError, layerConfig } from './core/Config.ts'
 import { globToRegExp } from './core/glob.ts'
 import { toPosix } from './core/paths.ts'
 
 export type { CairnConfigInput, ChecksConfig, Locale, Overrides, ResolvedConfig } from './core/Config.ts'
-export { CairnConfigSchema, DEFAULT_CONFIG, decodeConfig } from './core/Config.ts'
+export { CairnConfigSchema, DEFAULT_CONFIG, decodeConfig, formatConfigError } from './core/Config.ts'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -70,13 +72,17 @@ const resolveExtendsTarget = (
 }
 
 /** Decode one raw layer, fold in its own `extends` chain (base presets applied first, in
- * order, then this layer's own fields last), and return the fully-resolved result. */
+ * order, then this layer's own fields last), and return the fully-resolved result.
+ * `decodeConfig` is pure and total (it returns a `Left` on failure, never throws) — the
+ * edge is where that `Left` becomes a thrown, human-readable error. */
 const resolveLayer = (cwd: string, raw: unknown, file: string, visited: readonly string[] = []): ResolvedConfig => {
-  const decoded = decodeConfig(raw, file)
-  const specifiers =
-    decoded.extends === undefined ? [] : Array.isArray(decoded.extends) ? decoded.extends : [decoded.extends]
+  const result = decodeConfig(raw)
+  if (Either.isLeft(result)) {
+    throw new Error(formatConfigError(result.left, file))
+  }
+  const decoded = result.right
   const nextVisited = [...visited, file]
-  const withExtends = specifiers.reduce(
+  const withExtends = (decoded.extends ?? []).reduce(
     (acc, specifier) => layerConfig(acc, resolveExtendsTarget(cwd, specifier, file, nextVisited)),
     DEFAULT_CONFIG,
   )

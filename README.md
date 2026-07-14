@@ -96,20 +96,20 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 }
 ```
 
-| Key                        | Meaning                                                               |
-| -------------------------- | --------------------------------------------------------------------- |
-| `$schema`                  | JSON Schema URL for editor autocomplete/validation. Ignored by cairn. |
-| `extends`                  | One or more config files to inherit from (see below)                  |
-| `roots`                    | Documentation roots to scan (array; globs allowed). Default `docs/`   |
-| `thresholdLines`           | Line count above which a file needs a `.summary.md`. Default `30`     |
-| `naming.dirSummary`        | Directory summary filename. Default `_SUMMARY.md`                     |
-| `naming.fileSummarySuffix` | Suffix for file summaries. Default `.summary.md`                      |
-| `checks.summaries`         | Enable summary freshness checking                                     |
-| `checks.links`             | Enable Markdown link checking                                         |
-| `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                   |
-| `ignore`                   | Globs to exclude from scanning                                        |
-| `stampCommand`             | Command agents should run to stamp hashes                             |
-| `locale`                   | Prose locale for generated guidance: `en` or `fr`                     |
+| Key                        | Meaning                                                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| `$schema`                  | JSON Schema URL for editor autocomplete/validation. Ignored by cairn.                   |
+| `extends`                  | One or more config files to inherit from (see below)                                    |
+| `roots`                    | Documentation roots to scan (array; globs allowed). Default `docs/`                     |
+| `thresholdLines`           | Line count above which a file needs a `.summary.md`. Non-negative integer. Default `30` |
+| `naming.dirSummary`        | Directory summary filename. Default `_SUMMARY.md`                                       |
+| `naming.fileSummarySuffix` | Suffix for file summaries. Default `.summary.md`                                        |
+| `checks.summaries`         | Enable summary freshness checking                                                       |
+| `checks.links`             | Enable Markdown link checking                                                           |
+| `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                     |
+| `ignore`                   | Globs to exclude from scanning                                                          |
+| `stampCommand`             | Command agents should run to stamp hashes                                               |
+| `locale`                   | Prose locale for generated guidance: `en` or `fr`                                       |
 
 Config is validated strictly (via `effect/Schema`): an **unknown key or a wrong-typed
 value fails loudly** with a file-scoped, actionable error, instead of being silently

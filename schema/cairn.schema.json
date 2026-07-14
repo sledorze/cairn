@@ -39,8 +39,10 @@
           "description": "Command agents should run to stamp hashes after editing docs."
         },
         "thresholdLines": {
-          "type": "number",
-          "description": "Line count above which a file needs a summary. Default 30."
+          "type": "integer",
+          "description": "Line count above which a file needs a summary. Non-negative integer. Default 30.",
+          "title": "nonNegative",
+          "minimum": 0
         }
       },
       "additionalProperties": false,
