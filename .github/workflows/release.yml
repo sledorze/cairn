@@ -68,3 +68,13 @@ jobs:
           # NODE_AUTH_TOKEN, which was the previous workflow's different mechanism via
           # actions/setup-node) — see the action's own README.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # changesets/action's internal `git commit` (for the Version Packages bump)
+          # triggers this repo's OWN pre-commit lefthook hook inside the runner (since
+          # `pnpm install` above already wired it up via the `prepare` script) — and
+          # `gitleaks` isn't on GitHub's hosted runner image, so that hook fails with
+          # "gitleaks: not found", blocking the commit. Confirmed via a real failed run.
+          # The auto-generated commit's content (package.json + CHANGELOG.md) is fully
+          # mechanical, produced by changesets' own tooling from a PR that already
+          # passed the real pre-commit/pre-push/CI gates before it was merged — there's
+          # nothing here for lint/format/secret-scanning to usefully check.
+          LEFTHOOK: 0
