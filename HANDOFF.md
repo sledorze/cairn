@@ -6,8 +6,8 @@ bootstrap the repo before doing anything else.
 
 ## What cairn is
 
-A standalone, reusable CLI extracted from the syndico project. It enforces a
-convention of **hierarchical documentation summaries** plus a **dead-link** check.
+A standalone, reusable CLI. It enforces a convention of **hierarchical
+documentation summaries** plus a **dead-link** check.
 
 - File summary `X.summary.md` for every `.md` over the threshold (default 30 lines).
 - Directory summary `_SUMMARY.md` aggregating direct children and linking each.
@@ -62,7 +62,7 @@ Otherwise, by hand: `corepack enable && pnpm install --frozen-lockfile`. Then
 - `pnpm.onlyBuiltDependencies: ["lefthook"]` is required (pnpm 10 blocks build scripts).
 - `packageManager: "pnpm@10.11.0"` is required (else `pnpm/action-setup` fails in CI).
 - prettier **ignores `pnpm-lock.yaml`** (`.prettierignore`); oxlint is **pinned to 1.73.0**
-  with stylistic rules disabled (aligned with syndico).
+  with stylistic rules disabled.
 - The npm package publishes **`dist` only** (`files: ["dist"]`) — never the tests.
 - To validate the devcontainer, run the **actual `bash .devcontainer/postCreate.sh`**
   in a fresh clone, not just `pnpm install`.
@@ -77,7 +77,6 @@ Otherwise, by hand: `corepack enable && pnpm install --frozen-lockfile`. Then
 
 1. **npm publish**: make the repo **public**, then `changeset publish` (`--access public`,
    `provenance` via CI OIDC). Outward actions → confirm first.
-2. **Migrate syndico** onto the package: replace `packages/backend/src/checks/docs/` +
-   the root `docs:*` scripts + the lefthook wiring, then `cairn init --agent claude` in
-   syndico (fix the "8 KB" → "30 lines" drift in `docs/README.md`).
+2. **Adopt cairn in a consuming repo**: add it as a dev dependency, wire `cairn check`
+   into CI and git hooks, and run `cairn init` to generate the agent guidance.
 3. CI: a non-blocking Node 20 deprecation warning from the GitHub actions (upstream).

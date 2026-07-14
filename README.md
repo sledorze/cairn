@@ -141,5 +141,4 @@ no false greens after checkout.
 
 ## Credits
 
-Extracted from the [Syndico](https://github.com/sledorze) project's documentation workflow.
 Built on [Effect](https://effect.website).
