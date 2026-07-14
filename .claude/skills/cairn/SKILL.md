@@ -55,31 +55,30 @@ top-down, parents capture stale child hashes and `check` stays red.
 
 ## Tiny examples
 
-A **file summary** (`adr-0007-queue.summary.md`):
+A **file summary** (`guides/getting-started.summary.md`):
 
 ```markdown
 <!-- source-sha256: 0000...(stamped by the tool) -->
 
-# ADR-0007: Switch to a pull-based queue — ACCEPTED
+# Getting started — summary
 
-- Decision: replace the cron fan-out with a pull-based worker queue.
-- Why: p99 job latency 42s -> 3s; lost jobs on redeploy eliminated.
-- Cost: one new Redis stream; workers idempotent by job id.
-- Rejected: bigger cron batches (still bursty), managed SQS (egress cost).
+- Install as a dev dependency, then run the init command.
+- Configure via a single rc file; every option has a sensible default.
+- First run scaffolds an example and prints the next command to run.
 ```
 
-A **directory summary** (`adr/_SUMMARY.md`):
+A **directory summary** (`guides/_SUMMARY.md`):
 
 ```markdown
 <!-- source-sha256: 0000...(stamped by the tool) -->
 
-# Architecture Decision Records
+# Guides
 
-Accepted and superseded decisions for the billing service, newest first.
+How-to guides for everyday tasks, in reading order.
 
-- [ADR-0007: pull-based queue](./adr-0007-queue.summary.md) — killed cron latency
-- [ADR-0006: idempotency keys](./adr-0006-idempotency.md) — dedupe retried charges
-- [superseded/](./superseded/_SUMMARY.md) — decisions we've since replaced
+- [getting-started](./getting-started.summary.md) — install, configure, first run
+- [configuration](./configuration.md) — every rc option, with its default
+- [advanced/](./advanced/_SUMMARY.md) — recipes for larger setups
 ```
 
 Keep summaries short, keep links complete, stamp last, verify green.

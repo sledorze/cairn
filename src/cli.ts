@@ -46,13 +46,16 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let linksOnly = false
   let summariesOnly = false
 
-  const rest = [...argv]
+  // Drop a leading `--` end-of-options separator (e.g. `pnpm dev -- init`).
+  const rest = argv[0] === '--' ? argv.slice(1) : [...argv]
   if (rest[0] !== undefined && !rest[0].startsWith('-')) {
     command = rest.shift() ?? 'check'
   }
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i]
     switch (arg) {
+      case '--':
+        break
       case '--fix':
         fix = true
         break
