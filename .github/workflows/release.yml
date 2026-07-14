@@ -46,7 +46,12 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
-      - uses: changesets/action@v2
+      # Pinned to the exact tag, not a floating major (`@v1`/`@v2`): confirmed directly
+      # against the action repo's real tags — it has no floating major tag at all, only
+      # exact versions (v1.0.0..v1.9.0) plus v2 prereleases (v2.0.0-next.*). `@v2` (what
+      # this was first written with, based on a since-corrected assumption) failed with
+      # "unable to find version v2" on a real run.
+      - uses: changesets/action@v1.9.0
         with:
           publish-script: pnpm release
         env:
