@@ -1,20 +1,43 @@
 name: Release
 
-# Manual, opt-in publish to npm. Requires an NPM_TOKEN repository secret.
-# Publishes the current version if it is not already on the registry
-# (changeset publish is a no-op when nothing new needs releasing).
+# Automated changesets flow (see AGENTS.md for the `pnpm changeset` convention):
+#  - on push to main with unconsumed .changeset/*.md files, opens/updates a "Version
+#    Packages" PR (bumped package.json, generated CHANGELOG.md) — reviewable like any
+#    other PR, and gets the SAME build-test/bench/CodeQL checks as any other PR (see the
+#    GITHUB_TOKEN note below for why that isn't automatic).
+#  - merging that PR re-triggers this workflow; changesets/action detects the version
+#    bump and runs `pnpm release` (changeset publish), which publishes to npm, pushes
+#    the git tag, and creates a GitHub Release from the changelog — all three of which
+#    the previous hand-rolled version of this workflow silently didn't do (confirmed:
+#    v0.1.0 was published with no pushed tag and no Release; see PR that introduced
+#    this workflow for the full investigation).
+# workflow_dispatch kept as a manual fallback (e.g. to retry after a transient publish
+# failure); with nothing new to release, changeset publish is a clean no-op.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write # npm provenance (see publishConfig.provenance)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
 
 jobs:
-  publish:
+  release:
+    if: github.repository == 'sledorze/cairn'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write # npm provenance (see publishConfig.provenance)
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Ensure the GITHUB_TOKEN below (not whatever checkout would persist by
+          # default) is what git operations actually use.
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -23,6 +46,20 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
-      - run: pnpm release
+      - uses: changesets/action@v2
+        with:
+          publish-script: pnpm release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # A real PAT, not the default GITHUB_TOKEN: GitHub deliberately does not
+          # trigger other workflows on pushes authenticated by the default token (an
+          # infinite-loop guard) — so with it, the "Version Packages" PR this action
+          # opens would silently never get build-test/bench/CodeQL checks. Confirmed
+          # via Effect-TS/effect's own release workflow, which does the same for the
+          # same documented reason. Falls back to the default token if the PAT secret
+          # isn't configured yet, so this doesn't hard-fail before that's set up — the
+          # release PR just won't self-check until it is.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          # changesets/action writes its own .npmrc from this exact env var name (not
+          # NODE_AUTH_TOKEN, which was the previous workflow's different mechanism via
+          # actions/setup-node) — see the action's own README.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

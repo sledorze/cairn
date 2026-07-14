@@ -47,3 +47,15 @@ When you create or edit any doc:
 You author the prose. The tool only verifies and stamps.
 
 <!-- cairn:end -->
+
+# Release convention
+
+Releases are automated via [Changesets](https://github.com/changesets/changesets) (see
+`.github/workflows/release.yml`) — merging to `main` with unconsumed `.changeset/*.md`
+files opens a "Version Packages" PR (bumped `package.json`, generated `CHANGELOG.md`);
+merging that PR publishes to npm, pushes the git tag, and creates a GitHub Release.
+
+If your PR is a user-facing change (not docs-only, not internal tooling with no effect
+on the published package), run `pnpm changeset` and commit the generated file alongside
+your change. Not enforced by CI — a missing changeset just means that change won't show
+up in the next changelog, not a build failure.
