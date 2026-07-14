@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Cairn logo">
+  <title>Cairn</title>
+
+  <defs>
+    <radialGradient id="badge" cx="50%" cy="42%" r="70%">
+      <stop offset="0%" stop-color="#241D3F"/>
+      <stop offset="100%" stop-color="#120E24"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="100" cy="100" r="96" fill="url(#badge)"/>
+
+  <!-- stone 1 (base) -->
+  <polygon points="41,161 63,139 106,139 106,161" fill="#6D28D9"/>
+  <polygon points="106,161 106,139 149,139 171,161" fill="#4C1D95"/>
+
+  <!-- stone 2, centered on stone 1's top-left corner -->
+  <polygon points="27,136 39,114 63,114 63,136" fill="#7C3AED"/>
+  <polygon points="63,136 63,114 87,114 99,136" fill="#5B21B6"/>
+
+  <!-- stone 3, centered on stone 2's top-right corner -->
+  <polygon points="67,111 74,89 87,89 87,111" fill="#8B5CF6"/>
+  <polygon points="87,111 87,89 100,89 107,111" fill="#6D28D9"/>
+
+  <!-- stone 4, centered on stone 3's top-left corner -->
+  <polygon points="64,86 67,64 74,64 74,86" fill="#A78BFA"/>
+  <polygon points="74,86 74,64 81,64 84,86" fill="#8B5CF6"/>
+
+  <!-- stone 5 (top), centered on stone 4's top-right corner -->
+  <polygon points="76,61 78,39 81,39 81,61" fill="#C4B5FD"/>
+  <polygon points="81,61 81,39 84,39 86,61" fill="#A78BFA"/>
+</svg>
