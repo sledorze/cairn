@@ -15,8 +15,15 @@
 
 import * as fs from 'node:fs'
 
+// `mean` is optional, not just theoretically: a benchmark whose function throws does
+// NOT fail `vitest bench`'s process exit code — it exits 0 and simply omits `mean`
+// (and `hz`, etc.) from that one entry. Confirmed directly: a benchmark that throws
+// produces `{ "id": ..., "name": "boom", "rank": 1, "rme": 0, "samples": [] }`, no
+// `mean` field at all. A naive `afterMean / beforeMean` would silently divide by/into
+// `undefined`, produce `NaN`, and `NaN > threshold` is `false` in JS — treating the
+// single worst possible outcome (a crash) as "not a regression." See `crashed` below.
 interface VitestBenchmark {
-  readonly mean: number
+  readonly mean?: number
   readonly name: string
 }
 
@@ -34,13 +41,14 @@ interface VitestBenchReport {
 }
 
 interface BenchEntry {
-  readonly mean: number
+  readonly mean: number | undefined
   readonly name: string
 }
 
 interface Regression {
-  readonly afterMean: number
+  readonly afterMean: number | undefined
   readonly beforeMean: number
+  readonly crashed: boolean
   readonly name: string
   readonly ratio: number
 }
@@ -69,10 +77,12 @@ const flatten = (report: VitestBenchReport): BenchEntry[] =>
   )
 
 /** Compare two reports: benchmarks present in both whose `after` mean exceeds
- * `threshold` x its `before` mean, sorted worst-first, plus counts proving the
+ * `threshold` x its `before` mean, sorted worst-first (a crashed `after` — see the
+ * module comment — always sorts first, ratio `Infinity`), plus counts proving the
  * comparison actually matched real benchmarks (see `Comparison.comparedCount`). A
- * benchmark missing from either side (renamed, added, removed) doesn't count as a
- * regression — this gate is about regressions, not drift. */
+ * benchmark missing from either side (renamed, added, removed), or whose `before`
+ * itself has no valid mean, can't be compared and is skipped — this gate is about
+ * regressions, not drift, and needs a real baseline to regress from. */
 export const compareReports = (before: VitestBenchReport, after: VitestBenchReport, threshold: number): Comparison => {
   const beforeEntries = flatten(before)
   const afterEntries = flatten(after)
@@ -81,13 +91,18 @@ export const compareReports = (before: VitestBenchReport, after: VitestBenchRepo
   let comparedCount = 0
   for (const { mean: afterMean, name } of afterEntries) {
     const beforeMean = beforeByName.get(name)
-    if (beforeMean === undefined || beforeMean <= 0) {
+    if (beforeMean === undefined || !Number.isFinite(beforeMean) || beforeMean <= 0) {
       continue
     }
     comparedCount += 1
+    const crashed = afterMean === undefined || !Number.isFinite(afterMean)
+    if (crashed) {
+      regressions.push({ afterMean, beforeMean, crashed: true, name, ratio: Number.POSITIVE_INFINITY })
+      continue
+    }
     const ratio = afterMean / beforeMean
     if (ratio > threshold) {
-      regressions.push({ afterMean, beforeMean, name, ratio })
+      regressions.push({ afterMean, beforeMean, crashed: false, name, ratio })
     }
   }
   return {
@@ -128,7 +143,9 @@ if (process.argv[1] === import.meta.filename) {
       console.error(`${regressions.length} benchmark(s) regressed beyond ${threshold}x:\n`)
       for (const r of regressions) {
         console.error(
-          `  ${r.ratio.toFixed(2)}x  ${r.name}  (${r.beforeMean.toFixed(4)}ms -> ${r.afterMean.toFixed(4)}ms)`,
+          r.crashed
+            ? `  CRASHED  ${r.name}  (was ${r.beforeMean.toFixed(4)}ms, now throws/never completes)`
+            : `  ${r.ratio.toFixed(2)}x  ${r.name}  (${r.beforeMean.toFixed(4)}ms -> ${(r.afterMean ?? 0).toFixed(4)}ms)`,
         )
       }
       process.exitCode = 1

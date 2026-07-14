@@ -53,16 +53,26 @@ jobs:
           cache-dependency-path: |
             base/pnpm-lock.yaml
             head/pnpm-lock.yaml
+      # `vitest bench` exits 1 (not 0) when a ref has zero *.bench.ts files — real for
+      # THIS PR specifically, since it's the one introducing the bench suite, so the
+      # base ref (main, pre-merge) legitimately has none yet. It still writes a valid
+      # (empty) --outputJson report before exiting, so `|| true` here + failing only
+      # if that file is actually missing distinguishes "ran, found nothing" from "the
+      # command itself never completed." bench-assert.ts's own comparedCount===0 check
+      # (see that script) is what actually judges whether an empty/partial comparison
+      # is acceptable — this step just has to not crash the job outright either way.
       - name: Bench base ref
         working-directory: base
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/before.json"
+          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/before.json" || true
+          test -f "$RUNNER_TEMP/before.json" || { echo "vitest bench produced no report for the base ref"; exit 1; }
       - name: Bench head ref
         working-directory: head
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/after.json"
+          pnpm exec vitest bench --run --outputJson "$RUNNER_TEMP/after.json" || true
+          test -f "$RUNNER_TEMP/after.json" || { echo "vitest bench produced no report for the head ref"; exit 1; }
       - name: Assert no regression
         working-directory: head
         run: pnpm exec tsx scripts/bench-assert.ts "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json"
