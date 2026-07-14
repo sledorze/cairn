@@ -4,6 +4,9 @@
 //  - GitHub Copilot: .github/instructions/docs-summaries.instructions.md (`applyTo:`)
 //  - Cross-tool:    a marked block in AGENTS.md
 //  - Claude/Codex:  .claude/skills/cairn/SKILL.md            (the writing methodology)
+//  - Claude Code:   a marked `@AGENTS.md` import in CLAUDE.md — Claude Code auto-loads
+//    CLAUDE.md at session start but never reads AGENTS.md on its own, so without this
+//    pointer the cross-tool block in AGENTS.md is invisible to it.
 // Plus a starter .cairnrc.json (only when absent).
 
 import * as fs from 'node:fs'
@@ -76,6 +79,30 @@ const upsertAgentsBlock = (cwd: string, written: string[]): void => {
   written.push(file)
 }
 
+/** Ensure CLAUDE.md imports AGENTS.md. Claude Code auto-loads CLAUDE.md (not AGENTS.md)
+ * at session start, so without this the AGENTS.md block cairn writes is never read. Leaves
+ * other CLAUDE.md content intact, and no-ops if an `@AGENTS.md` import is already present
+ * (hand-written or from a previous run). */
+const upsertClaudeMdImport = (cwd: string, written: string[], skipped: string[]): void => {
+  const file = path.join(cwd, 'CLAUDE.md')
+  const block = `${AGENTS_START}\n@AGENTS.md\n${AGENTS_END}`
+  if (fs.existsSync(file)) {
+    const existing = fs.readFileSync(file, 'utf8')
+    if (existing.includes('@AGENTS.md')) {
+      skipped.push(file)
+      return
+    }
+    const next =
+      existing.includes(AGENTS_START) && existing.includes(AGENTS_END)
+        ? existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
+        : `${existing.trimEnd()}\n\n${block}\n`
+    fs.writeFileSync(file, next.endsWith('\n') ? next : `${next}\n`)
+  } else {
+    fs.writeFileSync(file, `${block}\n`)
+  }
+  written.push(file)
+}
+
 const starterConfig = (roots: readonly string[]): string =>
   `${JSON.stringify(
     {
@@ -101,6 +128,7 @@ export const runInit = ({ agent, cwd, roots }: InitArgs): InitResult => {
   if (doClaude) {
     write(path.join(cwd, '.claude/rules/docs-summaries.md'), claudeRule(globs), written)
     write(path.join(cwd, '.claude/skills/cairn/SKILL.md'), skillFile(), written)
+    upsertClaudeMdImport(cwd, written, skipped)
   }
   if (doCopilot) {
     write(path.join(cwd, '.github/instructions/docs-summaries.instructions.md'), copilotInstructions(globs), written)

@@ -119,6 +119,9 @@ automatically:
 
 - **`.claude/rules/*.md`** — a path-scoped Claude rule (`paths:` frontmatter) loaded when an
   agent touches your docs.
+- **`CLAUDE.md`** — an `@AGENTS.md` import, upserted at the repo root. Claude Code
+  auto-loads `CLAUDE.md` at session start but never reads `AGENTS.md` on its own; without
+  this pointer the block below is invisible to it.
 - **`.github/instructions/*.instructions.md`** — GitHub Copilot instructions with an
   `applyTo:` glob.
 - **`AGENTS.md`** — a block appended to the repo-wide agent guide.

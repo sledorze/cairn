@@ -18,7 +18,9 @@ documentation summaries** plus a **dead-link** check.
 - **Two layers** (the core design): (1) _enforcement_ = the agent-agnostic CLI (the
   CI guarantee); (2) _guidance_ = `cairn init` renders ONE convention body into
   `.claude/rules/*.md` (`paths:`), `.github/instructions/*.instructions.md`
-  (`applyTo:`), an `AGENTS.md` block, and a `SKILL.md`.
+  (`applyTo:`), an `AGENTS.md` block, a `SKILL.md`, and (for `--agent claude`/`all`) a
+  root `CLAUDE.md` that imports AGENTS.md — Claude Code auto-loads CLAUDE.md at session
+  start but never reads AGENTS.md on its own.
 
 ## Getting started (clean devcontainer)
 
