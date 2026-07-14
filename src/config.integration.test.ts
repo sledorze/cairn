@@ -2,10 +2,10 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { toPosix } from './core/paths.ts'
-import { expandRoots } from './config.ts'
+import { expandRoots, loadConfig } from './config.ts'
 
 // Exercises real-filesystem root-glob expansion, including the pruning of heavy
 // directories (`node_modules`, `.git`) during `**` traversal.
@@ -44,5 +44,77 @@ describe('expandRoots()', () => {
   it('returns POSIX-separated paths', () => {
     const dirs = expandRoots(root, ['packages/alpha/docs'])
     expect(dirs[0]).not.toContain('\\')
+  })
+})
+
+describe('loadConfig()', () => {
+  let dir = ''
+
+  afterEach(() => {
+    if (dir) {
+      fs.rmSync(dir, { force: true, recursive: true })
+    }
+  })
+
+  const mkTmp = (prefix: string): string => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+    return dir
+  }
+
+  it('applies an `extends` preset, with the local file taking precedence on shared keys', () => {
+    const cwd = mkTmp('cairn-extends-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { links: false }, thresholdLines: 50 }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { summaries: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = loadConfig(cwd)
+    expect(config.thresholdLines).toBe(50) // inherited from the base preset
+    expect(config.checks).toEqual({ links: false, summaries: false }) // deep-merged
+    expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
+  })
+
+  it('lets the local file override a value set by its `extends` preset', () => {
+    const cwd = mkTmp('cairn-extends-override-')
+    fs.writeFileSync(path.join(cwd, 'base.cairnrc.json'), JSON.stringify({ thresholdLines: 50 }))
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ extends: './base.cairnrc.json', thresholdLines: 99 }),
+    )
+    expect(loadConfig(cwd).thresholdLines).toBe(99)
+  })
+
+  it('throws a clear error when an `extends` target does not exist', () => {
+    const cwd = mkTmp('cairn-extends-missing-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ extends: './missing.json' }))
+    expect(() => loadConfig(cwd)).toThrow(/extends target not found/)
+  })
+
+  it('resolves a chain of `extends` (base presets applied before the extending file)', () => {
+    const cwd = mkTmp('cairn-extends-chain-')
+    fs.writeFileSync(path.join(cwd, 'root.cairnrc.json'), JSON.stringify({ locale: 'fr', thresholdLines: 10 }))
+    fs.writeFileSync(
+      path.join(cwd, 'mid.cairnrc.json'),
+      JSON.stringify({ extends: './root.cairnrc.json', thresholdLines: 20 }),
+    )
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ extends: './mid.cairnrc.json' }))
+    const config = loadConfig(cwd)
+    expect(config.thresholdLines).toBe(20) // mid overrides root
+    expect(config.locale).toBe('fr') // inherited all the way from root
+  })
+
+  it('falls back to the package.json "cairn" key when no rc file exists', () => {
+    const cwd = mkTmp('cairn-pkg-')
+    fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ cairn: { thresholdLines: 42 } }))
+    expect(loadConfig(cwd).thresholdLines).toBe(42)
+  })
+
+  it('rejects an unknown key with a clear error naming the offending file', () => {
+    const cwd = mkTmp('cairn-bad-key-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ thresholdLins: 10 }))
+    expect(() => loadConfig(cwd)).toThrow(/invalid config in.*\.cairnrc\.json/)
   })
 })

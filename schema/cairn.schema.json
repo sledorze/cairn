@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "CairnConfig": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema URL for editor autocomplete/validation. Ignored by cairn."
+        },
+        "checks": { "$ref": "#/$defs/CairnChecksConfig" },
+        "extends": {
+          "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+          "description": "One or more config files (paths, relative to this file) to inherit from. Local fields win over inherited ones."
+        },
+        "ignore": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Globs to exclude from scanning. Default [\"**/node_modules/**\"]."
+        },
+        "locale": {
+          "type": "string",
+          "enum": ["en", "fr"],
+          "description": "Prose locale for generated guidance and report strings. Default \"en\"."
+        },
+        "naming": { "$ref": "#/$defs/CairnNamingConfig" },
+        "requireDirSummaries": {
+          "type": "boolean",
+          "description": "Require a directory summary in every in-scope directory. Default true."
+        },
+        "roots": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Documentation roots to scan (globs allowed). Default [\"docs\"]."
+        },
+        "stampCommand": {
+          "type": "string",
+          "description": "Command agents should run to stamp hashes after editing docs."
+        },
+        "thresholdLines": {
+          "type": "number",
+          "description": "Line count above which a file needs a summary. Default 30."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Configuration for the cairn CLI (.cairnrc.json, .cairnrc, or the \"cairn\" key of package.json).",
+      "title": "cairn configuration"
+    },
+    "CairnChecksConfig": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
+        "summaries": {
+          "type": "boolean",
+          "description": "Enable summary freshness checking (content-hash based). Default true."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Which checks `cairn check` runs."
+    },
+    "CairnNamingConfig": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "dirSummary": { "type": "string", "description": "Directory summary filename. Default \"_SUMMARY.md\"." },
+        "fileSummarySuffix": { "type": "string", "description": "Suffix for file summaries. Default \".summary.md\"." }
+      },
+      "additionalProperties": false,
+      "description": "Configurable filenames for the summary system."
+    }
+  },
+  "$ref": "#/$defs/CairnConfig"
+}

@@ -1,30 +1,61 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_CONFIG, mergeConfig, parseRcJson } from './config.ts'
+import { DEFAULT_CONFIG, decodeConfig, parseRcJson } from './config.ts'
 
-describe('mergeConfig()', () => {
-  it('returns defaults for a non-object', () => {
-    expect(mergeConfig(null)).toEqual(DEFAULT_CONFIG)
-    expect(mergeConfig(42)).toEqual(DEFAULT_CONFIG)
+// `decodeConfig` is the strict, effect/Schema-driven per-layer decoder: every field is
+// optional (a config file only specifies what it overrides), unknown keys are rejected
+// (onExcessProperty: 'error'), and wrong-typed values are rejected rather than silently
+// falling back to the default — a silently-wrong config would undermine cairn's own
+// thesis (a CI *guarantee* that quietly ignores typos isn't one).
+describe('decodeConfig()', () => {
+  it('decodes an empty object to an empty object (defaults are applied at resolution time, not here)', () => {
+    expect(decodeConfig({}, 'x.json')).toEqual({})
   })
 
-  it('deep-merges naming and checks over the defaults', () => {
-    const merged = mergeConfig({ checks: { links: false }, naming: { dirSummary: 'INDEX.md' } })
-    expect(merged.naming.dirSummary).toBe('INDEX.md')
-    expect(merged.naming.fileSummarySuffix).toBe('.summary.md')
-    expect(merged.checks.links).toBeFalsy()
-    expect(merged.checks.summaries).toBeTruthy()
+  it('decodes only the fields present, leaving the rest absent (partial by design)', () => {
+    const decoded = decodeConfig({ checks: { links: false }, naming: { dirSummary: 'INDEX.md' } }, 'x.json')
+    expect(decoded).toEqual({ checks: { links: false }, naming: { dirSummary: 'INDEX.md' } })
   })
 
-  it('ignores fields of the wrong type', () => {
-    const merged = mergeConfig({ roots: 'docs', thresholdLines: 'many' })
-    expect(merged.roots).toEqual(DEFAULT_CONFIG.roots)
-    expect(merged.thresholdLines).toBe(DEFAULT_CONFIG.thresholdLines)
+  it('rejects a non-object with a clear, file-scoped error', () => {
+    expect(() => decodeConfig(42, '/repo/.cairnrc.json')).toThrow(/invalid config in \/repo\/\.cairnrc\.json/)
+    expect(() => decodeConfig(null, '/repo/.cairnrc.json')).toThrow(/invalid config in \/repo\/\.cairnrc\.json/)
+  })
+
+  it('rejects an unknown top-level key instead of silently ignoring it', () => {
+    expect(() => decodeConfig({ thresholdLins: 10 }, '/repo/.cairnrc.json')).toThrow(
+      /invalid config in \/repo\/\.cairnrc\.json/,
+    )
+  })
+
+  it('rejects a wrong-typed field instead of silently reverting to the default', () => {
+    expect(() => decodeConfig({ roots: 'docs' }, '/repo/.cairnrc.json')).toThrow(/invalid config in/)
+    expect(() => decodeConfig({ thresholdLines: 'many' }, '/repo/.cairnrc.json')).toThrow(/invalid config in/)
   })
 
   it('accepts a valid locale and rejects an invalid one', () => {
-    expect(mergeConfig({ locale: 'fr' }).locale).toBe('fr')
-    expect(mergeConfig({ locale: 'de' }).locale).toBe('en')
+    expect(decodeConfig({ locale: 'fr' }, 'x.json').locale).toBe('fr')
+    expect(() => decodeConfig({ locale: 'de' }, 'x.json')).toThrow(/invalid config in/)
+  })
+
+  it('accepts a single `extends` string or an array of them', () => {
+    expect(decodeConfig({ extends: './base.json' }, 'x.json').extends).toBe('./base.json')
+    expect(decodeConfig({ extends: ['./a.json', './b.json'] }, 'x.json').extends).toEqual(['./a.json', './b.json'])
+  })
+})
+
+describe('the built-in defaults', () => {
+  it('matches the documented defaults', () => {
+    expect(DEFAULT_CONFIG).toEqual({
+      checks: { links: true, summaries: true },
+      ignore: ['**/node_modules/**'],
+      locale: 'en',
+      naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },
+      requireDirSummaries: true,
+      roots: ['docs'],
+      stampCommand: 'npx cairn check --summaries-only --stamp',
+      thresholdLines: 30,
+    })
   })
 })
 

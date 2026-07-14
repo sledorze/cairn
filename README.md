@@ -77,10 +77,11 @@ hashes. The `--stamp` command walks the tree in the right order for you.
 
 ## Configuration
 
-Drop a `.cairnrc.json` at the repo root:
+Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 
 ```json
 {
+  "$schema": "./node_modules/@sledorze/cairn/schema/cairn.schema.json",
   "roots": ["docs/**"],
   "thresholdLines": 30,
   "naming": {
@@ -95,18 +96,44 @@ Drop a `.cairnrc.json` at the repo root:
 }
 ```
 
-| Key                        | Meaning                                                             |
-| -------------------------- | ------------------------------------------------------------------- |
-| `roots`                    | Documentation roots to scan (array; globs allowed). Default `docs/` |
-| `thresholdLines`           | Line count above which a file needs a `.summary.md`. Default `30`   |
-| `naming.dirSummary`        | Directory summary filename. Default `_SUMMARY.md`                   |
-| `naming.fileSummarySuffix` | Suffix for file summaries. Default `.summary.md`                    |
-| `checks.summaries`         | Enable summary freshness checking                                   |
-| `checks.links`             | Enable Markdown link checking                                       |
-| `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                 |
-| `ignore`                   | Globs to exclude from scanning                                      |
-| `stampCommand`             | Command agents should run to stamp hashes                           |
-| `locale`                   | Prose locale for generated guidance: `en` or `fr`                   |
+| Key                        | Meaning                                                               |
+| -------------------------- | --------------------------------------------------------------------- |
+| `$schema`                  | JSON Schema URL for editor autocomplete/validation. Ignored by cairn. |
+| `extends`                  | One or more config files to inherit from (see below)                  |
+| `roots`                    | Documentation roots to scan (array; globs allowed). Default `docs/`   |
+| `thresholdLines`           | Line count above which a file needs a `.summary.md`. Default `30`     |
+| `naming.dirSummary`        | Directory summary filename. Default `_SUMMARY.md`                     |
+| `naming.fileSummarySuffix` | Suffix for file summaries. Default `.summary.md`                      |
+| `checks.summaries`         | Enable summary freshness checking                                     |
+| `checks.links`             | Enable Markdown link checking                                         |
+| `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                   |
+| `ignore`                   | Globs to exclude from scanning                                        |
+| `stampCommand`             | Command agents should run to stamp hashes                             |
+| `locale`                   | Prose locale for generated guidance: `en` or `fr`                     |
+
+Config is validated strictly (via `effect/Schema`): an **unknown key or a wrong-typed
+value fails loudly** with a file-scoped, actionable error, instead of being silently
+ignored. A typo like `"thresholdLins"` is a bug you want caught, not a setting that
+quietly reverts to the default.
+
+### Sharing config with `extends`
+
+A `.cairnrc.json` (or any file it extends) can inherit from one or more base presets:
+
+```json
+{ "extends": "./base.cairnrc.json", "thresholdLines": 50 }
+```
+
+`extends` accepts a single path or an array; presets are applied first (in order), then
+the extending file's own fields win. Use it to share a base config across packages in a
+monorepo, or to publish an org-wide preset as its own package.
+
+### Editor autocomplete
+
+The `$schema` key (scaffolded by `cairn init`, generated from the same schema that
+validates your config — see `schema/cairn.schema.json`) gives editors that understand
+JSON Schema (VS Code, JetBrains, coc-json) inline docs, autocomplete, and a squiggle on
+an invalid key — before you even run `cairn check`.
 
 ## Multi-agent guidance
 
