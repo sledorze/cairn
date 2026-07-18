@@ -10,7 +10,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Console, Effect, Option } from 'effect'
 
 import type { SummaryPlan } from './core/SummaryTree.ts'
@@ -98,7 +98,7 @@ const loadConfigWithSourceOrFail = (cwd: string, overrides: Overrides, explicitP
   Effect.try({ catch: toMessage, try: () => loadConfigWithSource(cwd, overrides, explicitPath) })
 
 const reportConfigErrorAndExit = (message: string): Effect.Effect<void> =>
-  Effect.zipRight(
+  Effect.andThen(
     Console.error(message),
     Effect.sync(() => (process.exitCode = 1)),
   )
@@ -218,7 +218,7 @@ const runCheck = (parsed: CheckParsed): Effect.Effect<void, never, DocsFs> =>
     if (code !== 0) {
       yield* Effect.sync(() => (process.exitCode = code))
     }
-  }).pipe(Effect.catchAll(reportConfigErrorAndExit))
+  }).pipe(Effect.catch(reportConfigErrorAndExit))
 
 const checkConfigShape = {
   config: configPathOption,
@@ -263,7 +263,7 @@ const initCommand = Command.make(
       yield* Console.log(
         '\nNext: author your summaries, then run `cairn check --summaries-only --stamp` and `cairn check`.',
       )
-    }).pipe(Effect.catchAll(reportConfigErrorAndExit)),
+    }).pipe(Effect.catch(reportConfigErrorAndExit)),
 ).pipe(Command.withDescription('Scaffold agent guidance (Claude Code, GitHub Copilot, AGENTS.md/OpenCode).'))
 
 // --- `config` ---
@@ -287,7 +287,7 @@ const configCommand = Command.make(
       yield* Console.log(`roots (configured): ${JSON.stringify(config.roots)}`)
       yield* Console.log(`roots (expanded):   ${JSON.stringify(absRoots)}`)
       yield* Console.log(JSON.stringify(config, null, 2))
-    }).pipe(Effect.catchAll(reportConfigErrorAndExit)),
+    }).pipe(Effect.catch(reportConfigErrorAndExit)),
 ).pipe(
   Command.withDescription(
     'Print the resolved config, which file it came from, and expanded roots (debug "why aren\'t my docs checked").',
@@ -307,4 +307,4 @@ const { version } = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { ve
 
 const cli = Command.run(cairn, { name: 'cairn', version })
 
-cli(process.argv).pipe(Effect.provide(DocsFsLive), Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+cli(process.argv).pipe(Effect.provide(DocsFsLive), Effect.provide(NodeServices.layer), NodeRuntime.runMain)
