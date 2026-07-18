@@ -8,7 +8,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import { Either } from 'effect'
+import { Result } from 'effect'
 
 import type { Overrides, ResolvedConfig } from './core/Config.ts'
 import { DEFAULT_CONFIG, decodeConfig, formatConfigError, layerConfig } from './core/Config.ts'
@@ -85,8 +85,8 @@ const resolveExtendsTarget = (
 
 /** Decode one raw layer, fold in its own `extends` chain (base presets applied first, in
  * order, onto `acc`, then this layer's own fields last), and return the updated
- * accumulator. `decodeConfig` is pure and total (it returns a `Left` on failure, never
- * throws) — the edge is where that `Left` becomes a thrown, human-readable error. */
+ * accumulator. `decodeConfig` is pure and total (it returns a `Failure` on failure, never
+ * throws) — the edge is where that `Failure` becomes a thrown, human-readable error. */
 const resolveLayer = (
   cwd: string,
   raw: unknown,
@@ -95,10 +95,10 @@ const resolveLayer = (
   acc: ResolvedConfig = DEFAULT_CONFIG,
 ): ResolvedConfig => {
   const result = decodeConfig(raw)
-  if (Either.isLeft(result)) {
-    throw new Error(formatConfigError(result.left, file))
+  if (Result.isFailure(result)) {
+    throw new Error(formatConfigError(result.failure, file))
   }
-  const decoded = result.right
+  const decoded = result.success
   const nextVisited = [...visited, file]
   const withExtends = (decoded.extends ?? []).reduce(
     (innerAcc, specifier) => resolveExtendsTarget(cwd, specifier, file, nextVisited, innerAcc),
