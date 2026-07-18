@@ -8,12 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@effect/cli':
-        specifier: ^0.76.0
-        version: 0.76.0(@effect/platform@0.97.0(effect@4.0.0-beta.99))(@effect/printer-ansi@0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effect/printer@0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
-      '@effect/platform':
-        specifier: ^0.97.0
-        version: 0.97.0(effect@4.0.0-beta.99)
       '@effect/platform-node':
         specifier: 4.0.0-beta.99
         version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1)
@@ -110,14 +104,6 @@ packages:
   '@changesets/write@0.4.0':
     resolution: {integrity: sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q==}
 
-  '@effect/cli@0.76.0':
-    resolution: {integrity: sha512-6N6u827Brlvf1UF3WMUazUgzZxq3kN/jemj66El7CUNulmlU7ciYKV0UMpETculvkKTfVonHZ5s49Fdz6Ad0cQ==}
-    peerDependencies:
-      '@effect/platform': ^0.97.0
-      '@effect/printer': ^0.50.0
-      '@effect/printer-ansi': ^0.50.0
-      effect: ^3.22.0
-
   '@effect/platform-node-shared@4.0.0-beta.99':
     resolution: {integrity: sha512-POBAowafsAAb3bH1x1rJlWnv32yMAazFgEuRW5LhkW/JJA5VGoEk9OnuoUkIH1OW6K/X6IrdNpqcO+5e9lPQJA==}
     engines: {node: '>=18.0.0'}
@@ -130,28 +116,6 @@ packages:
     peerDependencies:
       effect: ^4.0.0-beta.99
       ioredis: ^5.7.0
-
-  '@effect/platform@0.97.0':
-    resolution: {integrity: sha512-PPSKkQ+QlIbKcf74FZKi3pi2h8hqYjsrUYaFuWXsuHpr8gjUoNNxJBptYzkzy4X9f7EeHhHqDMcj9YxaMygiHg==}
-    peerDependencies:
-      effect: ^3.22.0
-
-  '@effect/printer-ansi@0.50.0':
-    resolution: {integrity: sha512-m2eVY1EcHRAQitweIcLUlZohRO4P96pyjiS8p31064CFddsY4qwXrP0I5h39T7D91gutM3Cru6VUDnw20rNyeA==}
-    peerDependencies:
-      '@effect/typeclass': ^0.41.0
-      effect: ^3.22.0
-
-  '@effect/printer@0.50.0':
-    resolution: {integrity: sha512-9tV9tNJS+Mjw+ZkBrfX3oUw9Kj5Ay61XMq0sONIUiBc6IgmJnLRmS12D/GTCVYncVmcX9zVrllhvN99StdcETg==}
-    peerDependencies:
-      '@effect/typeclass': ^0.41.0
-      effect: ^3.22.0
-
-  '@effect/typeclass@0.41.0':
-    resolution: {integrity: sha512-Tsv94iDPUWgmz/JsYUh7awx5mmFukEJZB+duyzlLRlCHxNUz5LHBBzTaEfUPNMzAE1s8FTUSVwdPSpL0DznXKg==}
-    peerDependencies:
-      effect: ^3.22.0
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -939,10 +903,6 @@ packages:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
     engines: {node: '>= 4'}
 
-  ini@4.1.3:
-    resolution: {integrity: sha512-X7rqawQBvfdjS10YU1y1YVreA3SsLrW9dX2CewP2EbBJM4ypVNLDkO5y04gejPwKIY9lR+7r9gn3rFPt/kmWFg==}
-    engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
-
   ini@7.0.0:
     resolution: {integrity: sha512-ifK0CgjALofS5bkrcTy4RaQ9Vx2Knf/eLeIO+NaswQEpH1UblrtTSCIvN71qQDMq0PeQ/SSPojvEJp9vvvfr+w==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
@@ -1145,9 +1105,6 @@ packages:
   msgpackr-extract@3.0.4:
     resolution: {integrity: sha512-4kmO/MdyUIkLIvTPr8VHLil4AtoKIoniWPIEk5+CDy0xnWC84azhSFmuJ7PxZdsYtiP5kEeQsORAVIeMgxT+Hw==}
     hasBin: true
-
-  msgpackr@1.12.1:
-    resolution: {integrity: sha512-4EUH9tQHnMmEgzW/MdAP0KIfa1T9AF+htl0ffe2n5vb2EKn9y2co8ccpgWko6S52Jy1PQZKwRnx5/KkYjtd9MQ==}
 
   msgpackr@2.0.4:
     resolution: {integrity: sha512-o1C5KRmuRt+apqMr1HuGSqWStZoRBUpEsCsl15uM9VdAF1qHLtvMOU2En747EnTyEl6c4pzPewRMFF31s1CNbA==}
@@ -1364,9 +1321,6 @@ packages:
   to-regex-range@5.0.1:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
-
-  toml@3.0.0:
-    resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
 
   toml@4.3.0:
     resolution: {integrity: sha512-lVb8X9BsPVuH0M4BKeS91tXAmJvCjQ5UIyAbQFaxkKGyUFK2RPkhwaFSQH8vbpl1d23eu/IBH+dwVMHWaq9A5A==}
@@ -1658,16 +1612,6 @@ snapshots:
       human-id: 4.2.0
       prettier: 2.8.8
 
-  '@effect/cli@0.76.0(@effect/platform@0.97.0(effect@4.0.0-beta.99))(@effect/printer-ansi@0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effect/printer@0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
-    dependencies:
-      '@effect/platform': 0.97.0(effect@4.0.0-beta.99)
-      '@effect/printer': 0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
-      '@effect/printer-ansi': 0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
-      effect: 4.0.0-beta.99
-      ini: 4.1.3
-      toml: 3.0.0
-      yaml: 2.9.0
-
   '@effect/platform-node-shared@4.0.0-beta.99(effect@4.0.0-beta.99)':
     dependencies:
       '@types/ws': 8.18.1
@@ -1687,28 +1631,6 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
-
-  '@effect/platform@0.97.0(effect@4.0.0-beta.99)':
-    dependencies:
-      effect: 4.0.0-beta.99
-      find-my-way-ts: 0.1.6
-      msgpackr: 1.12.1
-      multipasta: 0.2.8
-
-  '@effect/printer-ansi@0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
-    dependencies:
-      '@effect/printer': 0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
-      '@effect/typeclass': 0.41.0(effect@4.0.0-beta.99)
-      effect: 4.0.0-beta.99
-
-  '@effect/printer@0.50.0(@effect/typeclass@0.41.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
-    dependencies:
-      '@effect/typeclass': 0.41.0(effect@4.0.0-beta.99)
-      effect: 4.0.0-beta.99
-
-  '@effect/typeclass@0.41.0(effect@4.0.0-beta.99)':
-    dependencies:
-      effect: 4.0.0-beta.99
 
   '@emnapi/core@1.11.1':
     dependencies:
@@ -2283,8 +2205,6 @@ snapshots:
 
   ignore@5.3.2: {}
 
-  ini@4.1.3: {}
-
   ini@7.0.0: {}
 
   ioredis@5.11.1:
@@ -2456,10 +2376,6 @@ snapshots:
       '@msgpackr-extract/msgpackr-extract-linux-x64': 3.0.4
       '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.4
     optional: true
-
-  msgpackr@1.12.1:
-    optionalDependencies:
-      msgpackr-extract: 3.0.4
 
   msgpackr@2.0.4:
     optionalDependencies:
@@ -2647,8 +2563,6 @@ snapshots:
   to-regex-range@5.0.1:
     dependencies:
       is-number: 7.0.0
-
-  toml@3.0.0: {}
 
   toml@4.3.0: {}
 

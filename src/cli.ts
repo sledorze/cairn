@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 // CLI entrypoint for cairn: hierarchical documentation summaries + dead-link
 // checking, `init` to scaffold agent guidance, `config` to debug config
-// resolution. Built on @effect/cli: --help, --version and shell completions are
-// generated from the Options/Args declared below, so they can't drift from the
-// actual flags. Decision logic is unit-tested in the sibling core/program
-// modules; this file is the thin CLI shell (Options/Args -> handler).
+// resolution. Built on effect/unstable/cli: --help, --version and shell
+// completions are generated from the Flag/Argument declared below, so they
+// can't drift from the actual flags. Decision logic is unit-tested in the
+// sibling core/program modules; this file is the thin CLI shell
+// (Flag/Argument -> handler).
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import { Args, Command, Options } from '@effect/cli'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Console, Effect, Option } from 'effect'
+import { Console, Data, Effect, Option, Runtime } from 'effect'
+import { Argument, Command, Flag } from 'effect/unstable/cli'
 
 import type { SummaryPlan } from './core/SummaryTree.ts'
 import type { Overrides } from './config.ts'
 import { expandRoots, loadConfig, loadConfigWithSource, LOCALES } from './config.ts'
 import { AGENT_TARGETS, runInit } from './init/generate.ts'
-import type { DocsFs } from './io/DocsFs.ts'
 import { DocsFsLive } from './io/DocsFs.ts'
 import type { LinkCheckResult } from './program/CheckLinks.ts'
 import { checkLinks, formatLinkReport, linkExitCode } from './program/CheckLinks.ts'
@@ -33,44 +33,42 @@ import { buildJsonReport } from './program/JsonReport.ts'
 import type { Locale } from './program/locale.ts'
 import { pick } from './program/locale.ts'
 
-// --- shared `check` options/args ---
+// --- shared `check` flags/args ---
 
-const rootsArgs = Args.text({ name: 'roots' }).pipe(
-  Args.withDescription('Documentation root(s) to check (globs allowed); falls back to config `roots`.'),
-  Args.repeated,
+const rootsArgs = Argument.string('roots').pipe(
+  Argument.withDescription('Documentation root(s) to check (globs allowed); falls back to config `roots`.'),
+  Argument.variadic(),
 )
-const rootOption = Options.text('root').pipe(
-  Options.withDescription('Add a documentation root (repeatable); merged with positional roots.'),
-  Options.repeated,
+const rootOption = Flag.string('root').pipe(
+  Flag.withDescription('Add a documentation root (repeatable); merged with positional roots.'),
+  Flag.atLeast(0),
 )
-const fixOption = Options.boolean('fix').pipe(Options.withDescription('Auto-repair unambiguous dead links.'))
-const stampOption = Options.boolean('stamp').pipe(
-  Options.withDescription('Rewrite `source-sha256` stamps of existing summaries, bottom-up.'),
+const fixOption = Flag.boolean('fix').pipe(Flag.withDescription('Auto-repair unambiguous dead links.'))
+const stampOption = Flag.boolean('stamp').pipe(
+  Flag.withDescription('Rewrite `source-sha256` stamps of existing summaries, bottom-up.'),
 )
-const pruneOption = Options.boolean('prune').pipe(
-  Options.withDescription('Delete orphan summaries (source doc deleted, renamed, or below threshold).'),
+const pruneOption = Flag.boolean('prune').pipe(
+  Flag.withDescription('Delete orphan summaries (source doc deleted, renamed, or below threshold).'),
 )
-const explainOption = Options.boolean('explain').pipe(
-  Options.withDescription('Explain why each stale/missing summary is not ok.'),
+const explainOption = Flag.boolean('explain').pipe(
+  Flag.withDescription('Explain why each stale/missing summary is not ok.'),
 )
-const jsonOption = Options.boolean('json').pipe(
-  Options.withDescription('Machine-readable combined report: { summaries, links, exitCode }.'),
+const jsonOption = Flag.boolean('json').pipe(
+  Flag.withDescription('Machine-readable combined report: { summaries, links, exitCode }.'),
 )
-const linksOnlyOption = Options.boolean('links-only').pipe(Options.withDescription('Check only Markdown links.'))
-const summariesOnlyOption = Options.boolean('summaries-only').pipe(
-  Options.withDescription('Check only summary freshness.'),
+const linksOnlyOption = Flag.boolean('links-only').pipe(Flag.withDescription('Check only Markdown links.'))
+const summariesOnlyOption = Flag.boolean('summaries-only').pipe(Flag.withDescription('Check only summary freshness.'))
+const configPathOption = Flag.string('config').pipe(
+  Flag.withDescription('Path to a config file (default: .cairnrc.json / .cairnrc / package.json#cairn).'),
+  Flag.optional,
 )
-const configPathOption = Options.text('config').pipe(
-  Options.withDescription('Path to a config file (default: .cairnrc.json / .cairnrc / package.json#cairn).'),
-  Options.optional,
+const thresholdOption = Flag.integer('threshold').pipe(
+  Flag.withDescription('Line count above which a file needs a summary (overrides config).'),
+  Flag.optional,
 )
-const thresholdOption = Options.integer('threshold').pipe(
-  Options.withDescription('Line count above which a file needs a summary (overrides config).'),
-  Options.optional,
-)
-const localeOption = Options.choice('locale', LOCALES).pipe(
-  Options.withDescription('Report language (overrides config).'),
-  Options.optional,
+const localeOption = Flag.choice('locale', LOCALES).pipe(
+  Flag.withDescription('Report language (overrides config).'),
+  Flag.optional,
 )
 
 /** The `{ locale?, thresholdLines?, roots }` shape `loadConfig`/`loadConfigWithSource`
@@ -88,20 +86,21 @@ const overridesFrom = (
 // `loadConfig`/`loadConfigWithSource` throw a human-readable `Error` on invalid config
 // (unknown key, bad `extends`, ...). Lifted into Effect's error channel so every command
 // reports it the same clean way — a bare `throw` would otherwise surface as an unhandled
-// Effect defect (a stack trace) instead of a one-line message + exit 1.
-const toMessage = (error: unknown): string => (error as Error).message
+// Effect defect (a stack trace) instead of a one-line message + exit 1. `errorReported =
+// false` tells `NodeRuntime.runMain`'s default teardown not to also log the Cause: the
+// single `Console.error` at the bottom of this file (where every command's error channel
+// converges) is the only place this message is printed.
+class CairnConfigError extends Data.TaggedError('CairnConfigError')<{ readonly message: string }> {
+  readonly [Runtime.errorReported] = false
+}
+
+const toConfigError = (error: unknown): CairnConfigError => new CairnConfigError({ message: (error as Error).message })
 
 const loadConfigOrFail = (cwd: string, overrides: Overrides, explicitPath: string | undefined) =>
-  Effect.try({ catch: toMessage, try: () => loadConfig(cwd, overrides, explicitPath) })
+  Effect.try({ catch: toConfigError, try: () => loadConfig(cwd, overrides, explicitPath) })
 
 const loadConfigWithSourceOrFail = (cwd: string, overrides: Overrides, explicitPath: string | undefined) =>
-  Effect.try({ catch: toMessage, try: () => loadConfigWithSource(cwd, overrides, explicitPath) })
-
-const reportConfigErrorAndExit = (message: string): Effect.Effect<void> =>
-  Effect.andThen(
-    Console.error(message),
-    Effect.sync(() => (process.exitCode = 1)),
-  )
+  Effect.try({ catch: toConfigError, try: () => loadConfigWithSource(cwd, overrides, explicitPath) })
 
 interface CheckParsed {
   readonly config: Option.Option<string>
@@ -119,106 +118,105 @@ interface CheckParsed {
 }
 
 /** `cairn check` (also the default action when no subcommand is given). */
-const runCheck = (parsed: CheckParsed): Effect.Effect<void, never, DocsFs> =>
-  Effect.gen(function* () {
-    const cwd = process.cwd()
-    const overrides = overridesFrom(parsed.locale, parsed.threshold, [...parsed.root, ...parsed.roots])
-    const config = yield* loadConfigOrFail(cwd, overrides, Option.getOrUndefined(parsed.config))
-    const locale = config.locale
+const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
+  const cwd = process.cwd()
+  const overrides = overridesFrom(parsed.locale, parsed.threshold, [...parsed.root, ...parsed.roots])
+  const config = yield* loadConfigOrFail(cwd, overrides, Option.getOrUndefined(parsed.config))
+  const locale = config.locale
 
-    if (parsed.json && parsed.stamp) {
-      yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp' }))
-      yield* Effect.sync(() => (process.exitCode = 1))
-      return
+  if (parsed.json && parsed.stamp) {
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp' }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+
+  const absRoots = expandRoots(cwd, config.roots)
+  const summaryArgs = {
+    ignore: config.ignore,
+    naming: config.naming,
+    requireDirSummaries: config.requireDirSummaries,
+    roots: absRoots,
+    thresholdLines: config.thresholdLines,
+  }
+
+  let code = 0
+  let linksResult: LinkCheckResult | null = null
+  let summariesResult: SummaryPlan | null = null
+
+  if (absRoots.length === 0 && !parsed.json) {
+    yield* Console.log(
+      pick(locale, {
+        en: `⚠️  No documentation roots found (looked for: ${config.roots.join(', ')}).`,
+        fr: `⚠️  Aucune racine de documentation trouvée (cherché : ${config.roots.join(', ')}).`,
+      }),
+    )
+  }
+
+  if (config.checks.links && !parsed.summariesOnly) {
+    const links = yield* checkLinks({ fix: parsed.fix, ignore: config.ignore, roots: absRoots })
+    linksResult = links
+    if (!parsed.json) {
+      yield* Console.log(formatLinkReport(links, { locale }).join('\n'))
     }
+    code = Math.max(code, linkExitCode(links))
+  }
 
-    const absRoots = expandRoots(cwd, config.roots)
-    const summaryArgs = {
-      ignore: config.ignore,
-      naming: config.naming,
-      requireDirSummaries: config.requireDirSummaries,
-      roots: absRoots,
-      thresholdLines: config.thresholdLines,
-    }
-
-    let code = 0
-    let linksResult: LinkCheckResult | null = null
-    let summariesResult: SummaryPlan | null = null
-
-    if (absRoots.length === 0 && !parsed.json) {
-      yield* Console.log(
-        pick(locale, {
-          en: `⚠️  No documentation roots found (looked for: ${config.roots.join(', ')}).`,
-          fr: `⚠️  Aucune racine de documentation trouvée (cherché : ${config.roots.join(', ')}).`,
-        }),
-      )
-    }
-
-    if (config.checks.links && !parsed.summariesOnly) {
-      const links = yield* checkLinks({ fix: parsed.fix, ignore: config.ignore, roots: absRoots })
-      linksResult = links
+  if (config.checks.summaries && !parsed.linksOnly) {
+    if (parsed.prune) {
+      const removed = yield* pruneOrphans(summaryArgs)
       if (!parsed.json) {
-        yield* Console.log(formatLinkReport(links, { locale }).join('\n'))
-      }
-      code = Math.max(code, linkExitCode(links))
-    }
-
-    if (config.checks.summaries && !parsed.linksOnly) {
-      if (parsed.prune) {
-        const removed = yield* pruneOrphans(summaryArgs)
-        if (!parsed.json) {
-          yield* Console.log(
-            pick(locale, {
-              en: `🗑  removed ${removed} orphan summary/ies.`,
-              fr: `🗑  ${removed} résumé(s) orphelin(s) supprimé(s).`,
-            }),
-          )
-        }
-      }
-      if (parsed.stamp) {
-        const result = yield* stampSummaries(summaryArgs)
         yield* Console.log(
           pick(locale, {
-            en: `🔖 Stamped ${result.stamped} summary/ies (bottom-up).`,
-            fr: `🔖 ${result.stamped} résumé(s) tamponné(s) (de bas en haut).`,
+            en: `🗑  removed ${removed} orphan summary/ies.`,
+            fr: `🗑  ${removed} résumé(s) orphelin(s) supprimé(s).`,
           }),
         )
-        if (result.missing.length > 0) {
-          yield* Console.log(
-            pick(locale, {
-              en: `⚠️  ${result.missing.length} summary/ies to author first (content not written):`,
-              fr: `⚠️  ${result.missing.length} résumé(s) à créer d'abord (contenu non rédigé) :`,
-            }),
-          )
-          for (const node of result.missing) {
-            yield* Console.log(`  - ${node.path}`)
-          }
-          code = 1
-        }
-      } else {
-        const summaries = yield* checkSummaries(summaryArgs)
-        summariesResult = summaries
-        if (!parsed.json) {
-          yield* Console.log(formatSummaryReport(summaries, { locale, stampCommand: config.stampCommand }).join('\n'))
-          if (parsed.explain && summaries.todo.length > 0) {
-            const explanation = yield* explainSummaries(summaryArgs, { locale })
-            yield* Console.log(explanation.join('\n'))
-          }
-        }
-        code = Math.max(code, summaryExitCode(summaries))
       }
     }
-
-    if (parsed.json) {
-      const report = buildJsonReport({ links: linksResult, summaries: summariesResult })
-      yield* Console.log(JSON.stringify(report, null, 2))
-      code = report.exitCode
+    if (parsed.stamp) {
+      const result = yield* stampSummaries(summaryArgs)
+      yield* Console.log(
+        pick(locale, {
+          en: `🔖 Stamped ${result.stamped} summary/ies (bottom-up).`,
+          fr: `🔖 ${result.stamped} résumé(s) tamponné(s) (de bas en haut).`,
+        }),
+      )
+      if (result.missing.length > 0) {
+        yield* Console.log(
+          pick(locale, {
+            en: `⚠️  ${result.missing.length} summary/ies to author first (content not written):`,
+            fr: `⚠️  ${result.missing.length} résumé(s) à créer d'abord (contenu non rédigé) :`,
+          }),
+        )
+        for (const node of result.missing) {
+          yield* Console.log(`  - ${node.path}`)
+        }
+        code = 1
+      }
+    } else {
+      const summaries = yield* checkSummaries(summaryArgs)
+      summariesResult = summaries
+      if (!parsed.json) {
+        yield* Console.log(formatSummaryReport(summaries, { locale, stampCommand: config.stampCommand }).join('\n'))
+        if (parsed.explain && summaries.todo.length > 0) {
+          const explanation = yield* explainSummaries(summaryArgs, { locale })
+          yield* Console.log(explanation.join('\n'))
+        }
+      }
+      code = Math.max(code, summaryExitCode(summaries))
     }
+  }
 
-    if (code !== 0) {
-      yield* Effect.sync(() => (process.exitCode = code))
-    }
-  }).pipe(Effect.catch(reportConfigErrorAndExit))
+  if (parsed.json) {
+    const report = buildJsonReport({ links: linksResult, summaries: summariesResult })
+    yield* Console.log(JSON.stringify(report, null, 2))
+    code = report.exitCode
+  }
+
+  if (code !== 0) {
+    yield* Effect.sync(() => (process.exitCode = code))
+  }
+})
 
 const checkConfigShape = {
   config: configPathOption,
@@ -241,53 +239,75 @@ const checkCommand = Command.make('check', checkConfigShape, runCheck).pipe(
 
 // --- `init` ---
 
-const agentOption = Options.choice('agent', AGENT_TARGETS).pipe(
-  Options.withDescription('Which agent(s) to scaffold guidance for.'),
-  Options.withDefault('all'),
+const agentOption = Flag.choice('agent', AGENT_TARGETS).pipe(
+  Flag.withDescription('Which agent(s) to scaffold guidance for.'),
+  Flag.withDefault('all'),
 )
+
+interface InitParsed {
+  readonly agent: (typeof AGENT_TARGETS)[number]
+  readonly config: Option.Option<string>
+  readonly root: readonly string[]
+}
+
+const runInitCommand = Effect.fn('runInit')(function* ({ agent, config: configPath, root }: InitParsed) {
+  const cwd = process.cwd()
+  const config = yield* loadConfigOrFail(cwd, { roots: [...root] }, Option.getOrUndefined(configPath))
+  const result = runInit({ agent, cwd, roots: config.roots })
+  for (const file of result.written) {
+    yield* Console.log(`✍️  wrote ${file}`)
+  }
+  for (const file of result.skipped) {
+    yield* Console.log(`•  kept  ${file} (already present)`)
+  }
+  yield* Console.log(
+    '\nNext: author your summaries, then run `cairn check --summaries-only --stamp` and `cairn check`.',
+  )
+})
 
 const initCommand = Command.make(
   'init',
   { agent: agentOption, config: configPathOption, root: rootOption },
-  ({ agent, config: configPath, root }) =>
-    Effect.gen(function* () {
-      const cwd = process.cwd()
-      const config = yield* loadConfigOrFail(cwd, { roots: [...root] }, Option.getOrUndefined(configPath))
-      const result = runInit({ agent, cwd, roots: config.roots })
-      for (const file of result.written) {
-        yield* Console.log(`✍️  wrote ${file}`)
-      }
-      for (const file of result.skipped) {
-        yield* Console.log(`•  kept  ${file} (already present)`)
-      }
-      yield* Console.log(
-        '\nNext: author your summaries, then run `cairn check --summaries-only --stamp` and `cairn check`.',
-      )
-    }).pipe(Effect.catch(reportConfigErrorAndExit)),
+  runInitCommand,
 ).pipe(Command.withDescription('Scaffold agent guidance (Claude Code, GitHub Copilot, AGENTS.md/OpenCode).'))
 
 // --- `config` ---
 
-const configPathArg = Args.text({ name: 'path' }).pipe(
-  Args.withDescription('Optional path to a config file (overrides the default lookup).'),
-  Args.optional,
+const configPathArg = Argument.string('path').pipe(
+  Argument.withDescription('Optional path to a config file (overrides the default lookup).'),
+  Argument.optional,
 )
+
+interface ConfigParsed {
+  readonly config: Option.Option<string>
+  readonly locale: Option.Option<Locale>
+  readonly path: Option.Option<string>
+  readonly root: readonly string[]
+  readonly threshold: Option.Option<number>
+}
+
+const runConfigCommand = Effect.fn('runConfig')(function* ({
+  config: configFlag,
+  locale,
+  path: rcPath,
+  root,
+  threshold,
+}: ConfigParsed) {
+  const cwd = process.cwd()
+  const explicitPath = Option.getOrUndefined(configFlag) ?? Option.getOrUndefined(rcPath)
+  const overrides = overridesFrom(locale, threshold, [...root])
+  const { config, sourceFile } = yield* loadConfigWithSourceOrFail(cwd, overrides, explicitPath)
+  const absRoots = expandRoots(cwd, config.roots)
+  yield* Console.log(`source: ${sourceFile}`)
+  yield* Console.log(`roots (configured): ${JSON.stringify(config.roots)}`)
+  yield* Console.log(`roots (expanded):   ${JSON.stringify(absRoots)}`)
+  yield* Console.log(JSON.stringify(config, null, 2))
+})
 
 const configCommand = Command.make(
   'config',
   { config: configPathOption, locale: localeOption, path: configPathArg, root: rootOption, threshold: thresholdOption },
-  ({ config: configFlag, locale, path: rcPath, root, threshold }) =>
-    Effect.gen(function* () {
-      const cwd = process.cwd()
-      const explicitPath = Option.getOrUndefined(configFlag) ?? Option.getOrUndefined(rcPath)
-      const overrides = overridesFrom(locale, threshold, [...root])
-      const { config, sourceFile } = yield* loadConfigWithSourceOrFail(cwd, overrides, explicitPath)
-      const absRoots = expandRoots(cwd, config.roots)
-      yield* Console.log(`source: ${sourceFile}`)
-      yield* Console.log(`roots (configured): ${JSON.stringify(config.roots)}`)
-      yield* Console.log(`roots (expanded):   ${JSON.stringify(absRoots)}`)
-      yield* Console.log(JSON.stringify(config, null, 2))
-    }).pipe(Effect.catch(reportConfigErrorAndExit)),
+  runConfigCommand,
 ).pipe(
   Command.withDescription(
     'Print the resolved config, which file it came from, and expanded roots (debug "why aren\'t my docs checked").',
@@ -305,6 +325,13 @@ const cairn = Command.make('cairn', checkConfigShape, runCheck).pipe(
 const packageJsonPath = path.join(import.meta.dirname, '..', 'package.json')
 const { version } = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version: string }
 
-const cli = Command.run(cairn, { name: 'cairn', version })
-
-cli(process.argv).pipe(Effect.provide(DocsFsLive), Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+// Every command's error channel converges here as `CairnConfigError | CliError.CliError`;
+// this is the single place that prints an invalid-config message (see the class above) —
+// `NodeRuntime.runMain`'s own error reporting is suppressed for it via `errorReported`.
+cairn.pipe(
+  Command.run({ version }),
+  Effect.tapErrorTag('CairnConfigError', (error) => Console.error(error.message)),
+  Effect.provide(DocsFsLive),
+  Effect.provide(NodeServices.layer),
+  NodeRuntime.runMain,
+)
