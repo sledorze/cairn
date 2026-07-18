@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { Either } from 'effect'
+import { Result } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { decodeConfig } from '../core/Config.ts'
@@ -104,7 +104,7 @@ describe('runInit() — starter .cairnrc.json', () => {
     const rc = fs.readFileSync(path.join(cwd, '.cairnrc.json'), 'utf8')
     const parsed: unknown = JSON.parse(rc)
     expect(parsed).toMatchObject({ $schema: './node_modules/@sledorze/cairn/schema/cairn.schema.json' })
-    expect(Either.isRight(decodeConfig(parsed))).toBeTruthy()
+    expect(Result.isSuccess(decodeConfig(parsed))).toBeTruthy()
   })
 
   it('leaves an existing .cairnrc.json untouched and reports it as skipped', () => {
