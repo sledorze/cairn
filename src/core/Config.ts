@@ -23,8 +23,10 @@ import type { Naming } from './DocSummaries.ts'
 import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './DocSummaries.ts'
 
 const ChecksInputSchema = Schema.Struct({
-  links: Schema.optional(Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' })),
-  summaries: Schema.optional(
+  links: Schema.optionalKey(
+    Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
+  ),
+  summaries: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Enable summary freshness checking (content-hash based). Default true.',
     }),
@@ -32,10 +34,10 @@ const ChecksInputSchema = Schema.Struct({
 }).annotate({ description: 'Which checks `cairn check` runs.', identifier: 'CairnChecksConfig' })
 
 const NamingInputSchema = Schema.Struct({
-  dirSummary: Schema.optional(
+  dirSummary: Schema.optionalKey(
     Schema.String.annotate({ description: 'Directory summary filename. Default "_SUMMARY.md".' }),
   ),
-  fileSummarySuffix: Schema.optional(
+  fileSummarySuffix: Schema.optionalKey(
     Schema.String.annotate({ description: 'Suffix for file summaries. Default ".summary.md".' }),
   ),
 }).annotate({ description: 'Configurable filenames for the summary system.', identifier: 'CairnNamingConfig' })
@@ -48,9 +50,7 @@ const LocaleSchema = Schema.Literals(['en', 'fr']).annotate({
 // thresholdLines` (core/DocSummaries.ts) — negative or fractional values are nonsensical,
 // not just unusual, so they're rejected at the schema level instead of quietly
 // misbehaving downstream.
-const ThresholdLinesSchema = Schema.Number.pipe(
-  Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
-).annotate({
+const ThresholdLinesSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).annotate({
   description: 'Line count above which a file needs a summary. Non-negative integer. Default 30.',
 })
 
@@ -63,7 +63,7 @@ const ExtendsOutputSchema = Schema.Array(Schema.String)
 const ExtendsSchema = ExtendsInputSchema.pipe(
   Schema.decodeTo(ExtendsOutputSchema, {
     decode: SchemaGetter.transform((value) => (Array.isArray(value) ? value : [value])),
-    encode: SchemaGetter.transform((value) => value),
+    encode: SchemaGetter.passthroughSupertype(),
   }),
 ).annotate({
   description:
@@ -75,32 +75,32 @@ const ExtendsSchema = ExtendsInputSchema.pipe(
  * `$schema` is accepted-but-inert: it's the JSON Schema meta-property IDEs read for
  * autocomplete (see scripts/generate-schema.ts) — not a cairn setting. */
 export const CairnConfigSchema = Schema.Struct({
-  $schema: Schema.optional(
+  $schema: Schema.optionalKey(
     Schema.String.annotate({ description: 'JSON Schema URL for editor autocomplete/validation. Ignored by cairn.' }),
   ),
-  checks: Schema.optional(ChecksInputSchema),
-  extends: Schema.optional(ExtendsSchema),
-  ignore: Schema.optional(
+  checks: Schema.optionalKey(ChecksInputSchema),
+  extends: Schema.optionalKey(ExtendsSchema),
+  ignore: Schema.optionalKey(
     Schema.Array(Schema.String).annotate({
       description: 'Globs to exclude from scanning. Default ["**/node_modules/**"].',
     }),
   ),
-  locale: Schema.optional(LocaleSchema),
-  naming: Schema.optional(NamingInputSchema),
-  requireDirSummaries: Schema.optional(
+  locale: Schema.optionalKey(LocaleSchema),
+  naming: Schema.optionalKey(NamingInputSchema),
+  requireDirSummaries: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Require a directory summary in every in-scope directory. Default true.',
     }),
   ),
-  roots: Schema.optional(
+  roots: Schema.optionalKey(
     Schema.Array(Schema.String).annotate({
       description: 'Documentation roots to scan (globs allowed). Default ["docs"].',
     }),
   ),
-  stampCommand: Schema.optional(
+  stampCommand: Schema.optionalKey(
     Schema.String.annotate({ description: 'Command agents should run to stamp hashes after editing docs.' }),
   ),
-  thresholdLines: Schema.optional(ThresholdLinesSchema),
+  thresholdLines: Schema.optionalKey(ThresholdLinesSchema),
 }).annotate({
   description: 'Configuration for the cairn CLI (.cairnrc.json, .cairnrc, or the "cairn" key of package.json).',
   identifier: 'CairnConfig',
