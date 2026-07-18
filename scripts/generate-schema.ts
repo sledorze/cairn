@@ -7,14 +7,32 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import { Console, Effect, JSONSchema } from 'effect'
+import { Console, Effect, JsonSchema, Schema } from 'effect'
 import * as prettier from 'prettier'
 
 import { CairnConfigSchema } from '../src/core/Config.ts'
 
 const outFile = path.resolve(import.meta.dirname, '../schema/cairn.schema.json')
 
-export const generateSchema = (): unknown => JSONSchema.make(CairnConfigSchema)
+/** `Schema.toJsonSchemaDocument` emits draft-2020-12 with defs under `definitions` and
+ * `$ref`s pointing at `#/definitions/...`. Editors/IDEs expect the flatter, `$defs`-based
+ * shape this repo has always shipped, so convert to draft-07 and rewrite the ref prefix. */
+export const generateSchema = (): unknown => {
+  const document2020 = Schema.toJsonSchemaDocument(CairnConfigSchema)
+  const document07 = JsonSchema.toDocumentDraft07(document2020)
+  const rewritten = JSON.parse(
+    JSON.stringify({ ...document07.schema, definitions: document07.definitions }).replaceAll(
+      '#/definitions/',
+      '#/$defs/',
+    ),
+  ) as Record<string, unknown>
+  const { definitions, ...schema } = rewritten
+  return {
+    $defs: definitions,
+    $schema: `${JsonSchema.META_SCHEMA_URI_DRAFT_07}#`,
+    ...schema,
+  }
+}
 
 /** Format like the rest of the repo (`.prettierrc`) so the committed file never needs a
  * separate `pnpm format` pass and always matches what `pnpm format:check` expects. */
