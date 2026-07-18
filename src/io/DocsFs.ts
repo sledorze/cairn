@@ -2,8 +2,7 @@
 // so programs stay testable. `DocsFsLive` binds it to the real Node platform
 // (via @effect/platform-node); `makeTestDocsFs` provides an in-memory layer.
 
-import { FileSystem, Path } from '@effect/platform'
-import { Context, Effect, Layer, Option } from 'effect'
+import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 
 import { toPosix } from '../core/paths.ts'
 
@@ -21,7 +20,7 @@ export interface DocsFsService {
   readonly writeFile: (abs: string, content: string) => Effect.Effect<void>
 }
 
-export class DocsFs extends Context.Tag('DocsFs')<DocsFs, DocsFsService>() {}
+export class DocsFs extends Context.Service<DocsFs, DocsFsService>()('DocsFs') {}
 
 /** Live implementation bound to the Node filesystem. */
 export const DocsFsLive = Layer.effect(

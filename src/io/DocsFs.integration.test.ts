@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -15,7 +15,7 @@ import { DocsFs, DocsFsLive } from './DocsFs.ts'
 let root = ''
 
 const run = <A>(eff: Effect.Effect<A, never, DocsFs>): Promise<A> =>
-  Effect.runPromise(eff.pipe(Effect.provide(DocsFsLive), Effect.provide(NodeContext.layer)))
+  Effect.runPromise(eff.pipe(Effect.provide(DocsFsLive), Effect.provide(NodeServices.layer)))
 
 beforeAll(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-'))
