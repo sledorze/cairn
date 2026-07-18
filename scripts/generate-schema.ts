@@ -16,17 +16,18 @@ const outFile = path.resolve(import.meta.dirname, '../schema/cairn.schema.json')
 
 /** `Schema.toJsonSchemaDocument` emits draft-2020-12 with defs under `definitions` and
  * `$ref`s pointing at `#/definitions/...`. Editors/IDEs expect the flatter, `$defs`-based
- * shape this repo has always shipped, so convert to draft-07 and rewrite the ref prefix. */
+ * shape this repo has always shipped, so convert to draft-07, flatten it into a single
+ * object (draft-07's own shape keeps `definitions` inline as a root sibling), then run
+ * it back through `JsonSchema.fromSchemaDraft07` — the library's own structured `$ref`
+ * rewriter (`#/definitions/` -> `#/$defs/`) — instead of string-replacing the serialized
+ * JSON, which would also mangle any legitimate description text containing that substring. */
 export const generateSchema = (): unknown => {
   const document2020 = Schema.toJsonSchemaDocument(CairnConfigSchema)
   const document07 = JsonSchema.toDocumentDraft07(document2020)
-  const rewritten = JSON.parse(
-    JSON.stringify({ ...document07.schema, definitions: document07.definitions }).replaceAll(
-      '#/definitions/',
-      '#/$defs/',
-    ),
-  ) as Record<string, unknown>
-  const { definitions, ...schema } = rewritten
+  const { definitions, schema } = JsonSchema.fromSchemaDraft07({
+    ...document07.schema,
+    definitions: document07.definitions,
+  })
   return {
     $defs: definitions,
     $schema: `${JsonSchema.META_SCHEMA_URI_DRAFT_07}#`,

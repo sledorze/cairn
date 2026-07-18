@@ -3,20 +3,10 @@
     "CairnChecksConfig": {
       "type": "object",
       "properties": {
-        "links": {
-          "anyOf": [
-            { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
-            { "type": "null" }
-          ]
-        },
+        "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
         "summaries": {
-          "anyOf": [
-            {
-              "type": "boolean",
-              "description": "Enable summary freshness checking (content-hash based). Default true."
-            },
-            { "type": "null" }
-          ]
+          "type": "boolean",
+          "description": "Enable summary freshness checking (content-hash based). Default true."
         }
       },
       "additionalProperties": false,
@@ -25,18 +15,8 @@
     "CairnNamingConfig": {
       "type": "object",
       "properties": {
-        "dirSummary": {
-          "anyOf": [
-            { "type": "string", "description": "Directory summary filename. Default \"_SUMMARY.md\"." },
-            { "type": "null" }
-          ]
-        },
-        "fileSummarySuffix": {
-          "anyOf": [
-            { "type": "string", "description": "Suffix for file summaries. Default \".summary.md\"." },
-            { "type": "null" }
-          ]
-        }
+        "dirSummary": { "type": "string", "description": "Directory summary filename. Default \"_SUMMARY.md\"." },
+        "fileSummarySuffix": { "type": "string", "description": "Suffix for file summaries. Default \".summary.md\"." }
       },
       "additionalProperties": false,
       "description": "Configurable filenames for the summary system."
@@ -45,79 +25,42 @@
       "type": "object",
       "properties": {
         "$schema": {
-          "anyOf": [
-            {
-              "type": "string",
-              "description": "JSON Schema URL for editor autocomplete/validation. Ignored by cairn."
-            },
-            { "type": "null" }
-          ]
+          "type": "string",
+          "description": "JSON Schema URL for editor autocomplete/validation. Ignored by cairn."
         },
-        "checks": { "anyOf": [{ "$ref": "#/$defs/CairnChecksConfig" }, { "type": "null" }] },
-        "extends": {
-          "anyOf": [
-            { "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
-            { "type": "null" }
-          ]
-        },
+        "checks": { "$ref": "#/$defs/CairnChecksConfig" },
+        "extends": { "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
         "ignore": {
-          "anyOf": [
-            {
-              "type": "array",
-              "description": "Globs to exclude from scanning. Default [\"**/node_modules/**\"].",
-              "items": { "type": "string" }
-            },
-            { "type": "null" }
-          ]
+          "type": "array",
+          "description": "Globs to exclude from scanning. Default [\"**/node_modules/**\"].",
+          "items": { "type": "string" }
         },
         "locale": {
-          "anyOf": [
-            {
-              "type": "string",
-              "enum": ["en", "fr"],
-              "description": "Prose locale for generated guidance and report strings. Default \"en\"."
-            },
-            { "type": "null" }
-          ]
+          "type": "string",
+          "enum": ["en", "fr"],
+          "description": "Prose locale for generated guidance and report strings. Default \"en\"."
         },
-        "naming": { "anyOf": [{ "$ref": "#/$defs/CairnNamingConfig" }, { "type": "null" }] },
+        "naming": { "$ref": "#/$defs/CairnNamingConfig" },
         "requireDirSummaries": {
-          "anyOf": [
-            {
-              "type": "boolean",
-              "description": "Require a directory summary in every in-scope directory. Default true."
-            },
-            { "type": "null" }
-          ]
+          "type": "boolean",
+          "description": "Require a directory summary in every in-scope directory. Default true."
         },
         "roots": {
-          "anyOf": [
-            {
-              "type": "array",
-              "description": "Documentation roots to scan (globs allowed). Default [\"docs\"].",
-              "items": { "type": "string" }
-            },
-            { "type": "null" }
-          ]
+          "type": "array",
+          "description": "Documentation roots to scan (globs allowed). Default [\"docs\"].",
+          "items": { "type": "string" }
         },
         "stampCommand": {
-          "anyOf": [
-            { "type": "string", "description": "Command agents should run to stamp hashes after editing docs." },
-            { "type": "null" }
-          ]
+          "type": "string",
+          "description": "Command agents should run to stamp hashes after editing docs."
         },
         "thresholdLines": {
-          "anyOf": [
+          "type": "integer",
+          "allOf": [
             {
-              "type": "integer",
-              "allOf": [
-                {
-                  "minimum": 0,
-                  "description": "Line count above which a file needs a summary. Non-negative integer. Default 30."
-                }
-              ]
-            },
-            { "type": "null" }
+              "minimum": 0,
+              "description": "Line count above which a file needs a summary. Non-negative integer. Default 30."
+            }
           ]
         }
       },
