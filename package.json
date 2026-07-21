@@ -58,8 +58,8 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.0-beta.99",
-    "effect": "4.0.0-beta.99"
+    "@effect/platform-node": "4.0.0-beta.100",
+    "effect": "4.0.0-beta.100"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
