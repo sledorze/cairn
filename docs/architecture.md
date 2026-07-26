@@ -61,6 +61,12 @@ summary links to every child") — is one-directional and real, not a cycle.
        shape and its `.cairn/refs/**` namespace (via `../sidecar.ts`'s
        `namespace` parameter — see its own file header for the real path
        collision this closes) for `program/links/CheckRefs.ts`'s drift tracking.
+     - [`ProseRefs.ts`](../src/core/links/ProseRefs.ts) — pure extraction of
+       bare-backtick file-path citations in prose (`--prose-refs`, issue
+       #47): which inline code spans look like a rooted repo path, worth
+       `program/links/CheckProseRefs.ts` checking. Existence/security is
+       deliberately NOT here (needs IO, and reuses `paths.ts`'s
+       `isWithinBase` — the same boundary #39/#40 already established).
    - **Shared by both domains** (top-level `core/`, not inside either
      subdirectory — genuinely used by both, verified by import graph, not
      assumed): [`sidecar.ts`](../src/core/sidecar.ts) (the `.cairn/**` path
@@ -107,6 +113,13 @@ summary links to every child") — is one-directional and real, not a cycle.
        independent of `CheckSummaries.ts`'s Merkle-manifest stamping (a
        different concept, with its own invariants this file doesn't
        entangle with).
+     - [`CheckProseRefs.ts`](../src/program/links/CheckProseRefs.ts) —
+       opt-in (`--prose-refs`, issue #47): resolves `core/links/ProseRefs.ts`'s
+       candidates rooted at `base`, bounded by the same `isWithinBase`
+       security boundary as `CheckLinks.ts`. A migration aid, not a
+       permanent second checker — a resolving citation is always silent;
+       only a genuinely drifted one is reported, with the exact
+       `[text](path)` syntax that would make it structurally checkable.
    - **Shared by both**: [`JsonReport.ts`](../src/program/JsonReport.ts)
      (combines a links/summaries run into the single
      `{ summaries, links, exitCode }` shape `--json` prints),

@@ -16,7 +16,8 @@ Separation of concerns: pure decisions, IO at the edges.
     (heading/HTML-anchor extraction + slugging, line-anchor validation), `markdownFences`
     (linear fenced-code masking), `RefStore` (`RefsRecord` shape, `.cairn/refs/**`
     namespace — kept disjoint from `StampStore`'s sidecar path: a summary-tree node and a
-    scanned doc can be the SAME file, so the two must never collide).
+    scanned doc can be the SAME file, so the two must never collide), `ProseRefs` (pure
+    bare-backtick-citation candidate extraction for `--prose-refs`, issue #47).
   - **Shared by both** (top-level `core/`): `sidecar.ts` (the `.cairn/**` path mapping +
     lenient-JSON-codec mechanics `StampStore`/`RefStore` both build on), `hashing.ts`
     (`hashContent` — moved out of `DocSummaries` once it was found to be the one thing
@@ -32,7 +33,10 @@ Separation of concerns: pure decisions, IO at the edges.
     `stampFiles` self-heals a legacy in-content stamp on every ordinary `--stamp`, so
     `--migrate-stamps` is only an optional named alias, never required).
   - **`links/`**: `CheckLinks` (dead links/anchors/line-anchors, `--fix`), `CheckRefs`
-    (opt-in `--refs`: reference content-hash drift, independent of summary stamping).
+    (opt-in `--refs`: reference content-hash drift, independent of summary stamping),
+    `CheckProseRefs` (opt-in `--prose-refs`, issue #47: migration aid — resolves prose
+    citations rooted at `base`; a resolving one is always silent, only a drifted one is
+    reported, with the link syntax to convert it).
   - **Shared by both**: `JsonReport` (`--json`'s combined shape), `locale` (re-exports
     `Locale`; en default, fr mirror).
 - **Edge**: `config.ts` (disk IO: reads rc/`extends`/`package.json`, decodes via
