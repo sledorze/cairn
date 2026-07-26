@@ -22,6 +22,7 @@ import { DocsFsLive } from './io/DocsFs.ts'
 import { GitFs, GitFsLive } from './io/Git.ts'
 import type { LinkCheckResult } from './program/links/CheckLinks.ts'
 import { checkLinks, formatLinkReport, linkExitCode } from './program/links/CheckLinks.ts'
+import { checkProseRefs, formatProseRefsReport, proseRefsExitCode } from './program/links/CheckProseRefs.ts'
 import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './program/links/CheckRefs.ts'
 import {
   checkSummaries,
@@ -71,6 +72,11 @@ const summariesOnlyOption = Flag.boolean('summaries-only').pipe(Flag.withDescrip
 const refsOption = Flag.boolean('refs').pipe(
   Flag.withDescription(
     'Opt-in (issue #39 Scenario I, v1/whole-file): with --stamp, record each doc\'s real reference targets\' content hashes into .cairn/**; without --stamp, report any whose target content has drifted since — "may be stale," distinct from a broken link.',
+  ),
+)
+const proseRefsOption = Flag.boolean('prose-refs').pipe(
+  Flag.withDescription(
+    'Opt-in, migration aid (issue #47): report a bare-backtick prose file citation (e.g. `src/x.ts`, no [text](path) syntax) whose target has actually moved or been deleted — a citation that still resolves is always silent. Reported with the Markdown link syntax that would make it checkable going forward.',
   ),
 )
 const configPathOption = Flag.string('config').pipe(
@@ -125,6 +131,7 @@ interface CheckParsed {
   readonly linksOnly: boolean
   readonly locale: Option.Option<Locale>
   readonly migrateStamps: boolean
+  readonly prose: boolean
   readonly prune: boolean
   readonly refs: boolean
   readonly root: readonly string[]
@@ -151,6 +158,13 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     // exitCode } shape yet (v1, named as a follow-up) — reject rather than
     // silently drop it from the JSON body while still letting it affect exitCode.
     yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --refs yet' }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+  if (parsed.json && parsed.prose) {
+    // Same reasoning as --refs above: --prose-refs's report isn't part of
+    // buildJsonReport's shape yet.
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --prose-refs yet' }))
     yield* Effect.sync(() => (process.exitCode = 1))
     return
   }
@@ -292,6 +306,12 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     }
   }
 
+  if (parsed.prose) {
+    const result = yield* checkProseRefs({ base: cwd, roots: absRoots })
+    yield* Console.log(formatProseRefsReport(result, { locale }).join('\n'))
+    code = Math.max(code, proseRefsExitCode(result))
+  }
+
   if (parsed.json) {
     const report = buildJsonReport({ links: linksResult, summaries: summariesResult })
     yield* Console.log(JSON.stringify(report, null, 2))
@@ -311,6 +331,7 @@ const checkConfigShape = {
   linksOnly: linksOnlyOption,
   locale: localeOption,
   migrateStamps: migrateStampsOption,
+  prose: proseRefsOption,
   prune: pruneOption,
   refs: refsOption,
   root: rootOption,
