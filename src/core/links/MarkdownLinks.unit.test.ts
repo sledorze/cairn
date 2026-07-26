@@ -168,6 +168,61 @@ describe('checkContent()', () => {
     expect(result.pending).toEqual([])
   })
 
+  // Issue #49: same-page anchor repair — an exact case-insensitive match
+  // against the SOURCE file's own headings gets a `suggestion` (the full
+  // corrected `#fragment` target), the same repairable shape path-fix uses.
+  it('suggests a fix for a same-page anchor that differs from a real heading only by case', () => {
+    const content = '# Setup Pattern\n\nsee [it](#Setup-Pattern)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([
+      {
+        detail: 'available anchors: setup-pattern',
+        reason: 'anchor',
+        suggestion: '#setup-pattern',
+        target: '#Setup-Pattern',
+        text: 'it',
+      },
+    ])
+  })
+
+  it('does NOT suggest a fix for a same-page anchor with no real match (no suggestion key at all)', () => {
+    const content = '# Real Heading\n\nsee [ghost](#not-a-real-heading)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken[0]).not.toHaveProperty('suggestion')
+  })
+
+  // Found via adversarial review of issue #49: the cross-file anchor path
+  // (CheckLinks.ts) already normalizes (percent-decodes) before comparing —
+  // this same-page path must match, or a URL-encoded fragment would neither
+  // resolve when it legitimately should, nor get a fix suggestion.
+  it('percent-decodes a same-page anchor before matching AND before suggesting a fix', () => {
+    // Percent-encoded but otherwise an EXACT match (no case difference at
+    // all) — must resolve cleanly once decoded, no suggestion needed.
+    const resolves = checkContent({
+      content: '# Setup Pattern\n\n[ok](#setup%2Dpattern)',
+      existsAbs,
+      fileAbs: '/r/docs/a/file.md',
+    })
+    expect(resolves.broken).toEqual([])
+
+    // Percent-encoded AND a case difference — must decode first, then apply
+    // the same exact-case-insensitive-match repair rule.
+    const withEncodedCase = checkContent({
+      content: '# Setup Pattern\n\n[ok](#Setup%2DPattern)',
+      existsAbs,
+      fileAbs: '/r/docs/a/file.md',
+    })
+    expect(withEncodedCase.broken).toEqual([
+      {
+        detail: 'available anchors: setup-pattern',
+        reason: 'anchor',
+        suggestion: '#setup-pattern',
+        target: '#Setup%2DPattern',
+        text: 'ok',
+      },
+    ])
+  })
+
   it('defers an out-of-`roots` target to `pending` instead of assuming it broken (issue #39 scenario E)', () => {
     const inRoots = (p: string): boolean => p.startsWith('/r/docs/')
     const content = '[code](../../src/cli.ts)'

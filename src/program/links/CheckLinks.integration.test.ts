@@ -142,7 +142,33 @@ describe('checkLinks() against the real filesystem (DocsFsLive)', () => {
 
     const rewritten = fs.readFileSync(path.join(p.root, 'docs', 'index.md'), 'utf8')
     expect(rewritten).toContain('[x](./sub/old-name.md)')
-    expect(rewritten).toContain('[y](./guide.md#nope)') // anchor break: never auto-fixed
+    // 'nope' has no case-insensitive match against guide.md's real anchors
+    // ({'guide'}) — issue #49 only repairs an EXACT case-insensitive match,
+    // so this one stays unfixed, still reported.
+    expect(rewritten).toContain('[y](./guide.md#nope)')
+  })
+
+  // Issue #49: same proof shape as the path-repair test above, but for an
+  // anchor differing from a real heading only by case — real disk, not the
+  // in-memory double.
+  it('--fix repairs a real anchor differing from a real heading only by case, on real disk', async () => {
+    const p = project('checklinks-fix-anchor', {
+      'docs/guide.md': '# Setup Pattern\n\ntext\n',
+      'docs/index.md': '# Doc\n\n- [link](./guide.md#Setup-Pattern)\n',
+    })
+
+    const result = await checkDocs(p, true)
+    expect(result.fixed).toBe(1)
+    expect(result.broken).toEqual([])
+
+    const rewritten = fs.readFileSync(path.join(p.root, 'docs', 'index.md'), 'utf8')
+    expect(rewritten).toContain('[link](./guide.md#setup-pattern)')
+
+    // Persisted and idempotent: re-checking the mutated file on real disk
+    // finds nothing left to fix.
+    const second = await checkDocs(p, true)
+    expect(second.fixed).toBe(0)
+    expect(second.broken).toEqual([])
   })
 
   // BEFORE/AFTER drift: a doc's links are correct when authored — the

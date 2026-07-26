@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { describeAnchors, extractAnchors, isValidLineAnchor, normalizeAnchor, parseLineAnchor } from './Anchors.ts'
+import {
+  describeAnchors,
+  extractAnchors,
+  isValidLineAnchor,
+  normalizeAnchor,
+  parseLineAnchor,
+  suggestAnchorFix,
+} from './Anchors.ts'
 
 describe('extractAnchors()', () => {
   it('slugs ATX headings GitHub-style', () => {
@@ -126,5 +133,26 @@ describe('describeAnchors()', () => {
     expect(description).toBe(
       'available anchors: heading-0, heading-1, heading-2, heading-3, heading-4, heading-5, heading-6, heading-7, and 4 more',
     )
+  })
+})
+
+describe('suggestAnchorFix()', () => {
+  it('finds an exact case-insensitive match against a real slug', () => {
+    expect(suggestAnchorFix('Setup-Pattern', new Set(['setup-pattern', 'other']))).toBe('setup-pattern')
+  })
+
+  it('returns null when no anchor matches even case-insensitively', () => {
+    expect(suggestAnchorFix('nope', new Set(['setup-pattern']))).toBeNull()
+  })
+
+  it('returns null (never picks one) when two anchors case-collide — the ambiguity guard', () => {
+    // Only reachable via verbatim-kept HTML anchors (extractAnchors never
+    // lowercases <a id="...">) — two distinct real anchors differing only
+    // by case is a genuine, if rare, ambiguity.
+    expect(suggestAnchorFix('FOO', new Set(['Foo', 'foo']))).toBeNull()
+  })
+
+  it('is exact, not fuzzy — a near-miss is never "corrected" (issue #49: fuzzy matching explicitly out of scope)', () => {
+    expect(suggestAnchorFix('setup-patterns', new Set(['setup-pattern']))).toBeNull()
   })
 })

@@ -4,7 +4,7 @@
 
 import * as nodePath from 'node:path'
 
-import { describeAnchors, extractAnchors } from './Anchors.ts'
+import { describeAnchors, extractAnchors, normalizeAnchor, suggestAnchorFix } from './Anchors.ts'
 import { maskFencedCode } from './markdownFences.ts'
 
 // Reason in POSIX so link resolution is identical on every OS (inputs are
@@ -302,11 +302,26 @@ export const checkContent = ({
     const { anchor, path: rel } = parseTarget(link.target)
 
     if (rel === '') {
-      // Same-page anchor: no other file to read, resolve now.
-      if (anchor !== null && !getSourceAnchors().has(anchor)) {
+      // Same-page anchor: no other file to read, resolve now. Normalized
+      // (percent-decoded) the same way the cross-file path already does
+      // (CheckLinks.ts's `normalizeAnchor(item.anchor)`) — found as a real
+      // asymmetry via adversarial review of issue #49: a URL-encoded
+      // same-page fragment (`#Setup%2DPattern`) was being compared/matched
+      // against RAW anchor text, so it neither resolved when it should have
+      // nor got an anchor-fix suggestion, while the equivalent cross-file
+      // link did both correctly.
+      const normalized = anchor === null ? null : normalizeAnchor(anchor)
+      if (normalized !== null && !getSourceAnchors().has(normalized)) {
+        // Issue #49: an exact case-insensitive match against the source's
+        // OWN headings is repairable the same way a moved-file path is —
+        // the suggestion is the FULL corrected target (`#realSlug`), so
+        // `applyFix`'s existing occurrence-safe whole-target replacement
+        // handles it with no new repair machinery.
+        const fixedAnchor = suggestAnchorFix(normalized, getSourceAnchors())
         broken.push({
           detail: describeAnchors(getSourceAnchors()),
           reason: 'anchor',
+          ...(fixedAnchor === null ? {} : { suggestion: `#${fixedAnchor}` }),
           target: link.target,
           text: link.text,
         })

@@ -202,6 +202,123 @@ describe('checkLinks()', () => {
     ])
   })
 
+  // Issue #49: anchor auto-repair — exact case-insensitive match, both
+  // cross-file and same-file, --fix actually rewrites, is idempotent, and
+  // reuses the existing `fixed` counter unchanged.
+  describe('anchor auto-repair (--fix, issue #49)', () => {
+    it('repairs a cross-file anchor differing from a real heading only by case, and persists the change', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '## Setup Pattern\n\ntext', mtimeMs: 1 },
+        '/r/docs/a/index.md': { content: '[link](./guide.md#Setup-Pattern)', mtimeMs: 1 },
+      })
+      const first = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(first.fixed).toBe(1)
+      expect(first.broken).toEqual([])
+
+      // Persisted: re-running (fix off) against the same, now-mutated layer finds nothing broken.
+      const second = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(second.broken).toEqual([])
+
+      const content = await Effect.runPromise(
+        Effect.gen(function* () {
+          const dfs = yield* DocsFs
+          return yield* dfs.readFile('/r/docs/a/index.md')
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(content).toBe('[link](./guide.md#setup-pattern)')
+    })
+
+    it('repairs a same-page anchor differing from a real heading only by case', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/index.md': { content: '# Setup Pattern\n\n[link](#Setup-Pattern)', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.fixed).toBe(1)
+      expect(result.broken).toEqual([])
+      const content = await Effect.runPromise(
+        Effect.gen(function* () {
+          const dfs = yield* DocsFs
+          return yield* dfs.readFile('/r/docs/a/index.md')
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(content).toBe('# Setup Pattern\n\n[link](#setup-pattern)')
+    })
+
+    it('is idempotent — running --fix twice reports zero additional fixes the second time', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '## Setup Pattern\n\ntext', mtimeMs: 1 },
+        '/r/docs/a/index.md': { content: '[link](./guide.md#Setup-Pattern)', mtimeMs: 1 },
+      })
+      const first = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(first.fixed).toBe(1)
+      const second = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(second.fixed).toBe(0)
+      expect(second.broken).toEqual([])
+    })
+
+    it('does NOT repair when no anchor matches even case-insensitively — still reported broken, no crash', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '## Real Heading\n\ntext', mtimeMs: 1 },
+        '/r/docs/a/index.md': { content: '[link](./guide.md#totally-unrelated)', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.fixed).toBe(0)
+      expect(result.broken[0]?.links).toEqual([
+        {
+          detail: 'available anchors: real-heading',
+          reason: 'anchor',
+          target: './guide.md#totally-unrelated',
+          text: 'link',
+        },
+      ])
+    })
+
+    it('does NOT repair when two real anchors case-collide — the ambiguity guard, end to end', async () => {
+      // Two distinct, verbatim-kept HTML anchors differing only by case —
+      // extractAnchors never lowercases <a id>, so this is a genuine
+      // ambiguity, not a hypothetical one.
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '<a id="Foo"></a>\n<a id="foo"></a>\n', mtimeMs: 1 },
+        '/r/docs/a/index.md': { content: '[link](./guide.md#FOO)', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.fixed).toBe(0)
+      expect(result.broken[0]?.links[0]).not.toHaveProperty('suggestion')
+    })
+
+    it('does NOT repair an anchor break inside a code example, same as path-repair (occurrence-safety)', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '## Setup Pattern\n\ntext', mtimeMs: 1 },
+        '/r/docs/a/index.md': {
+          content: 'broken [x](./guide.md#Setup-Pattern)\n\n```md\n[demo](./guide.md#Setup-Pattern)\n```',
+          mtimeMs: 1,
+        },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      // Same target string appears inside a code example too, so applyFix's
+      // existing occurrence-count safeguard correctly declines to touch it —
+      // reported instead of silently corrupting the code block.
+      expect(result.fixed).toBe(0)
+      expect(result.broken[0]?.links.map((l) => l.target)).toEqual(['./guide.md#Setup-Pattern'])
+    })
+  })
+
   // Issue #39, scenario E: cross-hierarchy target, still inside the checkout root.
   it('resolves a real cross-hierarchy target instead of always reporting it broken, and still catches a genuinely missing one', async () => {
     const layer = makeTestDocsFs({
