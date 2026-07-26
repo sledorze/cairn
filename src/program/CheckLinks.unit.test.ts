@@ -28,6 +28,36 @@ describe('formatLinkReport()', () => {
     expect(lines).toContain('  a.md')
     expect(lines.at(-1)).toBe('    ✗ [t](./x.md) → suggestion: ../b/x.md')
   })
+
+  // issue #39: an anchor/line failure must never read as "(no unique target)"
+  // — that hint means "the path itself has no unambiguous replacement," which
+  // is misleading when the path resolves fine and only the fragment is wrong.
+  it('gives an anchor-specific hint, distinct from a path-suggestion miss', () => {
+    const lines = formatLinkReport({
+      broken: [{ file: 'a.md', links: [{ reason: 'anchor', target: './b.md#nope', text: 't' }] }],
+      checked: 1,
+      fixed: 0,
+    })
+    expect(lines.at(-1)).toBe('    ✗ [t](./b.md#nope) (heading/anchor not found)')
+  })
+
+  it('gives a line-specific hint', () => {
+    const lines = formatLinkReport({
+      broken: [{ file: 'a.md', links: [{ reason: 'line', target: '../x.ts#L999', text: 't' }] }],
+      checked: 1,
+      fixed: 0,
+    })
+    expect(lines.at(-1)).toBe('    ✗ [t](../x.ts#L999) (line number out of range)')
+  })
+
+  it('still reports "(no unique target)" for a path failure with no suggestion', () => {
+    const lines = formatLinkReport({
+      broken: [{ file: 'a.md', links: [{ reason: 'path', target: './ghost.md', text: 't' }] }],
+      checked: 1,
+      fixed: 0,
+    })
+    expect(lines.at(-1)).toBe('    ✗ [t](./ghost.md) (no unique target)')
+  })
 })
 
 const seed = (): Record<string, { content: string; mtimeMs: number }> => ({
@@ -170,6 +200,36 @@ describe('checkLinks()', () => {
       checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
     )
     expect(result.broken[0]?.links).toEqual([{ reason: 'line', target: '../../src/cli.ts#L100', text: 'badline' }])
+  })
+
+  // Efficiency (found via self-review, not the issue text): a plain
+  // existence-only cross-hierarchy link (no `#fragment`) must never read the
+  // target's content — only its existence needs proving.
+  it('does not read a cross-hierarchy target file when the link carries no anchor', async () => {
+    const files: Record<string, string> = {
+      '/r/docs/a/index.md': '[code](../../src/cli.ts)',
+      '/r/src/cli.ts': 'export {}',
+    }
+    let readCount = 0
+    const service: DocsFsService = {
+      deleteFile: () => Effect.succeed(undefined),
+      exists: (abs) => Effect.succeed(abs in files),
+      listFiles: () => Effect.succeed(Object.keys(files).filter((p) => p.startsWith('/r/docs'))),
+      readFile: (abs) => {
+        readCount += 1
+        return Effect.succeed(files[abs] ?? '')
+      },
+      stat: () => Effect.die('not used in this test'),
+      writeFile: () => Effect.succeed(undefined),
+    }
+    const layer = Layer.succeed(DocsFs, service)
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken).toEqual([])
+    // Exactly one read: the source file itself. The out-of-root target's
+    // existence is proven via `exists`, never `readFile`.
+    expect(readCount).toBe(1)
   })
 
   // Issue #39, scenario G (explicit non-goal): a symbol-shaped anchor on a

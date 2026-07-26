@@ -116,25 +116,43 @@ export const formatLinkReport = (result: LinkCheckResult, options: LinkReportOpt
   for (const { file, links } of result.broken) {
     lines.push(`  ${file}`)
     for (const link of links) {
-      const hint =
-        link.suggestion !== undefined
-          ? pick(locale, { en: ` → suggestion: ${link.suggestion}`, fr: ` → suggestion : ${link.suggestion}` })
-          : pick(locale, { en: ' (no unique target)', fr: ' (aucune cible unique)' })
-      lines.push(`    ✗ [${link.text}](${link.target})${hint}`)
+      lines.push(`    ✗ [${link.text}](${link.target})${linkHint(locale, link)}`)
     }
   }
   return lines
 }
 
 /**
+ * Why a link is broken, for a human — distinct from `(no unique target)`
+ * (a *path* with no unambiguous fix) so an anchor/line failure never reads as
+ * a missing-file problem: the target resolves fine, only its `#fragment` doesn't.
+ */
+const linkHint = (locale: Locale, link: BrokenLink): string => {
+  if (link.suggestion !== undefined) {
+    return pick(locale, { en: ` → suggestion: ${link.suggestion}`, fr: ` → suggestion : ${link.suggestion}` })
+  }
+  if (link.reason === 'anchor') {
+    return pick(locale, { en: ' (heading/anchor not found)', fr: ' (ancre introuvable)' })
+  }
+  if (link.reason === 'line') {
+    return pick(locale, { en: ' (line number out of range)', fr: ' (numéro de ligne hors limites)' })
+  }
+  return pick(locale, { en: ' (no unique target)', fr: ' (aucune cible unique)' })
+}
+
+/**
  * Resolve one deferred `PendingCheck` with real IO, bounded by `base`
  * (issue #39's security requirement — a target outside `base` is never
  * stat'd, existence-oracle risk closed regardless of what's actually there).
- * `contentCache`/`anchorCache` are shared across every pending check in a run
- * so a file referenced by many links is only ever read/slugged once.
+ * `existsCache`/`contentCache`/`anchorCache` are shared across every pending
+ * check in a run so a file referenced by many links is only ever stat'd/
+ * read/slugged once. Content is fetched only when an anchor actually needs
+ * validating — a plain out-of-root existence check (no `#fragment`) never
+ * reads the target's full body just to confirm it's there.
  */
 const resolvePendingCheck = ({
   base,
+  existsCache,
   contentCache,
   anchorCache,
   dfs,
@@ -143,7 +161,8 @@ const resolvePendingCheck = ({
   known,
 }: {
   readonly base: string
-  readonly contentCache: Map<string, string | null>
+  readonly existsCache: Map<string, boolean>
+  readonly contentCache: Map<string, string>
   readonly anchorCache: Map<string, ReadonlySet<string>>
   readonly dfs: DocsFsService
   readonly index: ReadonlyMap<string, readonly string[]>
@@ -151,9 +170,8 @@ const resolvePendingCheck = ({
   readonly known: ReadonlySet<string>
 }): Effect.Effect<BrokenLink | null> =>
   Effect.gen(function* () {
-    let content = contentCache.get(item.targetAbs)
-    if (content === undefined) {
-      let exists: boolean
+    let exists = existsCache.get(item.targetAbs)
+    if (exists === undefined) {
       if (known.has(item.targetAbs)) {
         exists = true
       } else if (isWithinBase(item.targetAbs, base)) {
@@ -164,11 +182,10 @@ const resolvePendingCheck = ({
         // of what's actually on disk there.
         exists = false
       }
-      content = exists ? yield* dfs.readFile(item.targetAbs) : null
-      contentCache.set(item.targetAbs, content)
+      existsCache.set(item.targetAbs, exists)
     }
 
-    if (content === null) {
+    if (!exists) {
       const suggestion = suggestFix({ fromDir: item.fromDir, index, target: item.target })
       return suggestion
         ? { reason: 'path', suggestion, target: item.target, text: item.text }
@@ -177,6 +194,12 @@ const resolvePendingCheck = ({
 
     if (item.anchor === null) {
       return null
+    }
+
+    let content = contentCache.get(item.targetAbs)
+    if (content === undefined) {
+      content = yield* dfs.readFile(item.targetAbs)
+      contentCache.set(item.targetAbs, content)
     }
 
     const normalized = normalizeAnchor(item.anchor)
@@ -232,13 +255,23 @@ export const checkLinks = ({
       scans.push({ content, file, pending, resolvedExtra: [], syncBroken })
     }
 
-    // Resolve every deferred anchor/cross-hierarchy check once, sharing a
-    // per-target cache across the whole run.
-    const contentCache = new Map<string, string | null>()
+    // Resolve every deferred anchor/cross-hierarchy check once, sharing
+    // per-target caches across the whole run.
+    const existsCache = new Map<string, boolean>()
+    const contentCache = new Map<string, string>()
     const anchorCache = new Map<string, ReadonlySet<string>>()
     for (const scan of scans) {
       for (const item of scan.pending) {
-        const result = yield* resolvePendingCheck({ anchorCache, base, contentCache, dfs, index, item, known })
+        const result = yield* resolvePendingCheck({
+          anchorCache,
+          base,
+          contentCache,
+          dfs,
+          existsCache,
+          index,
+          item,
+          known,
+        })
         if (result) {
           scan.resolvedExtra.push(result)
         }
