@@ -4,23 +4,35 @@ Separation of concerns: pure decisions, IO at the edges.
 
 - **`core/`** (pure — `node:` builtins, `effect`'s pure combinators, e.g. `Schema`/
   `Either`/`ParseResult`, and small vetted IO-free libs like `github-slugger`; never
-  `Effect`/`Layer`/`Runtime`): `DocSummaries` (hash/classify; legacy stamp helpers kept
-  for migration only), `StampStore`/`RefStore` (`.cairn/**` and `.cairn/refs/**` sidecar
-  path mapping + lenient (de)serialisation — separate namespaces, a summary-tree node and
-  a scanned doc can be the SAME file), `MarkdownLinks` (extract/check/fix/references),
-  `Anchors` (heading/HTML-anchor extraction + slugging, line-anchor validation),
-  `markdownFences` (linear fenced-code masking), `SummaryTree` (hierarchical planner +
-  manifest hashes compared against an externally-supplied `stamps` map + deleted-source
-  detection + order), `glob` (tiny matcher), `paths` (POSIX normalisation +
-  `isWithinBase` containment), `Config` (schema/decode/`extends` merge/defaults — also
-  owns `Locale`, since `core/` can't depend on `program/`).
+  `Effect`/`Layer`/`Runtime`), split into two subdomains that mirror the config schema's
+  own `checks.links`/`checks.summaries` split (verified: `links/` never imports from
+  `summaries/`; the one reverse dependency, `SummaryTree` → `MarkdownLinks` for the
+  link-completeness invariant, is one-directional):
+  - **`summaries/`**: `DocSummaries` (line-count/classify; legacy stamp helpers kept for
+    migration only), `StampStore` (`StampRecord` shape + lenient (de)serialisation),
+    `SummaryTree` (hierarchical planner + manifest hashes compared against an
+    externally-supplied `stamps` map + deleted-source detection + order).
+  - **`links/`**: `MarkdownLinks` (extract/check/fix/references), `Anchors`
+    (heading/HTML-anchor extraction + slugging, line-anchor validation), `markdownFences`
+    (linear fenced-code masking), `RefStore` (`RefsRecord` shape, `.cairn/refs/**`
+    namespace — kept disjoint from `StampStore`'s sidecar path: a summary-tree node and a
+    scanned doc can be the SAME file, so the two must never collide).
+  - **Shared by both** (top-level `core/`): `sidecar.ts` (the `.cairn/**` path mapping +
+    lenient-JSON-codec mechanics `StampStore`/`RefStore` both build on), `hashing.ts`
+    (`hashContent` — moved out of `DocSummaries` once it was found to be the one thing
+    pulling a `links/` program into a `summaries/`-named file), `glob` (tiny matcher),
+    `paths` (POSIX normalisation + `isWithinBase` containment), `Config`
+    (schema/decode/`extends` merge/defaults — depends on `summaries/DocSummaries` for the
+    configurable `Naming` type; also owns `Locale`, since `core/` can't depend on `program/`).
 - **`io/`** `DocsFs`: Effect service — `DocsFsLive` (Node) + `makeTestDocsFs` (in-memory).
-- **`program/`**: `CheckLinks` (dead links/anchors/line-anchors, `--fix`), `CheckRefs`
-  (opt-in `--refs`: reference content-hash drift, independent of summary stamping),
-  `CheckSummaries` (reads/writes the `.cairn/**` sidecar tree; `stampFiles` self-heals a
-  legacy in-content stamp on every ordinary `--stamp`, so `--migrate-stamps` is only an
-  optional named alias, never required), `JsonReport` (`--json`'s combined shape),
-  `locale` (re-exports `Locale`; en default, fr mirror).
+- **`program/`**, same two-subdomain split:
+  - **`summaries/`**: `CheckSummaries` (reads/writes the `.cairn/**` sidecar tree;
+    `stampFiles` self-heals a legacy in-content stamp on every ordinary `--stamp`, so
+    `--migrate-stamps` is only an optional named alias, never required).
+  - **`links/`**: `CheckLinks` (dead links/anchors/line-anchors, `--fix`), `CheckRefs`
+    (opt-in `--refs`: reference content-hash drift, independent of summary stamping).
+  - **Shared by both**: `JsonReport` (`--json`'s combined shape), `locale` (re-exports
+    `Locale`; en default, fr mirror).
 - **Edge**: `config.ts` (disk IO: reads rc/`extends`/`package.json`, decodes via
   `core/Config`, expands root globs), `cli.ts`, `init/`.
 - **`testSupport/`** (test-only, excluded from the published build): real-temp-directory

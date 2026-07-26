@@ -10,49 +10,78 @@ of the codebase.
 
 ## Layers
 
+Both `core/` and `program/` are further split into the two independently-
+gateable check kinds the config schema itself already names
+(`ChecksConfig.links`/`.summaries` — `CheckRefs.ts` is a third, still opt-in
+via `--refs`, grouped with `links/` because it consumes the same extracted-
+reference primitive `MarkdownLinks.ts` produces, not because it's in
+`ChecksConfig` yet). This mirrors the real import graph, verified by
+construction, not asserted: **`links/` never imports from `summaries/`, in
+either `core/` or `program/`.** The one dependency the other way —
+`summaries/SummaryTree.ts` importing `links/MarkdownLinks.ts`'s extraction
+primitives, for its own link-completeness invariant ("every directory
+summary links to every child") — is one-directional and real, not a cycle.
+
 1. **[`core/`](../src/core/) — pure decision logic (no IO; `node:` builtins,
    `effect`'s pure, synchronous combinator modules — `Schema`, `Either`,
    `ParseResult` — and small, vetted, IO-free pure-computation libraries
-   (currently: `github-slugger`, for `Anchors.ts`'s GitHub-compatible
+   (currently: `github-slugger`, for `links/Anchors.ts`'s GitHub-compatible
    heading slugs — a deterministic string transform, not a side effect) are
-   the only dependencies allowed. Not `Effect`/`Layer`/`Runtime`: those
-   represent the scheduled, effectful part of the library and belong in
-   `program/`.).**
-   - [`DocSummaries.ts`](../src/core/DocSummaries.ts) — freshness primitives:
-     content hashing, line counting, summary classification (`missing | ok |
-stale`), plus the legacy in-content stamp helpers kept only for the
-     one-off `--migrate-stamps` path.
-   - [`StampStore.ts`](../src/core/StampStore.ts) — the `.cairn/**` sidecar:
-     path mapping between a node and its hidden hash record, and lenient
-     (forward-compatible) (de)serialisation.
-   - [`RefStore.ts`](../src/core/RefStore.ts) — the `.cairn/refs/**` sidecar
-     (a namespace of its own — see its own file header for why it can't
-     reuse `StampStore.ts`'s path mapping): reference content-hash records
-     for `program/CheckRefs.ts`'s drift tracking.
-   - [`MarkdownLinks.ts`](../src/core/MarkdownLinks.ts) — link/reference
-     extraction, checkable-target rules, ambiguity-aware fix suggestions.
-   - [`Anchors.ts`](../src/core/Anchors.ts) — heading/HTML-anchor extraction
-     and GitHub-compatible slugging, GitHub-style line-anchor validation.
-   - [`markdownFences.ts`](../src/core/markdownFences.ts) — fenced-code-block
-     masking (a linear line scan, not a backtracking-prone regex), shared by
-     `MarkdownLinks.ts` and `Anchors.ts`.
-   - [`SummaryTree.ts`](../src/core/SummaryTree.ts) — the hierarchical
-     planner: expected file/directory summaries, their manifest hashes
-     (compared against an externally-supplied `stamps` map, never read from
-     content), the link-completeness invariant, deleted-source stamp
-     detection, and the bottom-up order.
-   - [`glob.ts`](../src/core/glob.ts) — a tiny dependency-free glob matcher
-     for `ignore` and root expansion.
-   - [`paths.ts`](../src/core/paths.ts) — POSIX path normalisation and the
-     `base`-containment check (`isWithinBase`) that bounds every out-of-`roots`
-     filesystem access in `program/`.
-   - [`Config.ts`](../src/core/Config.ts) — the config domain:
+   the only dependencies allowed for real, shipped source. Not `Effect`/
+   `Layer`/`Runtime`: those represent the scheduled, effectful part of the
+   library and belong in `program/`. `*.unit.test.ts`/`*.bench.ts` files
+   importing `vitest` are exempt, same as everywhere else in the repo —
+   dev-only, excluded from `tsconfig.build.json`, never shipped.).**
+   - **[`summaries/`](../src/core/summaries/)** — the doc-summary freshness domain.
+     - [`DocSummaries.ts`](../src/core/summaries/DocSummaries.ts) — line
+       counting, summary classification (`missing | ok | stale`), plus the
+       legacy in-content stamp helpers kept only for the one-off
+       `--migrate-stamps` path. (Content hashing itself lives in
+       `hashing.ts`, one level up — see below.)
+     - [`StampStore.ts`](../src/core/summaries/StampStore.ts) — the
+       `StampRecord` shape (`{sha256, version}`) and its lenient
+       (forward-compatible) (de)serialisation. Path mapping is NOT here —
+       see `../sidecar.ts`.
+     - [`SummaryTree.ts`](../src/core/summaries/SummaryTree.ts) — the
+       hierarchical planner: expected file/directory summaries, their
+       manifest hashes (compared against an externally-supplied `stamps`
+       map, never read from content), the link-completeness invariant,
+       deleted-source stamp detection, and the bottom-up order.
+   - **[`links/`](../src/core/links/)** — the link/reference/anchor domain.
+     - [`MarkdownLinks.ts`](../src/core/links/MarkdownLinks.ts) — link/
+       reference extraction, checkable-target rules, ambiguity-aware fix
+       suggestions.
+     - [`Anchors.ts`](../src/core/links/Anchors.ts) — heading/HTML-anchor
+       extraction and GitHub-compatible slugging, GitHub-style line-anchor
+       validation.
+     - [`markdownFences.ts`](../src/core/links/markdownFences.ts) —
+       fenced-code-block masking (a linear line scan, not a
+       backtracking-prone regex), shared by `MarkdownLinks.ts` and `Anchors.ts`.
+     - [`RefStore.ts`](../src/core/links/RefStore.ts) — the `RefsRecord`
+       shape and its `.cairn/refs/**` namespace (via `../sidecar.ts`'s
+       `namespace` parameter — see its own file header for the real path
+       collision this closes) for `program/links/CheckRefs.ts`'s drift tracking.
+   - **Shared by both domains** (top-level `core/`, not inside either
+     subdirectory — genuinely used by both, verified by import graph, not
+     assumed): [`sidecar.ts`](../src/core/sidecar.ts) (the `.cairn/**` path
+     mapping + lenient-JSON-codec mechanics both `StampStore.ts` and
+     `RefStore.ts` build on — found worth extracting after the two
+     duplicated it independently), [`hashing.ts`](../src/core/hashing.ts)
+     (`hashContent`, used by `summaries/` for doc freshness AND by
+     `links/CheckRefs.ts` for reference-target drift — moved out of
+     `DocSummaries.ts` once an import-graph audit showed it was the one
+     function pulling a `links/`-domain program into a `summaries/`-named file),
+     [`glob.ts`](../src/core/glob.ts) (a tiny dependency-free glob matcher
+     for `ignore` and root expansion), [`paths.ts`](../src/core/paths.ts)
+     (POSIX path normalisation and the `base`-containment check
+     (`isWithinBase`) that bounds every out-of-`roots` filesystem access in
+     `program/`), [`Config.ts`](../src/core/Config.ts) (the config domain:
      `CairnConfigSchema` (via `effect/Schema`, also the source the shipped
      JSON Schema is generated from), the strict decode, `extends`-layer
-     merging, and the resolved-config defaults/types. Owns `Locale` too
-     (`program/locale.ts` re-exports it) — `core/` cannot depend on
-     `program/`, so a type used by both has to live at or below the lower
-     layer.
+     merging, and the resolved-config defaults/types — depends on
+     `summaries/DocSummaries.ts` for the `Naming` type, since summary
+     filenames are configurable; owns `Locale` too (`program/locale.ts`
+     re-exports it) since `core/` cannot depend on `program/`).
 
 2. **[`io/`](../src/io/) — the filesystem capability, expressed as an Effect service.**
    - [`DocsFs.ts`](../src/io/DocsFs.ts) — `DocsFsLive` binds to the real Node
@@ -60,19 +89,23 @@ stale`), plus the legacy in-content stamp helpers kept only for the
      are tested without touching disk.
 
 3. **[`program/`](../src/program/) — Effect programs that orchestrate IO around the pure core.**
-   - [`CheckLinks.ts`](../src/program/CheckLinks.ts) — scan for dead links/
-     anchors/line-anchors, optionally auto-repair unambiguous path breaks.
-   - [`CheckRefs.ts`](../src/program/CheckRefs.ts) — opt-in (`--refs`):
-     record and check reference content-hash drift, independent of
-     `CheckSummaries.ts`'s Merkle-manifest stamping (a different concept,
-     with its own invariants this file doesn't entangle with).
-   - [`CheckSummaries.ts`](../src/program/CheckSummaries.ts) — compute the
-     plan; read/write the `.cairn/**` sidecar tree; stamp existing summaries
-     bottom-up; one-off `--migrate-stamps` off the legacy in-content form.
-   - [`JsonReport.ts`](../src/program/JsonReport.ts) — combines a links/
-     summaries run into the single `{ summaries, links, exitCode }` shape
-     `--json` prints.
-   - [`locale.ts`](../src/program/locale.ts) — report localisation (English
+   - **[`summaries/`](../src/program/summaries/)**
+     - [`CheckSummaries.ts`](../src/program/summaries/CheckSummaries.ts) —
+       compute the plan; read/write the `.cairn/**` sidecar tree; stamp
+       existing summaries bottom-up; one-off `--migrate-stamps` off the
+       legacy in-content form.
+   - **[`links/`](../src/program/links/)**
+     - [`CheckLinks.ts`](../src/program/links/CheckLinks.ts) — scan for dead
+       links/anchors/line-anchors, optionally auto-repair unambiguous path breaks.
+     - [`CheckRefs.ts`](../src/program/links/CheckRefs.ts) — opt-in
+       (`--refs`): record and check reference content-hash drift,
+       independent of `CheckSummaries.ts`'s Merkle-manifest stamping (a
+       different concept, with its own invariants this file doesn't
+       entangle with).
+   - **Shared by both**: [`JsonReport.ts`](../src/program/JsonReport.ts)
+     (combines a links/summaries run into the single
+     `{ summaries, links, exitCode }` shape `--json` prints),
+     [`locale.ts`](../src/program/locale.ts) (report localisation, English
      default, French mirror).
 
 4. **Edge — config and CLI.**
@@ -94,7 +127,7 @@ git does not preserve modification times. After a clone or a CI checkout, every
 file shares the same timestamp, so a freshness check based on mtime silently passes
 on stale summaries. Instead, each summary's hash is recorded in a hidden `.cairn/**`
 sidecar (never inside the summary's own content — see
-[`StampStore.ts`](../src/core/StampStore.ts)), and the checker recomputes the source
+[`StampStore.ts`](../src/core/summaries/StampStore.ts)), and the checker recomputes the source
 hash and compares it to the sidecar. This is deterministic and clone-independent —
 the property that makes the whole system trustworthy in CI — and it keeps the
 tracking mechanism itself out of the prose a reader opens. A sidecar left behind with
@@ -103,7 +136,7 @@ no matching node (source deleted or renamed) is the deletion signal
 deleted.
 
 `stampFiles` (the shared core of `stampSummaries`/`migrateStamps` in
-[`CheckSummaries.ts`](../src/program/CheckSummaries.ts)) unconditionally strips any
+[`CheckSummaries.ts`](../src/program/summaries/CheckSummaries.ts)) unconditionally strips any
 legacy in-content `<!-- source-sha256 -->` stamp it finds before computing hashes — a deliberate
 DX decision: a repo upgrading from the old scheme needs to discover nothing new.
 Its existing `stampCommand` (already `--stamp` in every `.cairnrc.json` this tool

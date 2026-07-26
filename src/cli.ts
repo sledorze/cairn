@@ -14,14 +14,14 @@ import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Console, Data, Effect, Option, Runtime } from 'effect'
 import { Argument, Command, Flag } from 'effect/unstable/cli'
 
-import type { SummaryPlan } from './core/SummaryTree.ts'
+import type { SummaryPlan } from './core/summaries/SummaryTree.ts'
 import type { Overrides } from './config.ts'
 import { expandRoots, loadConfig, loadConfigWithSource, LOCALES } from './config.ts'
 import { AGENT_TARGETS, runInit } from './init/generate.ts'
 import { DocsFsLive } from './io/DocsFs.ts'
-import type { LinkCheckResult } from './program/CheckLinks.ts'
-import { checkLinks, formatLinkReport, linkExitCode } from './program/CheckLinks.ts'
-import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './program/CheckRefs.ts'
+import type { LinkCheckResult } from './program/links/CheckLinks.ts'
+import { checkLinks, formatLinkReport, linkExitCode } from './program/links/CheckLinks.ts'
+import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './program/links/CheckRefs.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -30,7 +30,7 @@ import {
   pruneOrphans,
   stampSummaries,
   summaryExitCode,
-} from './program/CheckSummaries.ts'
+} from './program/summaries/CheckSummaries.ts'
 import { buildJsonReport } from './program/JsonReport.ts'
 import type { Locale } from './program/locale.ts'
 import { pick } from './program/locale.ts'

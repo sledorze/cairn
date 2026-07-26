@@ -19,8 +19,8 @@
 import type { Result, SchemaError } from 'effect'
 import { Schema, SchemaGetter } from 'effect'
 
-import type { Naming } from './DocSummaries.ts'
-import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './DocSummaries.ts'
+import type { Naming } from './summaries/DocSummaries.ts'
+import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './summaries/DocSummaries.ts'
 
 const ChecksInputSchema = Schema.Struct({
   links: Schema.optionalKey(

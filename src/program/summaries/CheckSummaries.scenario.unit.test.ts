@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DocsFs, makeTestDocsFs } from '../io/DocsFs.ts'
+import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import { checkSummaries, pruneOrphans, stampSummaries, summaryExitCode } from './CheckSummaries.ts'
 
 // A single, realistic two-level tree run through a whole lifecycle of edits —

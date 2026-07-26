@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
+import { hashContent } from '../hashing.ts'
 import {
   classifySummary,
   countLines,
   extractSourceHash,
-  hashContent,
   isSummaryFile,
   needsSummary,
   sourceHashTag,

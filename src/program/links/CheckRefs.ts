@@ -17,15 +17,15 @@ import * as nodePath from 'node:path'
 
 import { Effect } from 'effect'
 
-import { hashContent } from '../core/DocSummaries.ts'
-import { extractReferences } from '../core/MarkdownLinks.ts'
-import { isWithinBase } from '../core/paths.ts'
-import type { RefRecord } from '../core/RefStore.ts'
-import { parseRefs, refsSidecarPathFor, serializeRefs } from '../core/RefStore.ts'
-import { metaRootFor } from '../core/StampStore.ts'
-import { DocsFs } from '../io/DocsFs.ts'
-import type { Locale } from './locale.ts'
-import { pick } from './locale.ts'
+import { extractReferences } from '../../core/links/MarkdownLinks.ts'
+import type { RefRecord } from '../../core/links/RefStore.ts'
+import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
+import { hashContent } from '../../core/hashing.ts'
+import { isWithinBase } from '../../core/paths.ts'
+import { metaRootFor } from '../../core/sidecar.ts'
+import { DocsFs } from '../../io/DocsFs.ts'
+import type { Locale } from '../locale.ts'
+import { pick } from '../locale.ts'
 
 const path = nodePath.posix
 

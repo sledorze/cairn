@@ -1,15 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  isSidecarPath,
-  metaRootFor,
-  nodePathForSidecar,
-  parseStamp,
-  serializeStamp,
-  sidecarPathFor,
-  STAMP_VERSION,
-} from './StampStore.ts'
-import type { MetaLayout } from './StampStore.ts'
+import type { MetaLayout } from '../sidecar.ts'
+import { isSidecarPath, metaRootFor, nodePathForSidecar, sidecarPathFor } from '../sidecar.ts'
+import { parseStamp, serializeStamp, STAMP_VERSION } from './StampStore.ts'
 
 const layout: MetaLayout = { base: '/r', metaRoot: metaRootFor('/r') }
 

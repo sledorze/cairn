@@ -2,7 +2,8 @@ import * as nodePath from 'node:path'
 
 import { bench, describe } from 'vitest'
 
-import { hashContent, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
+import { hashContent } from '../hashing.ts'
+import { isSummaryFile, summaryPathFor } from './DocSummaries.ts'
 import { DIR_SUMMARY, isDirSummary, planSummaries } from './SummaryTree.ts'
 
 const path = nodePath.posix
