@@ -99,6 +99,55 @@ describe('checkSummaries()', () => {
     expect(summaryExitCode(plan)).toBe(1)
   })
 
+  // Issue #48: `onlyGitTracked` (`trackedFiles`) — an untracked doc must be
+  // invisible to `checkSummaries`, not just flagged differently, so a
+  // directory that ONLY contains untracked docs never becomes "needs a
+  // `_SUMMARY.md`" either (the issue's own `docs/scratch-notes.md` example).
+  describe('trackedFiles (onlyGitTracked)', () => {
+    it('excludes an untracked doc from the plan entirely — the issue #48 motivating example', async () => {
+      const layer = makeTestDocsFs({ '/r/docs/scratch-notes.md': tf(big) })
+      const plan = await Effect.runPromise(
+        checkSummaries({
+          base,
+          roots: ['/r/docs'],
+          thresholdLines: 30,
+          trackedFiles: new Set(),
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(plan.todo).toEqual([])
+      expect(summaryExitCode(plan)).toBe(0)
+    })
+
+    it('still plans a tracked doc when trackedFiles is a non-empty subset', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/scratch-notes.md': tf(big),
+        '/r/docs/tracked.md': tf(big),
+      })
+      const plan = await Effect.runPromise(
+        checkSummaries({
+          base,
+          roots: ['/r/docs'],
+          thresholdLines: 30,
+          trackedFiles: new Set(['/r/docs/tracked.md']),
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(plan.todo.map((n) => n.path)).toEqual(['/r/docs/tracked.summary.md', '/r/docs/_SUMMARY.md'])
+    })
+
+    it('undefined trackedFiles (the default) is byte-identical to omitting the field entirely', async () => {
+      const layer = makeTestDocsFs({ '/r/docs/a.md': tf(big) })
+      const withUndefined = await Effect.runPromise(
+        checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30, trackedFiles: undefined }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      const withoutField = await Effect.runPromise(
+        checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      )
+      expect(withUndefined.todo).toEqual(withoutField.todo)
+    })
+  })
+
   it('fails with orphans even when nothing is missing/stale', async () => {
     const layer = makeTestDocsFs({ '/r/docs/gone.summary.md': tf('# stale') })
     const plan = await Effect.runPromise(

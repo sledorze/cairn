@@ -45,6 +45,16 @@ export interface CheckLinksArgs {
   readonly fix: boolean
   readonly ignore?: readonly string[]
   readonly roots: readonly string[]
+  /** Issue #48 (`onlyGitTracked`): when supplied, both the scanned-source universe
+   * AND the existence universe (`known`, plus every out-of-`roots` target checked
+   * by `resolvePendingCheck`) are restricted to this set — absolute POSIX paths, as
+   * `GitFs.listTrackedFiles` returns them. This deliberately extends past source
+   * scanning to link-TARGET existence too (not just which docs get scanned): a
+   * link to an untracked file is exactly as invisible to a fresh CI checkout as an
+   * untracked doc missing its own summary, so the same CI-parity guarantee has to
+   * cover both directions, not just the doc side the issue's own example shows.
+   * `undefined` (the default) preserves today's behavior byte-for-byte. */
+  readonly trackedFiles?: ReadonlySet<string> | undefined
 }
 
 export interface LinkReportOptions {
@@ -166,6 +176,7 @@ const resolvePendingCheck = ({
   index,
   item,
   known,
+  trackedUniverse,
 }: {
   readonly base: string
   readonly existsCache: Map<string, boolean>
@@ -175,6 +186,13 @@ const resolvePendingCheck = ({
   readonly index: ReadonlyMap<string, readonly string[]>
   readonly item: PendingCheck
   readonly known: ReadonlySet<string>
+  /** Issue #48: when set, a physically-present out-of-`roots` target counts as
+   * "existing" only if it's ALSO in the git-tracked universe (files + their
+   * ancestor directories, same shape as `known`) — otherwise an untracked file
+   * outside `roots` would report as resolved locally while a fresh CI checkout,
+   * which never sees untracked content, would report it broken. `undefined`
+   * preserves today's plain-existence check unchanged. */
+  readonly trackedUniverse: ReadonlySet<string> | undefined
 }): Effect.Effect<BrokenLink | null> =>
   Effect.gen(function* () {
     let exists = existsCache.get(item.targetAbs)
@@ -182,7 +200,8 @@ const resolvePendingCheck = ({
       if (known.has(item.targetAbs)) {
         exists = true
       } else if (isWithinBase(item.targetAbs, base)) {
-        exists = yield* dfs.exists(item.targetAbs)
+        const physical = yield* dfs.exists(item.targetAbs)
+        exists = physical && (trackedUniverse === undefined || trackedUniverse.has(item.targetAbs))
       } else {
         // Outside the checkout root entirely: never touched, unconditionally
         // "cannot verify" — the observable signal stays constant regardless
@@ -251,14 +270,20 @@ export const checkLinks = ({
   fix,
   ignore = [],
   roots,
+  trackedFiles,
 }: CheckLinksArgs): Effect.Effect<LinkCheckResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     // The existence universe stays complete (so links to ignored files still
     // resolve); `ignore` only removes files from the set we scan as sources.
-    const allFiles = yield* dfs.listFiles(roots)
+    // Issue #48: `trackedFiles`, when provided, narrows BOTH the existence
+    // universe and the source-scan set — an untracked file is invisible to a
+    // fresh CI checkout on both sides of a link.
+    const listedFiles = yield* dfs.listFiles(roots)
+    const allFiles = trackedFiles === undefined ? listedFiles : listedFiles.filter((file) => trackedFiles.has(file))
     const index = buildBasenameIndex(allFiles)
     const known = withAncestors(allFiles)
+    const trackedUniverse = trackedFiles === undefined ? undefined : withAncestors([...trackedFiles])
     const existsAbs = (p: string): boolean => known.has(p)
     const inRoots = (p: string): boolean => roots.some((root) => p === root || p.startsWith(`${root}/`))
     const mdFiles = allFiles.filter((file) => file.endsWith('.md') && !matchesAny(file, ignore))
@@ -293,6 +318,7 @@ export const checkLinks = ({
           index,
           item,
           known,
+          trackedUniverse,
         })
         if (result) {
           scan.resolvedExtra.push(result)

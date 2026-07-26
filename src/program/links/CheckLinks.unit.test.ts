@@ -234,6 +234,84 @@ describe('checkLinks()', () => {
     ])
   })
 
+  // Issue #48 (`onlyGitTracked`): `trackedFiles`, when supplied, has to narrow
+  // BOTH sides of a link — which docs get scanned as sources, AND which
+  // targets count as "existing" (in-root via `known`, cross-hierarchy via the
+  // `resolvePendingCheck` gate) — since an untracked target is exactly as
+  // invisible to a fresh CI checkout as an untracked source doc is.
+  describe('trackedFiles (onlyGitTracked)', () => {
+    it('excludes an untracked source doc from scanning entirely (not reported at all, not even as broken)', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/scratch.md': { content: '[dead](./nope.md)', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: false, roots: ['/r/docs'], trackedFiles: new Set() }).pipe(Effect.provide(layer)),
+      )
+      expect(result.checked).toBe(0)
+      expect(result.broken).toEqual([])
+    })
+
+    it('an untracked in-root target reports broken even though it physically exists — a tracked doc must not falsely resolve it', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/index.md': { content: '[see](../untracked.md)', mtimeMs: 1 },
+        '/r/docs/untracked.md': { content: '# untracked', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({
+          base: '/r',
+          fix: false,
+          roots: ['/r/docs'],
+          trackedFiles: new Set(['/r/docs/a/index.md']),
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken[0]?.links).toEqual([{ reason: 'path', target: '../untracked.md', text: 'see' }])
+    })
+
+    it('an untracked cross-hierarchy (out-of-root) target reports broken even though it physically exists', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/index.md': { content: '[code](../../src/untracked.ts)', mtimeMs: 1 },
+        '/r/src/untracked.ts': { content: 'export {}', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({
+          base: '/r',
+          fix: false,
+          roots: ['/r/docs'],
+          trackedFiles: new Set(['/r/docs/a/index.md']),
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken[0]?.links).toEqual([{ reason: 'path', target: '../../src/untracked.ts', text: 'code' }])
+    })
+
+    it('a TRACKED cross-hierarchy target still resolves normally', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/index.md': { content: '[code](../../src/cli.ts)', mtimeMs: 1 },
+        '/r/src/cli.ts': { content: 'export {}', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({
+          base: '/r',
+          fix: false,
+          roots: ['/r/docs'],
+          trackedFiles: new Set(['/r/docs/a/index.md', '/r/src/cli.ts']),
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken).toEqual([])
+    })
+
+    it('undefined trackedFiles (the default) is byte-identical to omitting the field', async () => {
+      const layer = makeTestDocsFs(seed())
+      const withUndefined = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: false, roots: ['/r/docs'], trackedFiles: undefined }).pipe(Effect.provide(layer)),
+      )
+      const withoutField = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(withUndefined.broken).toEqual(withoutField.broken)
+      expect(withUndefined.checked).toBe(withoutField.checked)
+    })
+  })
+
   // Corner case (found via self-review, reproduced by construction — a real
   // crash, not a hypothetical): an anchor on a link that resolves to a
   // DIRECTORY, not a file. `exists`/`known` only prove the path resolves to

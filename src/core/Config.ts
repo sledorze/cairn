@@ -87,6 +87,12 @@ export const CairnConfigSchema = Schema.Struct({
   ),
   locale: Schema.optionalKey(LocaleSchema),
   naming: Schema.optionalKey(NamingInputSchema),
+  onlyGitTracked: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        'Restrict the scanned file universe to files `git ls-files` reports as tracked/staged (issue #48) — so a local run sees the same files a fresh CI checkout would, ignoring untracked scratch docs and links to them. Default false (unchanged, glob-only behavior).',
+    }),
+  ),
   requireDirSummaries: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Require a directory summary in every in-scope directory. Default true.',
@@ -133,6 +139,7 @@ export interface ResolvedConfig {
   readonly ignore: readonly string[]
   readonly locale: Locale
   readonly naming: Naming
+  readonly onlyGitTracked: boolean
   readonly requireDirSummaries: boolean
   readonly roots: readonly string[]
   readonly stampCommand: string
@@ -150,6 +157,7 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
   ignore: ['**/node_modules/**'],
   locale: 'en',
   naming: DEFAULT_NAMING,
+  onlyGitTracked: false,
   requireDirSummaries: true,
   roots: ['docs'],
   stampCommand: DEFAULT_STAMP_COMMAND,
@@ -184,6 +192,7 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
   ...base,
   ...(layer.ignore === undefined ? {} : { ignore: layer.ignore }),
   ...(layer.locale === undefined ? {} : { locale: layer.locale }),
+  ...(layer.onlyGitTracked === undefined ? {} : { onlyGitTracked: layer.onlyGitTracked }),
   ...(layer.requireDirSummaries === undefined ? {} : { requireDirSummaries: layer.requireDirSummaries }),
   ...(layer.roots === undefined ? {} : { roots: layer.roots }),
   ...(layer.stampCommand === undefined ? {} : { stampCommand: layer.stampCommand }),

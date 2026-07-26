@@ -103,6 +103,21 @@ describe('decodeConfig()', () => {
   })
 })
 
+describe('onlyGitTracked (issue #48)', () => {
+  it('accepts a boolean', () => {
+    expect(Result.getOrThrow(decodeConfig({ onlyGitTracked: true })).onlyGitTracked).toBeTruthy()
+    expect(Result.getOrThrow(decodeConfig({ onlyGitTracked: false })).onlyGitTracked).toBeFalsy()
+  })
+
+  it('rejects a non-boolean instead of silently coercing it', () => {
+    expect(Result.isFailure(decodeConfig({ onlyGitTracked: 'true' }))).toBeTruthy()
+  })
+
+  it('is absent (not defaulted) when not specified — resolution, not decoding, applies the default', () => {
+    expect(Result.getOrThrow(decodeConfig({})).onlyGitTracked).toBeUndefined()
+  })
+})
+
 describe('formatConfigError()', () => {
   it('renders a Failure into a clear, file-scoped, actionable message', () => {
     const result = decodeConfig({ thresholdLins: 10 })
@@ -122,6 +137,7 @@ describe('the built-in defaults', () => {
       ignore: ['**/node_modules/**'],
       locale: 'en',
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },
+      onlyGitTracked: false,
       requireDirSummaries: true,
       roots: ['docs'],
       stampCommand: 'npx cairn check --summaries-only --stamp',

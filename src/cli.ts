@@ -19,6 +19,7 @@ import type { Overrides } from './config.ts'
 import { expandRoots, loadConfig, loadConfigWithSource, LOCALES } from './config.ts'
 import { AGENT_TARGETS, runInit } from './init/generate.ts'
 import { DocsFsLive } from './io/DocsFs.ts'
+import { GitFs, GitFsLive } from './io/Git.ts'
 import type { LinkCheckResult } from './program/links/CheckLinks.ts'
 import { checkLinks, formatLinkReport, linkExitCode } from './program/links/CheckLinks.ts'
 import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './program/links/CheckRefs.ts'
@@ -155,6 +156,25 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   }
 
   const absRoots = expandRoots(cwd, config.roots)
+
+  // Issue #48: a hard error, never a silent fallback — someone who enabled
+  // `onlyGitTracked` needs to know immediately if it isn't actually filtering
+  // anything (e.g. `git` missing, or `cwd` not a repository), not discover it
+  // later as an inexplicably-passing check.
+  const trackedFiles = config.onlyGitTracked
+    ? yield* Effect.gen(function* () {
+        const gitFs = yield* GitFs
+        return yield* gitFs.listTrackedFiles(cwd)
+      }).pipe(
+        Effect.mapError(
+          (error) =>
+            new CairnConfigError({
+              message: `cairn: onlyGitTracked is enabled but git is unavailable at ${cwd}: ${error.message}`,
+            }),
+        ),
+      )
+    : undefined
+
   const summaryArgs = {
     base: cwd,
     ignore: config.ignore,
@@ -162,6 +182,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     requireDirSummaries: config.requireDirSummaries,
     roots: absRoots,
     thresholdLines: config.thresholdLines,
+    ...(trackedFiles === undefined ? {} : { trackedFiles }),
   }
 
   let code = 0
@@ -178,7 +199,13 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   }
 
   if (config.checks.links && !parsed.summariesOnly) {
-    const links = yield* checkLinks({ base: cwd, fix: parsed.fix, ignore: config.ignore, roots: absRoots })
+    const links = yield* checkLinks({
+      base: cwd,
+      fix: parsed.fix,
+      ignore: config.ignore,
+      roots: absRoots,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
+    })
     linksResult = links
     if (!parsed.json) {
       yield* Console.log(formatLinkReport(links, { locale }).join('\n'))
@@ -392,6 +419,7 @@ cairn.pipe(
   Command.run({ version }),
   Effect.tapErrorTag('CairnConfigError', (error) => Console.error(error.message)),
   Effect.provide(DocsFsLive),
+  Effect.provide(GitFsLive),
   Effect.provide(NodeServices.layer),
   NodeRuntime.runMain,
 )
