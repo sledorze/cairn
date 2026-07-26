@@ -21,6 +21,7 @@ import { AGENT_TARGETS, runInit } from './init/generate.ts'
 import { DocsFsLive } from './io/DocsFs.ts'
 import type { LinkCheckResult } from './program/CheckLinks.ts'
 import { checkLinks, formatLinkReport, linkExitCode } from './program/CheckLinks.ts'
+import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './program/CheckRefs.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -66,6 +67,11 @@ const jsonOption = Flag.boolean('json').pipe(
 )
 const linksOnlyOption = Flag.boolean('links-only').pipe(Flag.withDescription('Check only Markdown links.'))
 const summariesOnlyOption = Flag.boolean('summaries-only').pipe(Flag.withDescription('Check only summary freshness.'))
+const refsOption = Flag.boolean('refs').pipe(
+  Flag.withDescription(
+    'Opt-in (issue #39 Scenario I, v1/whole-file): with --stamp, record each doc\'s real reference targets\' content hashes into .cairn/**; without --stamp, report any whose target content has drifted since — "may be stale," distinct from a broken link.',
+  ),
+)
 const configPathOption = Flag.string('config').pipe(
   Flag.withDescription('Path to a config file (default: .cairnrc.json / .cairnrc / package.json#cairn).'),
   Flag.optional,
@@ -119,6 +125,7 @@ interface CheckParsed {
   readonly locale: Option.Option<Locale>
   readonly migrateStamps: boolean
   readonly prune: boolean
+  readonly refs: boolean
   readonly root: readonly string[]
   readonly roots: readonly string[]
   readonly stamp: boolean
@@ -135,6 +142,14 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
 
   if (parsed.json && (parsed.stamp || parsed.migrateStamps)) {
     yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp/--migrate-stamps' }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+  if (parsed.json && parsed.refs) {
+    // --refs's own report isn't part of buildJsonReport's { summaries, links,
+    // exitCode } shape yet (v1, named as a follow-up) — reject rather than
+    // silently drop it from the JSON body while still letting it affect exitCode.
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --refs yet' }))
     yield* Effect.sync(() => (process.exitCode = 1))
     return
   }
@@ -233,6 +248,23 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     }
   }
 
+  if (parsed.refs) {
+    const refsArgs = { base: cwd, roots: absRoots }
+    if (parsed.stamp) {
+      const result = yield* stampRefs(refsArgs)
+      yield* Console.log(
+        pick(locale, {
+          en: `🔗 Stamped ${result.stamped} doc(s)' reference hash(es) (.cairn/** sidecar).`,
+          fr: `🔗 ${result.stamped} document(s) tamponné(s) (hachage des références, fichier annexe .cairn/**).`,
+        }),
+      )
+    } else {
+      const result = yield* checkRefs(refsArgs)
+      yield* Console.log(formatRefsReport(result, { locale }).join('\n'))
+      code = Math.max(code, refsExitCode(result))
+    }
+  }
+
   if (parsed.json) {
     const report = buildJsonReport({ links: linksResult, summaries: summariesResult })
     yield* Console.log(JSON.stringify(report, null, 2))
@@ -253,6 +285,7 @@ const checkConfigShape = {
   locale: localeOption,
   migrateStamps: migrateStampsOption,
   prune: pruneOption,
+  refs: refsOption,
   root: rootOption,
   roots: rootsArgs,
   stamp: stampOption,

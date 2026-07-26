@@ -1,0 +1,52 @@
+{
+  "refs": [
+    {
+      "hash": "716f6a983d82f34d23ce1823e067911c02f6a967fa2c5dfdddb66777649424db",
+      "target": "../src/core/DocSummaries.ts"
+    },
+    {
+      "hash": "40760324243bd270e5d092a20985e687f514adab0cafd121cea6d4016cf7b7f0",
+      "target": "../src/core/StampStore.ts"
+    },
+    {
+      "hash": "9428c1ea5fb82b7a980e6a92b3013b9a4e568ce4a95b08b22c90aecbf7b97daf",
+      "target": "../src/core/MarkdownLinks.ts"
+    },
+    {
+      "hash": "0511831488fb50bcd346b7b05e219ec6d92996d955f70867a7cc1c57a9b35015",
+      "target": "../src/core/SummaryTree.ts"
+    },
+    {
+      "hash": "d2fb651a2c9f94e3c699f2869a78afdcde3c261b00b5a461c1c6fcc390df1f98",
+      "target": "../src/core/glob.ts"
+    },
+    {
+      "hash": "c48e2b7c5dca32adafcad08a00b611d69b7135ca4b74dbdc21d2d0f8df005a45",
+      "target": "../src/core/Config.ts"
+    },
+    {
+      "hash": "35649cd7880012581a402acc7a940af2fef01828fdd460264f2ac722573ee3ae",
+      "target": "../src/io/DocsFs.ts"
+    },
+    {
+      "hash": "7045cdae921779da48885f2b24ecee03237db6247927b1d7424fe0bf2e10f923",
+      "target": "../src/program/CheckLinks.ts"
+    },
+    {
+      "hash": "1201966ba5c72844de6cf352c0e5bd313297cdb49683f54203d68210d08217e7",
+      "target": "../src/program/CheckSummaries.ts"
+    },
+    {
+      "hash": "ae71c02b41cf8a5f869a34620b07384977ce1f7c5837e9ca671a020163048717",
+      "target": "../src/program/locale.ts"
+    },
+    {
+      "hash": "c6d56b7c57d5f572f704916b6bf7ab09d6ce71586d5d8acd6bf08a20540b3dde",
+      "target": "../src/config.ts"
+    },
+    {
+      "hash": "8f8f5dc1773c724f8e0d9c4998f259e7cc1764ec11d348e3ad856fd6549948f5",
+      "target": "../src/cli.ts"
+    }
+  ]
+}
