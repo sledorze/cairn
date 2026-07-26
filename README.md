@@ -65,11 +65,47 @@ never writes into content either.
 | `cairn check --summaries-only --stamp`    | Rewrite the `.cairn/` sidecar hash of existing summaries, bottom-up       |
 | `cairn check --prune`                     | Delete orphan summaries and orphan `.cairn/` sidecars                     |
 | `cairn check --migrate-stamps`            | Optional: same self-healing `--stamp` already does, as its own named step |
+| `cairn check --refs --stamp`              | Opt-in: record each real reference target's content hash                  |
+| `cairn check --refs`                      | Opt-in: report references whose target content has drifted since          |
 | `cairn init --agent claude\|copilot\|all` | Scaffold agent guidance files                                             |
+
+### Link checking
+
+A dead link is only the most obvious way a reference rots. `cairn check` (or
+`--links-only`) verifies, for every relative Markdown link:
+
+- **The path resolves** — including targets _outside_ your configured `roots`, as long as
+  they stay inside the repository checkout (e.g. a doc in `docs/` linking to `../src/foo.ts`).
+  Nothing outside the checkout root is ever touched, even to check existence — this bound is
+  deliberate: CI runs over untrusted PR content, and an unbounded filesystem check would be
+  an existence oracle.
+- **The `#heading` fragment exists** — same-page (`[intro](#getting-started)`) and
+  cross-file (`[intro](./guide.md#getting-started)`), slugged the same way GitHub does.
+- **A `#L10`/`#L10-L20` line-fragment is in range**, for links to source files outside `roots`.
+
+A broken heading or out-of-range line reports with the reason (`path` / `anchor` / `line`)
+and, where possible, what's actually there (the target's real headings, or its real line
+count) — so fixing it doesn't require opening the target file first.
+
+`cairn check --refs` is a separate, **opt-in** signal, off by default and not part of the
+`path`/`anchor`/`line` checks above: it tracks the _content_ of what a link points to, not
+just whether the link resolves. `--refs --stamp` records a hash of every reference target;
+a later `--refs` run reports any that changed since — "this doc's claim about that file may
+be stale," distinct from a broken link (the link still resolves; what it once meant may not
+still hold). Still v1/experimental (whole-file hashing only — a one-line unrelated change to
+a large target file is reported the same as a change to the exact part being referenced).
 
 ### Upgrading from an older cairn
 
-Nothing to look up. If a summary still carries the old in-content
+**If you're upgrading past `0.3.0`**: link checking got stricter. Anchors and links outside
+`roots` were previously accepted unconditionally, whether or not they actually resolved —
+`cairn` simply never looked. If `cairn check` newly fails after upgrading, the links it's
+flagging were already broken; nothing about your docs changed, only the tool's ability to
+notice did. Fix the flagged link/anchor, or, if a genuine false positive (e.g. a symbol-level
+anchor like `x.ts#someExport` — deliberately never checked, see the source's own scenario
+notes), please open an issue.
+
+Nothing to look up for the summary/stamp side. If a summary still carries the old in-content
 `<!-- source-sha256: ... -->` comment, the ordinary `--stamp` command strips it and
 writes the `.cairn/` sidecar in the same run — automatically, every time. There is no
 separate migration step to discover: whatever `stampCommand` your repo already runs
