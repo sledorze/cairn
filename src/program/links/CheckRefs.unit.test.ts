@@ -68,6 +68,58 @@ describe('stampRefs() / checkRefs()', () => {
     expect(refsExitCode(result)).toBe(1)
   })
 
+  it('tracks several references in the SAME doc independently — one target drifting does not affect the others (the real docs/architecture.md shape)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/guide.md': { content: '# Guide\n\n## Getting Started\n', mtimeMs: 1 },
+      '/r/docs/index.md': {
+        content: [
+          '[a](../src/a.ts)',
+          '[b](../src/b.ts)',
+          '[c](../src/c.ts)',
+          '[guide](./guide.md#getting-started)',
+        ].join('\n'),
+        mtimeMs: 1,
+      },
+      '/r/src/a.ts': { content: 'export const a = 1\n', mtimeMs: 1 },
+      '/r/src/b.ts': { content: 'export const b = 1\n', mtimeMs: 1 },
+      '/r/src/c.ts': { content: 'export const c = 1\n', mtimeMs: 1 },
+    })
+    const stamped = await Effect.runPromise(stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    expect(stamped.stamped).toBe(1) // one sidecar for index.md, carrying all 4 refs
+
+    const before = await Effect.runPromise(checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    expect(before.stale).toEqual([])
+
+    // Only `b.ts` changes — a and c and the guide anchor must stay silent.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        yield* dfs.writeFile('/r/src/b.ts', 'export const b = 2 // changed\n')
+      }).pipe(Effect.provide(layer)),
+    )
+
+    const after = await Effect.runPromise(checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    expect(after.stale).toHaveLength(1)
+    expect(after.stale[0]?.file).toBe('/r/docs/index.md')
+    // Exactly the ONE drifted reference — not a, not c, not the guide anchor.
+    expect(after.stale[0]?.refs).toEqual([
+      { currentHash: expect.any(String), recordedHash: expect.any(String), target: '../src/b.ts' },
+    ])
+
+    // Now change a SECOND target too — both, and only both, must be reported,
+    // each correctly paired with its OWN target/hash, not cross-mixed.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        yield* dfs.writeFile('/r/src/c.ts', 'export const c = 2 // also changed\n')
+      }).pipe(Effect.provide(layer)),
+    )
+    const afterTwo = await Effect.runPromise(checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    const byTarget = new Map(afterTwo.stale[0]?.refs.map((r) => [r.target, r]))
+    expect([...byTarget.keys()].toSorted()).toEqual(['../src/b.ts', '../src/c.ts'])
+    expect(byTarget.get('../src/b.ts')?.currentHash).not.toBe(byTarget.get('../src/c.ts')?.currentHash)
+  })
+
   it('preserves the anchor on a stale anchor-qualified reference', async () => {
     const layer = makeTestDocsFs({
       '/r/docs/guide.md': { content: '# Guide\n\n## Getting Started\n\nOld text.', mtimeMs: 1 },
