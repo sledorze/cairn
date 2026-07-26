@@ -146,6 +146,15 @@ separate migration step to discover: whatever `stampCommand` your repo already r
 already handles it. `--migrate-stamps` exists only as an optional, explicitly-named
 alias for the same behavior, for anyone who wants the cleanup reported as its own step.
 
+**If you're upgrading past `0.4.0`**: `cairn check --fix` now also auto-repairs a broken
+heading anchor (same-page and cross-file), not just a broken path — see "Broken-link
+auto-repair" above. This is a behavior change on the **existing** `--fix` flag, not a new
+opt-in one: if you already run `--fix` unattended in CI or a pre-commit hook expecting it to
+touch only link paths, it may now also rewrite an anchor fragment it can unambiguously
+match by case. The repair is narrow (exact case-insensitive match only, never fuzzy; an
+ambiguous or unmatched anchor is left alone and still reported), but review the diff on your
+first post-upgrade `--fix` run if that distinction matters to you.
+
 ## The two summary kinds
 
 **File summaries** — every Markdown file longer than the threshold (default 30 lines) gets
