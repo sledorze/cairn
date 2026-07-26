@@ -5,19 +5,24 @@ import { buildJsonReport } from './JsonReport.ts'
 describe('buildJsonReport()', () => {
   it('is 0 when both sections are clean', () => {
     const report = buildJsonReport({
-      links: { broken: [], checked: 3, fixed: 0 },
+      links: { broken: [], checked: 3, fixed: 0, unreadable: [] },
       summaries: { nodes: [], orphanStamps: [], orphans: [], todo: [] },
     })
     expect(report).toEqual({
       exitCode: 0,
-      links: { broken: [], checked: 3, fixed: 0 },
+      links: { broken: [], checked: 3, fixed: 0, unreadable: [] },
       summaries: { nodes: [], orphanStamps: [], orphans: [], todo: [] },
     })
   })
 
   it('is 1 when links are broken, even if summaries are clean', () => {
     const report = buildJsonReport({
-      links: { broken: [{ file: '/r/a.md', links: [{ target: './gone.md', text: 'gone' }] }], checked: 1, fixed: 0 },
+      links: {
+        broken: [{ file: '/r/a.md', links: [{ target: './gone.md', text: 'gone' }] }],
+        checked: 1,
+        fixed: 0,
+        unreadable: [],
+      },
       summaries: { nodes: [], orphanStamps: [], orphans: [], todo: [] },
     })
     expect(report.exitCode).toBe(1)

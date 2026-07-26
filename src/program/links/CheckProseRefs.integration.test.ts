@@ -82,4 +82,31 @@ describe('checkProseRefs() against the real filesystem (DocsFsLive)', () => {
     }
     expect(result.broken).toEqual([])
   })
+
+  // Found via adversarial "no unhandled exception" review: a doc that lists
+  // fine but can't be READ used to crash the whole run — `dfs.readFile` on
+  // the primary scan is `Effect.orDie`-wrapped. Skipped when running as
+  // root/Windows (permission bits aren't enforced the same way).
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+  it.skipIf(!supportsPosixPermissions)('skips a permission-denied doc instead of crashing', async () => {
+    const p = project('proserefs-unreadable', {
+      'docs/a.md': 'See `src/gone-a.ts` for details.',
+      'docs/b.md': 'See `src/gone-b.ts` for details.',
+      // `src/` must exist at the repo root for a candidate's first
+      // segment to pass the false-positive guard (see CheckProseRefs.ts's
+      // `resolveOne`) — this file itself is otherwise irrelevant.
+      'src/present.ts': 'export {}',
+    })
+    const bPath = path.join(p.root, 'docs', 'b.md')
+    fs.chmodSync(bPath, 0o000)
+    try {
+      const result = await checkDocs(p)
+      const flaggedFiles = result.broken.map((f) => f.file)
+      expect(flaggedFiles).toContain(path.join(p.root, 'docs', 'a.md'))
+      expect(flaggedFiles).not.toContain(bPath)
+    } finally {
+      fs.chmodSync(bPath, 0o644)
+    }
+  })
 })

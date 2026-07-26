@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -80,4 +81,39 @@ describe('checkSummaries() + GitFsLive against a real git repository', () => {
     expect(todoPathsWithTracking.some((f) => f.endsWith('scratch-notes.summary.md'))).toBeFalsy()
     expect(todoPathsWithTracking.some((f) => f.endsWith('committed.summary.md'))).toBeTruthy()
   })
+
+  // Found via adversarial "no unhandled exception" review: a doc that lists
+  // fine but can't be READ (permission denied) used to crash the whole run
+  // with a raw internal PlatformError stack trace — `dfs.readFile` on the
+  // primary scan is `Effect.orDie`-wrapped. Skipped when running as root
+  // (bypasses Unix permission bits) or on Windows (`chmod` doesn't enforce
+  // POSIX bits).
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+  it.skipIf(!supportsPosixPermissions)(
+    'a permission-denied doc is silently excluded from the plan, not a crash',
+    async () => {
+      const p = project('summaries-unreadable', {
+        'docs/a.md': big,
+        'docs/b.md': big,
+      })
+      const bPath = path.join(p.root, 'docs', 'b.md')
+      fs.chmodSync(bPath, 0o000)
+      try {
+        const result = await Effect.runPromise(
+          checkSummaries({ base: p.root, roots: [path.join(p.root, 'docs')], thresholdLines: 30 }).pipe(
+            Effect.provide(DocsFsLive),
+            Effect.provide(NodeServices.layer),
+          ),
+        )
+        const todoPaths = result.todo.map((n) => n.path)
+        // a.md is still readable and still correctly flagged; b.md is
+        // silently excluded (unreadable) rather than crashing the run.
+        expect(todoPaths.some((f) => f.endsWith('a.summary.md'))).toBeTruthy()
+        expect(todoPaths.some((f) => f.endsWith('b.summary.md'))).toBeFalsy()
+      } finally {
+        fs.chmodSync(bPath, 0o644)
+      }
+    },
+  )
 })

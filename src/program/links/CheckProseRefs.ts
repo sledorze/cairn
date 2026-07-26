@@ -142,7 +142,14 @@ export const checkProseRefs = ({
 
     const broken: FileBrokenProseRefs[] = []
     for (const file of mdFiles) {
-      const content = yield* dfs.readFile(file)
+      // Found via adversarial "no unhandled exception" review: a doc that
+      // lists fine but can't be READ (permission denied) must not crash the
+      // whole run — skipped exactly like an untracked/ignored file already
+      // is, same discipline as `CheckSummaries.ts`'s own `readMarkdown` fix.
+      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+      if (content === null) {
+        continue
+      }
       const candidates = extractProseRefs(content)
       if (candidates.length === 0) {
         continue

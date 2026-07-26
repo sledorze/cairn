@@ -7,13 +7,13 @@ import { applyFixesToFile, checkLinks, formatLinkReport, linkExitCode } from './
 
 describe('formatLinkReport()', () => {
   it('reports success with the checked count (English by default)', () => {
-    expect(formatLinkReport({ broken: [], checked: 7, fixed: 0 })).toEqual([
+    expect(formatLinkReport({ broken: [], checked: 7, fixed: 0, unreadable: [] })).toEqual([
       '✅ Markdown links OK (7 file(s) checked).',
     ])
   })
 
   it('localises to French when asked', () => {
-    expect(formatLinkReport({ broken: [], checked: 7, fixed: 0 }, { locale: 'fr' })).toEqual([
+    expect(formatLinkReport({ broken: [], checked: 7, fixed: 0, unreadable: [] }, { locale: 'fr' })).toEqual([
       '✅ Liens Markdown OK (7 fichier(s) vérifié(s)).',
     ])
   })
@@ -23,6 +23,7 @@ describe('formatLinkReport()', () => {
       broken: [{ file: 'a.md', links: [{ suggestion: '../b/x.md', target: './x.md', text: 't' }] }],
       checked: 3,
       fixed: 1,
+      unreadable: [],
     })
     expect(lines[0]).toBe('🔧 Auto-repaired 1 link(s).')
     expect(lines).toContain('  a.md')
@@ -37,6 +38,7 @@ describe('formatLinkReport()', () => {
       broken: [{ file: 'a.md', links: [{ reason: 'anchor', target: './b.md#nope', text: 't' }] }],
       checked: 1,
       fixed: 0,
+      unreadable: [],
     })
     expect(lines.at(-1)).toBe('    ✗ [t](./b.md#nope) (heading/anchor not found)')
   })
@@ -46,6 +48,7 @@ describe('formatLinkReport()', () => {
       broken: [{ file: 'a.md', links: [{ reason: 'line', target: '../x.ts#L999', text: 't' }] }],
       checked: 1,
       fixed: 0,
+      unreadable: [],
     })
     expect(lines.at(-1)).toBe('    ✗ [t](../x.ts#L999) (line number out of range)')
   })
@@ -61,6 +64,7 @@ describe('formatLinkReport()', () => {
       ],
       checked: 1,
       fixed: 0,
+      unreadable: [],
     })
     expect(lines.at(-1)).toBe('    ✗ [t](./b.md#nope) (heading/anchor not found — available anchors: intro, setup)')
   })
@@ -72,6 +76,7 @@ describe('formatLinkReport()', () => {
       ],
       checked: 1,
       fixed: 0,
+      unreadable: [],
     })
     expect(lines.at(-1)).toBe('    ✗ [t](../x.ts#L999) (line number out of range — target has 5 lines)')
   })
@@ -81,8 +86,38 @@ describe('formatLinkReport()', () => {
       broken: [{ file: 'a.md', links: [{ reason: 'path', target: './ghost.md', text: 't' }] }],
       checked: 1,
       fixed: 0,
+      unreadable: [],
     })
     expect(lines.at(-1)).toBe('    ✗ [t](./ghost.md) (no unique target)')
+  })
+
+  // Found via adversarial "no unhandled exception" review — a permission-
+  // denied doc must be reported clearly, never silently, and never crash.
+  it('reports unreadable files, and does NOT print the success line when any exist', () => {
+    const lines = formatLinkReport({ broken: [], checked: 1, fixed: 0, unreadable: ['docs/b.md'] })
+    expect(lines).toEqual(['⚠️  1 file(s) could not be read (permission denied?):', '  ✗ docs/b.md'])
+  })
+
+  it('reports both unreadable files AND broken links together', () => {
+    const lines = formatLinkReport({
+      broken: [{ file: 'a.md', links: [{ reason: 'path', target: './ghost.md', text: 't' }] }],
+      checked: 1,
+      fixed: 0,
+      unreadable: ['docs/b.md'],
+    })
+    expect(lines[0]).toBe('⚠️  1 file(s) could not be read (permission denied?):')
+    expect(lines[1]).toBe('  ✗ docs/b.md')
+    expect(lines.at(-1)).toBe('    ✗ [t](./ghost.md) (no unique target)')
+  })
+})
+
+describe('linkExitCode()', () => {
+  it('is 1 when there are unreadable files, even with zero broken links', () => {
+    expect(linkExitCode({ broken: [], checked: 1, fixed: 0, unreadable: ['docs/b.md'] })).toBe(1)
+  })
+
+  it('is 0 when both broken and unreadable are empty', () => {
+    expect(linkExitCode({ broken: [], checked: 1, fixed: 0, unreadable: [] })).toBe(0)
   })
 })
 
@@ -94,18 +129,18 @@ describe('applyFixesToFile()', () => {
   it('reports links unchanged when fix is off, even with a suggestion available', () => {
     const links = [{ suggestion: '../b/x.md', target: './x.md', text: 't' }]
     const result = applyFixesToFile('[t](./x.md)', links, false)
-    expect(result).toEqual({ content: '[t](./x.md)', fixed: 0, remaining: links })
+    expect(result).toEqual({ changed: false, content: '[t](./x.md)', fixed: 0, remaining: links })
   })
 
   it('applies a single unambiguous fix', () => {
     const result = applyFixesToFile('[t](./x.md)', [{ suggestion: '../b/x.md', target: './x.md', text: 't' }], true)
-    expect(result).toEqual({ content: '[t](../b/x.md)', fixed: 1, remaining: [] })
+    expect(result).toEqual({ changed: true, content: '[t](../b/x.md)', fixed: 1, remaining: [] })
   })
 
   it('leaves a link with no suggestion unfixed, reported in `remaining`', () => {
     const link = { reason: 'path' as const, target: './ghost.md', text: 't' }
     const result = applyFixesToFile('[t](./ghost.md)', [link], true)
-    expect(result).toEqual({ content: '[t](./ghost.md)', fixed: 0, remaining: [link] })
+    expect(result).toEqual({ changed: false, content: '[t](./ghost.md)', fixed: 0, remaining: [link] })
   })
 
   // The direct regression test for issue #49's dimension-coverage fix — the
@@ -118,10 +153,32 @@ describe('applyFixesToFile()', () => {
     ]
     const result = applyFixesToFile(content, links, true)
     expect(result).toEqual({
+      changed: true,
       content: 'First: [a](../b/x.md) Second: [b](../b/x.md)',
       fixed: 2,
       remaining: [],
     })
+  })
+
+  // Found via adversarial review of this very extraction: `applyFix` reports
+  // `changed: true` whenever it performed a literal replace, even when the
+  // replacement text is IDENTICAL to the original (target === suggestion) —
+  // a textual no-op that still "succeeded." The caller in `checkLinks` must
+  // decide whether to write the file from `changed` (this field), NOT from
+  // comparing `content` to the original string — those two signals can
+  // legitimately disagree, and only `changed` reflects what `applyFix`
+  // itself considers a successful repair. (`target === suggestion` cannot
+  // arise from `suggestFix`/`suggestAnchorFix` in real usage — a suggestion
+  // is only ever produced for something that currently fails resolution,
+  // while the target this exact case models already resolves — but nothing
+  // in the type system prevents a future/differently-sourced `BrokenLink`
+  // from doing it, so this pins the contract explicitly rather than leaving
+  // it as an unstated invariant.)
+  it('reports `changed: true` even when the suggestion is textually identical to the target (a no-op replace)', () => {
+    const result = applyFixesToFile('[t](./x.md)', [{ suggestion: './x.md', target: './x.md', text: 't' }], true)
+    expect(result.changed).toBeTruthy()
+    expect(result.fixed).toBe(1)
+    expect(result.content).toBe('[t](./x.md)') // textually unchanged, but still a "successful" fix
   })
 
   it('fixes the SAME target repeated three times', () => {
@@ -157,9 +214,13 @@ describe('applyFixesToFile()', () => {
     expect(result.content).toBe('[a](../b/x.md) [b](./ghost.md)')
   })
 
-  it('returns the original content object-equal (by value) when nothing was fixed', () => {
+  // Distinct from the "no suggestion" test above: this exercises an empty
+  // `links` array specifically, confirming `changed` stays `false` — the
+  // signal `checkLinks` uses to decide whether to call `dfs.writeFile` at
+  // all — not just that `content`/`remaining` happen to look untouched.
+  it('reports `changed: false` for an empty links array (nothing to touch at all)', () => {
     const result = applyFixesToFile('no links here', [], true)
-    expect(result).toEqual({ content: 'no links here', fixed: 0, remaining: [] })
+    expect(result).toEqual({ changed: false, content: 'no links here', fixed: 0, remaining: [] })
   })
 })
 

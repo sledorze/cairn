@@ -100,7 +100,23 @@ const readMarkdown = (
       // untracked-only directory also never becomes "in scope, needs a
       // `_SUMMARY.md`" in the first place.
       if (file.endsWith('.md') && (trackedFiles === undefined || trackedFiles.has(file))) {
-        files.set(file, yield* dfs.readFile(file))
+        // Found via adversarial "no unhandled exception" review: a doc that
+        // successfully LISTS but can't actually be READ (permission denied,
+        // revoked between listing and reading) must not crash the whole run
+        // — `dfs.readFile` is `Effect.orDie`-wrapped, so this reaches the
+        // DEFECT channel. Skipped exactly like an untracked/ignored file
+        // already is — the pure planner then reasonably reads it as "not
+        // present" rather than the whole `cairn check` dying over one
+        // unreadable doc. (Narrower than `CheckLinks.ts`'s own fix for the
+        // identical failure mode, which additionally surfaces a distinct,
+        // exit-code-affecting `unreadable` report — deliberately not
+        // replicated here, since `SummaryPlan`'s shape is pure/IO-agnostic
+        // by design and widely consumed; named as a real, scoped-out
+        // follow-up rather than silently matched in richness.)
+        const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+        if (content !== null) {
+          files.set(file, content)
+        }
       }
     }
     return files
