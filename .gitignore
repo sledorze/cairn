@@ -3,4 +3,6 @@ dist
 *.tsbuildinfo
 .turbo
 coverage
+.stryker-tmp
+reports
 /.scratch/

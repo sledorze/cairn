@@ -54,13 +54,34 @@ pre-push:
     checks:
       priority: 1
       run: pnpm typecheck && pnpm test && pnpm build
-    docs:
+    # Coverage ratchet, local-only (not run in CI — see ci.yml, which calls
+    # plain `pnpm test`): fails only if coverage regresses below the
+    # thresholds committed in vitest.config.ts; autoUpdate means those
+    # numbers self-raise as coverage improves, so this never needs manual
+    # bumping to stay meaningful.
+    coverage:
       priority: 2
+      run: pnpm coverage
+    docs:
+      priority: 3
       run: pnpm check
     # Perf regression gate: only runs when a hot-path file changed (see
     # scripts/bench-guard.sh), comparing the push's base ref against HEAD in a
     # scratch worktree on this machine — a same-runner, back-to-back comparison
     # so the threshold can be tight without CI-noise false positives.
     bench:
-      priority: 3
+      priority: 4
       run: ./scripts/bench-guard.sh
+    # Mutation testing gate, local-only, same reasoning as `coverage` above —
+    # a passing test suite can still be worthless if it never actually
+    # exercises the assertions that would catch a real bug (a line/branch
+    # counted "covered" by `coverage` above only proves the line RAN, not
+    # that any test would fail if its logic were wrong). Runs in `inPlace`
+    # mode (see stryker.config.json for why) — mutates real files one at a
+    # time, backs up to `.stryker-tmp/`, restores after every run; safe to
+    # interrupt, but avoid pushing with uncommitted changes mid-run.
+    # ~90s on this codebase's current size — real, not free, cost accepted
+    # deliberately for a "serious" mutation-score gate.
+    mutation:
+      priority: 5
+      run: pnpm mutation
