@@ -43,7 +43,19 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
+          # NOT `registry-url: 'https://registry.npmjs.org'`: passing it makes
+          # setup-node write its own temp .npmrc keyed to `NODE_AUTH_TOKEN` and point
+          # `NPM_CONFIG_USERCONFIG` at it — which silently shadows the separate
+          # .npmrc changesets/action writes from `NPM_TOKEN` below, for every
+          # subsequent npm/pnpm invocation in this job (including the actual `npm
+          # publish` inside `changeset publish`). Confirmed via a real failed run:
+          # publish went out unauthenticated (the shadowing file's `${NODE_AUTH_TOKEN}`
+          # placeholder never resolves, since only `NPM_TOKEN` is set), and npm
+          # returned a misleading `404 Not Found` instead of a permission error (its
+          # documented behaviour for an unauthenticated request against a package
+          # that DOES already exist on the registry). changesets/action manages its
+          # own registry auth entirely from `NPM_TOKEN` and needs no help from
+          # setup-node here.
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
       # Pinned to the exact tag, not a floating major (`@v1`/`@v2`): confirmed directly
