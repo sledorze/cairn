@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import type { Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { hashContent } from '../core/DocSummaries.ts'
 import { DocsFs, makeTestDocsFs } from '../io/DocsFs.ts'
 import {
   checkSummaries,
@@ -170,6 +171,43 @@ describe('checkSummaries()', () => {
     )
     expect(plan.orphanStamps).toContain('/r/docs/a.summary.md')
   })
+
+  it('reads sidecars across MULTIPLE configured roots correctly (S5, at the program level)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf('# résumé de a'),
+      '/r/packages/x/docs/_SUMMARY.md': tf('Voir [b](./b.md)'),
+      '/r/packages/x/docs/b.md': tf(big),
+      '/r/packages/x/docs/b.summary.md': tf('# résumé de b'),
+    })
+    await Effect.runPromise(
+      stampSummaries({ base, roots: ['/r/docs', '/r/packages/x/docs'], thresholdLines: 30 }).pipe(
+        Effect.provide(layer),
+      ),
+    )
+    const plan = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs', '/r/packages/x/docs'], thresholdLines: 30 }).pipe(
+        Effect.provide(layer),
+      ),
+    )
+    expect(plan.todo).toEqual([])
+    expect(summaryExitCode(plan)).toBe(0)
+
+    // Editing only ONE root's source must not perturb the other root's freshness.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        yield* dfs.writeFile('/r/docs/a.md', `${big}\nmore`)
+      }).pipe(Effect.provide(layer)),
+    )
+    const afterEdit = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs', '/r/packages/x/docs'], thresholdLines: 30 }).pipe(
+        Effect.provide(layer),
+      ),
+    )
+    expect(afterEdit.todo.map((n) => n.path)).toEqual(['/r/docs/a.summary.md'])
+  })
 })
 
 describe('explainSummaries()', () => {
@@ -210,6 +248,23 @@ describe('explainSummaries()', () => {
       explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(lines).toEqual(['Nothing to explain — all summaries are fresh.'])
+  })
+
+  it('shows the REAL recorded hash (from the sidecar), not just "none", for a genuinely stale node', async () => {
+    const layer = makeTestDocsFs({
+      '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${'0'.repeat(64)}","version":1}`),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf('# résumé de a'),
+    })
+    const lines = await Effect.runPromise(
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    const text = lines.join('\n')
+    expect(text).toContain('file /r/docs/a.summary.md (stale):')
+    // The file node's own line must show the REAL recorded hash from the sidecar,
+    // not "none" — the dir node below it is separately "missing" (no _SUMMARY.md
+    // authored in this fixture) and legitimately still says "recorded none".
+    expect(text).toContain(`expected ${hashContent(big).slice(0, 8)}…  recorded ${'0'.repeat(8)}…`)
   })
 })
 
@@ -273,6 +328,30 @@ describe('stampSummaries()', () => {
     )
     expect(after.todo).toEqual([])
     expect(summaryExitCode(after)).toBe(0)
+  })
+
+  it('never strips the legacy pattern from a SOURCE doc — only from files classified as summaries', async () => {
+    // A source doc's own prose can legitimately contain the literal
+    // `<!-- source-sha256: <64hex> -->` text (e.g. a doc documenting cairn's own
+    // former stamp format, with a real-looking example). stampFiles must treat
+    // that as ordinary content, never as tool metadata to strip — a real bug
+    // found by adversarial review: the strip loop originally ran over EVERY
+    // markdown file `readMarkdown` returned, not just files classified as
+    // summaries, so a source doc containing this exact text got silently
+    // mutated by an ordinary `--stamp` run.
+    const sourceDocWithLegitimateExample = `${big}\n\n## Example\n\n<!-- source-sha256: ${'a'.repeat(64)} -->\n\nThis is what the OLD stamp looked like, for historical reference.\n`
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
+      '/r/docs/a.md': tf(sourceDocWithLegitimateExample),
+      '/r/docs/a.summary.md': tf('# résumé de a'),
+    })
+
+    const result = await Effect.runPromise(
+      stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(result.migrated).toBe(0) // no SUMMARY file had a legacy stamp to strip
+
+    await expect(readBack(layer, '/r/docs/a.md')).resolves.toBe(sourceDocWithLegitimateExample)
   })
 
   it('stamps authored summaries bottom-up, writing sidecars and leaving content byte-identical (S1)', async () => {

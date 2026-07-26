@@ -84,3 +84,38 @@ If your PR is a user-facing change (not docs-only, not internal tooling with no 
 on the published package), run `pnpm changeset` and commit the generated file alongside
 your change. Not enforced by CI — a missing changeset just means that change won't show
 up in the next changelog, not a build failure.
+
+# Content-mutation safety (writing to files this codebase doesn't fully own)
+
+Any code path that WRITES BACK to a file the user authored — not a `.cairn/**` sidecar,
+not a build artifact, an actual doc/source file — must scope _which files it's allowed to
+touch_ structurally (by path/role classification: is this a summary? a managed artifact?),
+**never by a content-pattern match alone**. A regex/string match against file content can
+legitimately fire on a file that isn't the kind of file the operation is meant for — e.g. a
+doc that _documents_ one of cairn's own formats, with a real-looking example of it in prose.
+Scoping by content alone will silently mutate that doc's real, authored content, which is
+exactly the "silently checks/changes the wrong thing" failure class this whole tool exists
+to prevent, now committed by the tool itself.
+
+Concrete incident this rule generalises from: `CheckSummaries.ts`'s `stampFiles` originally
+stripped a legacy `<!-- source-sha256 -->` comment from **every** markdown file it read,
+scoped only by "does the content match `HASH_RE`" — with no check that the file was actually
+a summary. A source doc whose own prose legitimately contained that exact comment (e.g. one
+explaining cairn's old stamp format) had it silently deleted by an ordinary `--stamp` run.
+Fixed by additionally requiring `isSummaryFile(p, naming) || isDirSummary(p, naming)` before
+ever stripping — content-pattern match is necessary, never sufficient, to justify a write.
+
+The positive example already in this codebase: `CheckLinks.ts`'s `--fix` never scans file
+content for a bare pattern — it rewrites only a specific link's target, recovered via
+_structured_ extraction (`checkContent`/`extractLinks`) and only when the replacement was
+independently verified unambiguous (`applyFix`). That's the shape to match: identify the
+exact structural element you're allowed to touch first, then mutate only that, never "find
+this pattern anywhere and replace it."
+
+**When you add or review any new write path** (a new `--fix`-like flag, a new migration, a
+new auto-repair): ask "what stops this from firing on a file it wasn't meant for?" If the
+answer is only "the content happened to match," that's not yet a real answer. And pair the
+fix with a NEGATIVE test — not just "the target file gets fixed correctly," but "an
+adjacent, superficially-similar file is provably left untouched" (see
+`CheckSummaries.unit.test.ts`'s "never strips the legacy pattern from a SOURCE doc" test for
+the pattern to copy).

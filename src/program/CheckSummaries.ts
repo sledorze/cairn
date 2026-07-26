@@ -13,9 +13,9 @@ import { Effect } from 'effect'
 
 import { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 import type { Naming } from '../core/DocSummaries.ts'
-import { countLines, stripSourceHash } from '../core/DocSummaries.ts'
+import { countLines, isSummaryFile, stripSourceHash } from '../core/DocSummaries.ts'
 import type { PlanArgs, PlanNode, SummaryPlan } from '../core/SummaryTree.ts'
-import { nodeExpectedHash, planSummaries } from '../core/SummaryTree.ts'
+import { isDirSummary, nodeExpectedHash, planSummaries } from '../core/SummaryTree.ts'
 import type { MetaLayout } from '../core/StampStore.ts'
 import {
   metaRootFor,
@@ -314,8 +314,18 @@ const stampFiles = (files: Map<string, string>, args: CheckSummariesArgs): Effec
     const dfs = yield* DocsFs
     const layout = layoutFor(args.base)
 
+    // Only ever strips a SUMMARY file's own legacy stamp — never a plain source
+    // doc. A source doc's prose can legitimately contain the literal
+    // `<!-- source-sha256: <64hex> -->` text (e.g. a doc that documents cairn's
+    // OWN former stamp format, with a real-looking example) — that text is the
+    // user's content, not tool metadata, and `stampFiles` must never touch it.
+    // Restricting to `isSummaryFile`/`isDirSummary` is what keeps "the tool
+    // never writes into content" true for every file it doesn't own.
     let migrated = 0
     for (const [p, content] of files) {
+      if (!isSummaryFile(p, args.naming) && !isDirSummary(p, args.naming)) {
+        continue
+      }
       const stripped = stripSourceHash(content)
       if (stripped !== content) {
         files.set(p, stripped)

@@ -84,6 +84,32 @@ describe('planSummaries() with requireDirSummaries: false', () => {
     })
     expect(plan.orphans).toEqual([])
   })
+
+  it('still reads freshness from the stamps map (the early-return branch must not skip stamp lookup)', () => {
+    const files = new Map<string, string>([
+      ['/r/docs/sub/a.md', big],
+      ['/r/docs/sub/a.summary.md', '# résumé'],
+    ])
+    const expectedHash = planSummaries({ files, requireDirSummaries: false, roots: ['/r/docs'], thresholdLines: 30 })
+      .nodes[0]?.expectedHash
+    const stamps = new Map([['/r/docs/sub/a.summary.md', expectedHash ?? '']])
+    const plan = planSummaries({ files, requireDirSummaries: false, roots: ['/r/docs'], stamps, thresholdLines: 30 })
+    expect(plan.nodes[0]?.status).toBe('ok')
+    expect(plan.todo).toEqual([])
+  })
+
+  it('flags a deleted-source stamp even with requireDirSummaries: false', () => {
+    const stamps = new Map([['/r/docs/sub/a.summary.md', 'x'.repeat(64)]])
+    const noFiles = new Map<string, string>()
+    const plan = planSummaries({
+      files: noFiles,
+      requireDirSummaries: false,
+      roots: ['/r/docs'],
+      stamps,
+      thresholdLines: 30,
+    })
+    expect(plan.orphanStamps).toEqual(['/r/docs/sub/a.summary.md'])
+  })
 })
 
 describe('planSummaries() orphan detection', () => {
