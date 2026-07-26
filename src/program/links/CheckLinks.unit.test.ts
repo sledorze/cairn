@@ -1,8 +1,8 @@
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { DocsFsService } from '../io/DocsFs.ts'
-import { DocsFs, makeTestDocsFs } from '../io/DocsFs.ts'
+import type { DocsFsService } from '../../io/DocsFs.ts'
+import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import { checkLinks, formatLinkReport, linkExitCode } from './CheckLinks.ts'
 
 describe('formatLinkReport()', () => {

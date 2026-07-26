@@ -2,8 +2,8 @@ import { Effect } from 'effect'
 import type { Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { hashContent } from '../core/DocSummaries.ts'
-import { DocsFs, makeTestDocsFs } from '../io/DocsFs.ts'
+import { hashContent } from '../../core/hashing.ts'
+import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import {
   checkSummaries,
   explainSummaries,

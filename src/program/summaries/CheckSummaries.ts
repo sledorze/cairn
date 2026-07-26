@@ -5,31 +5,25 @@
 //     content — see StampStore.ts).
 //  - `migrateStamps`    -> one-off: strips the legacy in-content stamp from
 //     every summary, then runs the sidecar stamp pass over the stripped tree.
-// Pure planning lives in ../core/SummaryTree.ts; freshness primitives in
-// ../core/DocSummaries.ts; sidecar path mapping + (de)serialisation in
-// ../core/StampStore.ts.
+// Pure planning lives in ../../core/summaries/SummaryTree.ts; freshness
+// primitives in ../../core/summaries/DocSummaries.ts; sidecar path mapping +
+// (de)serialisation in ../../core/summaries/StampStore.ts.
 
 import { Effect } from 'effect'
 
-import { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
-import type { Naming } from '../core/DocSummaries.ts'
-import { countLines, isSummaryFile, stripSourceHash } from '../core/DocSummaries.ts'
-import type { PlanArgs, PlanNode, SummaryPlan } from '../core/SummaryTree.ts'
-import { isDirSummary, nodeExpectedHash, planSummaries } from '../core/SummaryTree.ts'
-import type { MetaLayout } from '../core/StampStore.ts'
-import {
-  metaRootFor,
-  nodePathForSidecar,
-  parseStamp,
-  serializeStamp,
-  sidecarPathFor,
-  STAMP_VERSION,
-} from '../core/StampStore.ts'
-import { DocsFs } from '../io/DocsFs.ts'
-import type { Locale } from './locale.ts'
-import { enOnly, pick } from './locale.ts'
+import { DEFAULT_STAMP_COMMAND } from '../../core/Config.ts'
+import type { Naming } from '../../core/summaries/DocSummaries.ts'
+import { countLines, isSummaryFile, stripSourceHash } from '../../core/summaries/DocSummaries.ts'
+import { parseStamp, serializeStamp, STAMP_VERSION } from '../../core/summaries/StampStore.ts'
+import type { PlanArgs, PlanNode, SummaryPlan } from '../../core/summaries/SummaryTree.ts'
+import { isDirSummary, nodeExpectedHash, planSummaries } from '../../core/summaries/SummaryTree.ts'
+import type { MetaLayout } from '../../core/sidecar.ts'
+import { metaRootFor, nodePathForSidecar, sidecarPathFor } from '../../core/sidecar.ts'
+import { DocsFs } from '../../io/DocsFs.ts'
+import type { Locale } from '../locale.ts'
+import { enOnly, pick } from '../locale.ts'
 
-export { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
+export { DEFAULT_STAMP_COMMAND } from '../../core/Config.ts'
 
 export interface CheckSummariesArgs {
   /** Project root every root/node path and every `.cairn/**` sidecar is
@@ -397,5 +391,5 @@ export const pruneOrphans = (args: CheckSummariesArgs): Effect.Effect<number, ne
   })
 
 // Re-exported so callers can recognise summary files without importing two modules.
-export { isSummaryFile } from '../core/DocSummaries.ts'
-export { isDirSummary } from '../core/SummaryTree.ts'
+export { isSummaryFile } from '../../core/summaries/DocSummaries.ts'
+export { isDirSummary } from '../../core/summaries/SummaryTree.ts'

@@ -1,43 +1,51 @@
 {
   "refs": [
     {
-      "hash": "716f6a983d82f34d23ce1823e067911c02f6a967fa2c5dfdddb66777649424db",
-      "target": "../src/core/DocSummaries.ts"
+      "hash": "96cb734e0c464233e663f02422d448cdd437807cc60f095f45ecd97f3357322c",
+      "target": "../src/core/summaries/DocSummaries.ts"
     },
     {
-      "hash": "40760324243bd270e5d092a20985e687f514adab0cafd121cea6d4016cf7b7f0",
-      "target": "../src/core/StampStore.ts"
+      "hash": "57ae2be7c096b6a5be5ccbcb89cdd5dfe20d1662c8f50c383f439d0507a95dec",
+      "target": "../src/core/summaries/StampStore.ts"
     },
     {
-      "hash": "a4f41e3910beeb30ad9ba77a0c62b896c62eb0595607d21845f91fc961f3cfc5",
-      "target": "../src/core/RefStore.ts"
+      "hash": "0200a050968773e14ba0e26c2ffa7087ce73d3b021f1d61b97c3a720839b84e2",
+      "target": "../src/core/summaries/SummaryTree.ts"
     },
     {
       "hash": "9428c1ea5fb82b7a980e6a92b3013b9a4e568ce4a95b08b22c90aecbf7b97daf",
-      "target": "../src/core/MarkdownLinks.ts"
+      "target": "../src/core/links/MarkdownLinks.ts"
     },
     {
       "hash": "89595f965614412b52c83f991e5f9ab18e4efd221f9aa1d4a1988d3369176d83",
-      "target": "../src/core/Anchors.ts"
+      "target": "../src/core/links/Anchors.ts"
     },
     {
       "hash": "5bfa685863110627c84b684b290e472a2d0e3b4f9ea51dee0e44de66040caaf4",
-      "target": "../src/core/markdownFences.ts"
+      "target": "../src/core/links/markdownFences.ts"
     },
     {
-      "hash": "0511831488fb50bcd346b7b05e219ec6d92996d955f70867a7cc1c57a9b35015",
-      "target": "../src/core/SummaryTree.ts"
+      "hash": "313e94fa17add2642380c1ae0eef34ace377bc901d763536f685bb89697841aa",
+      "target": "../src/core/links/RefStore.ts"
+    },
+    {
+      "hash": "fc3aea5b9b26e13c98480fec4eddf2184a955b882884b22c5b2aa1a1626d88a1",
+      "target": "../src/core/sidecar.ts"
+    },
+    {
+      "hash": "e033e31f57a588f9c232cd17e35f8cb04e7ebbfa27d831137616e5a135da0b08",
+      "target": "../src/core/hashing.ts"
     },
     {
       "hash": "d2fb651a2c9f94e3c699f2869a78afdcde3c261b00b5a461c1c6fcc390df1f98",
       "target": "../src/core/glob.ts"
     },
     {
-      "hash": "3ae2429b07bffb90c8c0836297e273b60f7540480cf1ede58dadbf14c167eadb",
+      "hash": "83bc2a978cc5dd3fc91b2438b9654805bc08b39cd95476c6b97d84119a3cc5ff",
       "target": "../src/core/paths.ts"
     },
     {
-      "hash": "c48e2b7c5dca32adafcad08a00b611d69b7135ca4b74dbdc21d2d0f8df005a45",
+      "hash": "080383f23981ff82e9996d4db0712cb8a497e89b2eaa5732b03d376a99bd843e",
       "target": "../src/core/Config.ts"
     },
     {
@@ -45,19 +53,19 @@
       "target": "../src/io/DocsFs.ts"
     },
     {
-      "hash": "7045cdae921779da48885f2b24ecee03237db6247927b1d7424fe0bf2e10f923",
-      "target": "../src/program/CheckLinks.ts"
+      "hash": "aeb697c208e588881579f926050550850c2681bc6a3ab1d412b6c7323b867a98",
+      "target": "../src/program/summaries/CheckSummaries.ts"
     },
     {
-      "hash": "65ab2af8c2783c1729c3add764e0ba55c05fe755c1c18cc63a6561bf93dfbf1a",
-      "target": "../src/program/CheckRefs.ts"
+      "hash": "7f0217596f24250e7e75611a3fe9baee03c2275ab29cfd6eb190704713ec826e",
+      "target": "../src/program/links/CheckLinks.ts"
     },
     {
-      "hash": "1201966ba5c72844de6cf352c0e5bd313297cdb49683f54203d68210d08217e7",
-      "target": "../src/program/CheckSummaries.ts"
+      "hash": "c07f0a7ef8a5adde20303bd34edae6d5c843d051cf50ddaa7363e4d31db00268",
+      "target": "../src/program/links/CheckRefs.ts"
     },
     {
-      "hash": "9fba9a4f2bf48a258be85c64828d7745139e354e4aba6c1444e8310c9c6f7c75",
+      "hash": "7dc9543c50bf97550d43212e04ddd56e680e185eaad27da82ae55edc0014b89f",
       "target": "../src/program/JsonReport.ts"
     },
     {
@@ -69,7 +77,7 @@
       "target": "../src/config.ts"
     },
     {
-      "hash": "8f8f5dc1773c724f8e0d9c4998f259e7cc1764ec11d348e3ad856fd6549948f5",
+      "hash": "82c4269d4cfd933f3120427a2523c1e8b01aaca8a15d32f883ab2a3e4254b2b7",
       "target": "../src/cli.ts"
     }
   ]

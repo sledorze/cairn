@@ -26,10 +26,11 @@
 
 import * as nodePath from 'node:path'
 
+import { extractLinks, isCheckableTarget, stripAnchor, stripCode } from '../links/MarkdownLinks.ts'
+import { matchesAny } from '../glob.ts'
+import { hashContent } from '../hashing.ts'
 import type { Naming, SummaryStatus } from './DocSummaries.ts'
-import { countLines, DEFAULT_NAMING, hashContent, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
-import { matchesAny } from './glob.ts'
-import { extractLinks, isCheckableTarget, stripAnchor, stripCode } from './MarkdownLinks.ts'
+import { countLines, DEFAULT_NAMING, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
 
 // POSIX path semantics so the plan is identical on every OS (inputs normalised
 // to `/` at the IO boundary).

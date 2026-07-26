@@ -11,7 +11,7 @@ export const toPosix = (p: string): string => p.replaceAll('\\', '/')
 
 /**
  * True when `candidate` resolves inside `base` (or equals it). The same
- * containment check `StampStore.ts`'s `sidecarPathFor`/`nodePathForSidecar`
+ * containment check `sidecar.ts`'s `sidecarPathFor`/`nodePathForSidecar`
  * use for sidecar paths — non-throwing here since callers (link-checking's
  * out-of-hierarchy targets, issue #39) need a boolean to decide "cannot
  * verify" from, not a programming-error signal.

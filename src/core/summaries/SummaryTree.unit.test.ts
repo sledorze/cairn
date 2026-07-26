@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { hashContent } from './DocSummaries.ts'
+import { hashContent } from '../hashing.ts'
 import { isDirSummary, planSummaries } from './SummaryTree.ts'
 
 const big = Array.from({ length: 40 }, (_, i) => `l${i}`).join('\n')
