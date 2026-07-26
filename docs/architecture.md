@@ -10,11 +10,14 @@ of the codebase.
 
 ## Layers
 
-1. **[`core/`](../src/core/) — pure decision logic (no IO; `node:` builtins and
+1. **[`core/`](../src/core/) — pure decision logic (no IO; `node:` builtins,
    `effect`'s pure, synchronous combinator modules — `Schema`, `Either`,
-   `ParseResult` — are the only dependencies allowed. Not `Effect`/`Layer`/
-   `Runtime`: those represent the scheduled, effectful part of the library and
-   belong in `program/`.).**
+   `ParseResult` — and small, vetted, IO-free pure-computation libraries
+   (currently: `github-slugger`, for `Anchors.ts`'s GitHub-compatible
+   heading slugs — a deterministic string transform, not a side effect) are
+   the only dependencies allowed. Not `Effect`/`Layer`/`Runtime`: those
+   represent the scheduled, effectful part of the library and belong in
+   `program/`.).**
    - [`DocSummaries.ts`](../src/core/DocSummaries.ts) — freshness primitives:
      content hashing, line counting, summary classification (`missing | ok |
 stale`), plus the legacy in-content stamp helpers kept only for the
@@ -22,8 +25,17 @@ stale`), plus the legacy in-content stamp helpers kept only for the
    - [`StampStore.ts`](../src/core/StampStore.ts) — the `.cairn/**` sidecar:
      path mapping between a node and its hidden hash record, and lenient
      (forward-compatible) (de)serialisation.
-   - [`MarkdownLinks.ts`](../src/core/MarkdownLinks.ts) — link extraction,
-     checkable-target rules, ambiguity-aware fix suggestions.
+   - [`RefStore.ts`](../src/core/RefStore.ts) — the `.cairn/refs/**` sidecar
+     (a namespace of its own — see its own file header for why it can't
+     reuse `StampStore.ts`'s path mapping): reference content-hash records
+     for `program/CheckRefs.ts`'s drift tracking.
+   - [`MarkdownLinks.ts`](../src/core/MarkdownLinks.ts) — link/reference
+     extraction, checkable-target rules, ambiguity-aware fix suggestions.
+   - [`Anchors.ts`](../src/core/Anchors.ts) — heading/HTML-anchor extraction
+     and GitHub-compatible slugging, GitHub-style line-anchor validation.
+   - [`markdownFences.ts`](../src/core/markdownFences.ts) — fenced-code-block
+     masking (a linear line scan, not a backtracking-prone regex), shared by
+     `MarkdownLinks.ts` and `Anchors.ts`.
    - [`SummaryTree.ts`](../src/core/SummaryTree.ts) — the hierarchical
      planner: expected file/directory summaries, their manifest hashes
      (compared against an externally-supplied `stamps` map, never read from
@@ -31,6 +43,9 @@ stale`), plus the legacy in-content stamp helpers kept only for the
      detection, and the bottom-up order.
    - [`glob.ts`](../src/core/glob.ts) — a tiny dependency-free glob matcher
      for `ignore` and root expansion.
+   - [`paths.ts`](../src/core/paths.ts) — POSIX path normalisation and the
+     `base`-containment check (`isWithinBase`) that bounds every out-of-`roots`
+     filesystem access in `program/`.
    - [`Config.ts`](../src/core/Config.ts) — the config domain:
      `CairnConfigSchema` (via `effect/Schema`, also the source the shipped
      JSON Schema is generated from), the strict decode, `extends`-layer
@@ -45,11 +60,18 @@ stale`), plus the legacy in-content stamp helpers kept only for the
      are tested without touching disk.
 
 3. **[`program/`](../src/program/) — Effect programs that orchestrate IO around the pure core.**
-   - [`CheckLinks.ts`](../src/program/CheckLinks.ts) — scan for dead links,
-     optionally auto-repair unambiguous ones.
+   - [`CheckLinks.ts`](../src/program/CheckLinks.ts) — scan for dead links/
+     anchors/line-anchors, optionally auto-repair unambiguous path breaks.
+   - [`CheckRefs.ts`](../src/program/CheckRefs.ts) — opt-in (`--refs`):
+     record and check reference content-hash drift, independent of
+     `CheckSummaries.ts`'s Merkle-manifest stamping (a different concept,
+     with its own invariants this file doesn't entangle with).
    - [`CheckSummaries.ts`](../src/program/CheckSummaries.ts) — compute the
      plan; read/write the `.cairn/**` sidecar tree; stamp existing summaries
      bottom-up; one-off `--migrate-stamps` off the legacy in-content form.
+   - [`JsonReport.ts`](../src/program/JsonReport.ts) — combines a links/
+     summaries run into the single `{ summaries, links, exitCode }` shape
+     `--json` prints.
    - [`locale.ts`](../src/program/locale.ts) — report localisation (English
      default, French mirror).
 
@@ -60,6 +82,11 @@ stale`), plus the legacy in-content stamp helpers kept only for the
      disk IO is the only reason this isn't in `core/`.
    - [`cli.ts`](../src/cli.ts) — argument parsing and the Node/Effect bootstrap.
    - [`init/`](../src/init/) — scaffold agent guidance from a single convention body.
+
+Deliberately outside this layering: [`testSupport/`](../src/testSupport/) is
+test-only real-filesystem fixture tooling (`tempProject.ts`), excluded from
+the published build (`tsconfig.build.json`) — it isn't a fifth runtime layer,
+just infrastructure the `*.integration.test.ts` files share.
 
 ## Why content hashes, not mtimes
 
