@@ -120,6 +120,32 @@ export const parseLineAnchor = (anchor: string): LineRange | null => {
 /** True when `range` falls within a file of `lineCount` lines (1-indexed, inclusive). */
 export const isValidLineAnchor = (range: LineRange, lineCount: number): boolean => range.end <= lineCount
 
+/**
+ * Suggest a repaired anchor for a broken `#fragment` — issue #49. Exactly
+ * one real anchor whose OWN lowercased form equals the broken fragment's
+ * lowercased form: GitHub heading slugs are always already lowercase, so
+ * this is a well-defined "case-insensitive exact match," not a fuzzy
+ * heuristic (deliberately narrower than the original "fuzzy" proposal —
+ * see the issue's own review notes: a wrong-but-similar match would
+ * confidently repair a link to the WRONG heading, hiding the real problem
+ * behind a green check, which is worse than leaving it broken).
+ *
+ * Comparing every entry's OWN lowercased form (not just `available.has
+ * (lower)`) matters because explicit `<a id="...">` anchors are kept
+ * VERBATIM, not lowercased (`extractAnchors`'s own contract) — two
+ * differently-cased real anchors (`<a id="Foo">` and `<a id="foo">`, or an
+ * HTML anchor case-colliding with a heading slug) are a real, if rare,
+ * ambiguity a plain `Set.has` lookup can't see. Two or more matches means
+ * "unrepairable, still report broken" — the same ambiguity guard
+ * `suggestFix`'s own `candidates.length !== 1` check already uses for path
+ * repair, applied here instead of a coin-flip pick.
+ */
+export const suggestAnchorFix = (anchor: string, available: ReadonlySet<string>): string | null => {
+  const lower = anchor.toLowerCase()
+  const matches = [...available].filter((candidate) => candidate.toLowerCase() === lower)
+  return matches.length === 1 ? (matches[0] ?? null) : null
+}
+
 const MAX_LISTED_ANCHORS = 8
 
 /**

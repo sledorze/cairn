@@ -53,7 +53,8 @@ summary links to every child") — is one-directional and real, not a cycle.
        suggestions.
      - [`Anchors.ts`](../src/core/links/Anchors.ts) — heading/HTML-anchor
        extraction and GitHub-compatible slugging, GitHub-style line-anchor
-       validation.
+       validation, and exact-case-insensitive-match anchor-fix suggestions
+       (`suggestAnchorFix`, issue #49 — deliberately not fuzzy).
      - [`markdownFences.ts`](../src/core/links/markdownFences.ts) —
        fenced-code-block masking (a linear line scan, not a
        backtracking-prone regex), shared by `MarkdownLinks.ts` and `Anchors.ts`.

@@ -88,6 +88,12 @@ A broken heading or out-of-range line reports with the reason (`path` / `anchor`
 and, where possible, what's actually there (the target's real headings, or its real line
 count) — so fixing it doesn't require opening the target file first.
 
+`--fix` auto-repairs a broken anchor too, when it differs from a real heading (or explicit
+`<a id="...">` anchor) by case alone — an unambiguous, exact match, never a fuzzy guess (a
+wrong-but-similar match would confidently point the link at the WRONG heading, which is worse
+than leaving it broken). Two anchors that case-collide, or no match at all, are left unchanged
+and still reported.
+
 `cairn check --refs` is a separate, **opt-in** signal, off by default and not part of the
 `path`/`anchor`/`line` checks above: it tracks the _content_ of what a link points to, not
 just whether the link resolves. `--refs --stamp` records a hash of every reference target;

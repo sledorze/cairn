@@ -12,9 +12,10 @@ import {
   isValidLineAnchor,
   normalizeAnchor,
   parseLineAnchor,
+  suggestAnchorFix,
 } from '../../core/links/Anchors.ts'
 import type { BrokenLink, PendingCheck } from '../../core/links/MarkdownLinks.ts'
-import { buildBasenameIndex, checkContent, stripCode, suggestFix } from '../../core/links/MarkdownLinks.ts'
+import { buildBasenameIndex, checkContent, stripAnchor, stripCode, suggestFix } from '../../core/links/MarkdownLinks.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { isWithinBase } from '../../core/paths.ts'
 import type { DocsFsService } from '../../io/DocsFs.ts'
@@ -260,9 +261,21 @@ const resolvePendingCheck = ({
       anchors = extractAnchors(content)
       anchorCache.set(item.targetAbs, anchors)
     }
-    return anchors.has(normalized)
-      ? null
-      : { detail: describeAnchors(anchors), reason: 'anchor', target: item.target, text: item.text }
+    if (anchors.has(normalized)) {
+      return null
+    }
+    // Issue #49: same exact-case-insensitive-match repair as the same-page
+    // case (MarkdownLinks.ts's checkContent) — the suggestion is the FULL
+    // corrected target (path unchanged, `#fragment` replaced), reusing
+    // `applyFix`'s existing whole-target, occurrence-safe replacement.
+    const fixedAnchor = suggestAnchorFix(normalized, anchors)
+    return {
+      detail: describeAnchors(anchors),
+      reason: 'anchor',
+      ...(fixedAnchor === null ? {} : { suggestion: `${stripAnchor(item.target)}#${fixedAnchor}` }),
+      target: item.target,
+      text: item.text,
+    }
   })
 
 export const checkLinks = ({

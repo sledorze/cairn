@@ -13,7 +13,8 @@ Separation of concerns: pure decisions, IO at the edges.
     `SummaryTree` (hierarchical planner + manifest hashes compared against an
     externally-supplied `stamps` map + deleted-source detection + order).
   - **`links/`**: `MarkdownLinks` (extract/check/fix/references), `Anchors`
-    (heading/HTML-anchor extraction + slugging, line-anchor validation), `markdownFences`
+    (heading/HTML-anchor extraction + slugging, line-anchor validation, exact-case-insensitive
+    anchor-fix suggestions — issue #49, deliberately not fuzzy), `markdownFences`
     (linear fenced-code masking), `RefStore` (`RefsRecord` shape, `.cairn/refs/**`
     namespace — kept disjoint from `StampStore`'s sidecar path: a summary-tree node and a
     scanned doc can be the SAME file, so the two must never collide), `ProseRefs` (pure
