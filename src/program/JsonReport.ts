@@ -2,10 +2,10 @@
 // Wraps the already-structured `SummaryPlan`/`LinkCheckResult` — no new
 // computation, just packaging + the same exit-code rules as the text report.
 
-import type { SummaryPlan } from '../core/SummaryTree.ts'
-import type { LinkCheckResult } from './CheckLinks.ts'
-import { linkExitCode } from './CheckLinks.ts'
-import { summaryExitCode } from './CheckSummaries.ts'
+import type { SummaryPlan } from '../core/summaries/SummaryTree.ts'
+import type { LinkCheckResult } from './links/CheckLinks.ts'
+import { linkExitCode } from './links/CheckLinks.ts'
+import { summaryExitCode } from './summaries/CheckSummaries.ts'
 
 export interface JsonReport {
   readonly exitCode: number

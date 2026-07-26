@@ -5,10 +5,10 @@ import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { DocsFs } from '../io/DocsFs.ts'
-import { DocsFsLive } from '../io/DocsFs.ts'
-import type { TempProject } from '../testSupport/tempProject.ts'
-import { makeTempProject } from '../testSupport/tempProject.ts'
+import type { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFsLive } from '../../io/DocsFs.ts'
+import type { TempProject } from '../../testSupport/tempProject.ts'
+import { makeTempProject } from '../../testSupport/tempProject.ts'
 import { checkLinks } from './CheckLinks.ts'
 
 // Exercises the REAL Node filesystem binding (DocsFsLive) end to end for

@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DocsFs, makeTestDocsFs } from '../io/DocsFs.ts'
+import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './CheckRefs.ts'
 
 describe('stampRefs() / checkRefs()', () => {

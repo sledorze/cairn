@@ -8,11 +8,13 @@
 import { Effect } from 'effect'
 import { bench, describe } from 'vitest'
 
-import { hashContent, isSummaryFile, summaryPathFor } from '../core/DocSummaries.ts'
-import { DIR_SUMMARY, isDirSummary } from '../core/SummaryTree.ts'
-import { isSidecarPath, metaRootFor, serializeStamp, sidecarPathFor, STAMP_VERSION } from '../core/StampStore.ts'
-import type { TestFile } from '../io/DocsFs.ts'
-import { makeTestDocsFs } from '../io/DocsFs.ts'
+import { hashContent } from '../../core/hashing.ts'
+import { isSummaryFile, summaryPathFor } from '../../core/summaries/DocSummaries.ts'
+import { DIR_SUMMARY, isDirSummary } from '../../core/summaries/SummaryTree.ts'
+import { serializeStamp, STAMP_VERSION } from '../../core/summaries/StampStore.ts'
+import { isSidecarPath, metaRootFor, sidecarPathFor } from '../../core/sidecar.ts'
+import type { TestFile } from '../../io/DocsFs.ts'
+import { makeTestDocsFs } from '../../io/DocsFs.ts'
 import { checkSummaries } from './CheckSummaries.ts'
 
 interface TreeShape {

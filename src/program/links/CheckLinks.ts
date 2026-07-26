@@ -1,6 +1,6 @@
 // Effect program: scan Markdown files for dead relative links and, when
 // `fix` is set, auto-repair the unambiguous ones. Pure link logic lives in
-// ../core/MarkdownLinks.ts; filesystem access goes through the DocsFs service.
+// ../../core/links/MarkdownLinks.ts; filesystem access goes through the DocsFs service.
 
 import * as nodePath from 'node:path'
 
@@ -12,15 +12,15 @@ import {
   isValidLineAnchor,
   normalizeAnchor,
   parseLineAnchor,
-} from '../core/Anchors.ts'
-import { matchesAny } from '../core/glob.ts'
-import type { BrokenLink, PendingCheck } from '../core/MarkdownLinks.ts'
-import { buildBasenameIndex, checkContent, stripCode, suggestFix } from '../core/MarkdownLinks.ts'
-import { isWithinBase } from '../core/paths.ts'
-import type { DocsFsService } from '../io/DocsFs.ts'
-import { DocsFs } from '../io/DocsFs.ts'
-import type { Locale } from './locale.ts'
-import { pick } from './locale.ts'
+} from '../../core/links/Anchors.ts'
+import type { BrokenLink, PendingCheck } from '../../core/links/MarkdownLinks.ts'
+import { buildBasenameIndex, checkContent, stripCode, suggestFix } from '../../core/links/MarkdownLinks.ts'
+import { matchesAny } from '../../core/glob.ts'
+import { isWithinBase } from '../../core/paths.ts'
+import type { DocsFsService } from '../../io/DocsFs.ts'
+import { DocsFs } from '../../io/DocsFs.ts'
+import type { Locale } from '../locale.ts'
+import { pick } from '../locale.ts'
 
 // POSIX path semantics (inputs are normalised to `/` at the IO boundary).
 const path = nodePath.posix
