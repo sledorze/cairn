@@ -6,8 +6,13 @@
 // Freshness is enforced by a content hash, NOT by filesystem mtime: git does not
 // preserve mtimes, so after a clone/checkout (e.g. in CI) every file shares the
 // same timestamp and a time-based check silently passes on stale summaries.
-// Each summary embeds `<!-- source-sha256: ... -->`; the checker recomputes the
-// source hash and flags any mismatch. Deterministic and clone-independent.
+// The recorded hash lives in a hidden `.cairn/**` sidecar (StampStore.ts), never
+// inside the summary's own content — the checker recomputes the source hash and
+// flags any mismatch against whatever the sidecar last recorded. Deterministic
+// and clone-independent. `extractSourceHash`/`withSourceHash`/`HASH_RE` below
+// recognise the OLD in-content `<!-- source-sha256: ... -->` form; they're kept
+// only for `stripSourceHash` and the one-off `--migrate-stamps` path that moves
+// an existing repo off it.
 //
 // Naming (directory-summary filename, file-summary suffix) is configurable; the
 // defaults below reproduce the original behaviour. Unit-tested in
@@ -95,13 +100,31 @@ export const sourceHashTag = (hash: string): string => `<!-- source-sha256: ${ha
 /** Read back the source hash recorded in a summary, or null if absent. */
 export const extractSourceHash = (summaryContent: string): string | null => HASH_RE.exec(summaryContent)?.[1] ?? null
 
-/** Return the summary content stamped with `hash` (replacing any existing stamp). */
+/** Return the summary content stamped with `hash` (replacing any existing stamp).
+ * Retained only for the one-off `--migrate-stamps` path (`CheckSummaries.ts`),
+ * which needs to recognise the OLD in-content form while migrating a repo off
+ * it — the ongoing stamp mechanism now lives in a `.cairn/**` sidecar
+ * (`StampStore.ts`), never in a summary's own content. */
 export const withSourceHash = (summaryContent: string, hash: string): string => {
   const tag = sourceHashTag(hash)
   if (HASH_RE.test(summaryContent)) {
     return summaryContent.replace(HASH_RE, tag)
   }
   return `${tag}\n\n${summaryContent}`
+}
+
+/**
+ * Remove a legacy in-content stamp (and the blank line `withSourceHash` used to
+ * insert after it), leaving pure authored prose. The one-time migration step:
+ * `--migrate-stamps` calls this on every summary that still carries the old
+ * comment, before writing the hash to its `.cairn/**` sidecar instead. A no-op
+ * (returns `summaryContent` unchanged) when no stamp is present.
+ */
+export const stripSourceHash = (summaryContent: string): string => {
+  if (!HASH_RE.test(summaryContent)) {
+    return summaryContent
+  }
+  return summaryContent.replace(HASH_RE, '').replace(/^\n+/, '')
 }
 
 /** Classify a summary: missing, stale (hash absent or mismatched) or ok. */

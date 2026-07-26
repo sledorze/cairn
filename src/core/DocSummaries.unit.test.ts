@@ -8,6 +8,7 @@ import {
   isSummaryFile,
   needsSummary,
   sourceHashTag,
+  stripSourceHash,
   summaryPathFor,
   withSourceHash,
 } from './DocSummaries.ts'
@@ -84,6 +85,22 @@ describe('withSourceHash()', () => {
     const second = withSourceHash(first, 'b'.repeat(64))
     expect(extractSourceHash(second)).toBe('b'.repeat(64))
     expect(second.split('source-sha256').length - 1).toBe(1)
+  })
+})
+
+describe('stripSourceHash() (migration off the legacy in-content stamp, S7)', () => {
+  it('removes the stamp comment and the blank line after it, leaving pure prose', () => {
+    const stamped = withSourceHash('# résumé', 'a'.repeat(64))
+    expect(stripSourceHash(stamped)).toBe('# résumé')
+  })
+
+  it('is a no-op when no stamp is present', () => {
+    expect(stripSourceHash('# résumé sans tampon')).toBe('# résumé sans tampon')
+  })
+
+  it('leaves only the stamp removed when the summary has no trailing content', () => {
+    const stampOnly = sourceHashTag('a'.repeat(64))
+    expect(stripSourceHash(stampOnly)).toBe('')
   })
 })
 

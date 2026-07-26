@@ -35,7 +35,8 @@ Goal: a reader knows what lives in this directory and where to go next.
 
 ## Why leaves-first — the Merkle mental model
 
-Each summary is stamped with `<!-- source-sha256: <hex> -->` over its source. A
+Each summary's hash is stamped into a hidden sidecar under `.cairn/` (never into the
+summary's own content — that's what keeps the docs you write free of tool bytes). A
 directory summary's source is a **manifest of its children's hashes**, so a child's
 hash must be settled before its parent can be stamped. Think of it as a Merkle tree:
 change a leaf and every hash on the path to the root must be recomputed. If you stamp
@@ -49,17 +50,15 @@ top-down, parents capture stale child hashes and `check` stays red.
    roots. For each, write its `_SUMMARY.md`: orientation paragraph, then a linked line
    for every direct child (child `.summary.md` or doc, and each sub-dir's `_SUMMARY.md`).
 3. **Stamp mechanically.** Run `npx cairn check --summaries-only --stamp`.
-   It rewrites every `source-sha256` bottom-up. **Never hand-edit a sha256** — it is
-   computed, not authored; a hand-typed hash is always wrong.
+   It rewrites every `.cairn/` sidecar hash bottom-up. **Never hand-edit a sidecar** — it
+   is computed, not authored; a hand-typed hash is always wrong.
 4. **Verify.** Run `npx cairn check` and confirm exit 0.
 
 ## Tiny examples
 
-A **file summary** (`guides/getting-started.summary.md`):
+A **file summary** (`guides/getting-started.summary.md`) — pure prose, no stamp inside it:
 
 ```markdown
-<!-- source-sha256: 0000...(stamped by the tool) -->
-
 # Getting started — summary
 
 - Install as a dev dependency, then run the init command.
@@ -67,11 +66,15 @@ A **file summary** (`guides/getting-started.summary.md`):
 - First run scaffolds an example and prints the next command to run.
 ```
 
-A **directory summary** (`guides/_SUMMARY.md`):
+Its hash lives in `.cairn/guides/getting-started.summary.md.json` (stamped by the tool):
+
+```json
+{ "sha256": "0000...(stamped by the tool)", "version": 1 }
+```
+
+A **directory summary** (`guides/_SUMMARY.md`) — also stamp-free:
 
 ```markdown
-<!-- source-sha256: 0000...(stamped by the tool) -->
-
 # Guides
 
 How-to guides for everyday tasks, in reading order.

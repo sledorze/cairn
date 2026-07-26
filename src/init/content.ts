@@ -18,12 +18,29 @@ stale, or a link is broken. Treat green \`check\` as a hard requirement, not a n
    aggregates its direct docs (each doc's \`.summary.md\` if the doc is big, else the
    doc itself) plus the \`_SUMMARY.md\` of each direct sub-directory. It links to
    **every** direct child file and sub-directory (link-completeness).
-3. **Freshness by content hash** — each summary's first line is
-   \`<!-- source-sha256: <64-hex> -->\`. The checker recomputes the source hash;
-   mismatch = stale, absent = missing. This survives git clone and CI (mtime does not).
+3. **Freshness by content hash, tracked OUTSIDE your docs** — each summary's hash is
+   recorded in a hidden sidecar under \`.cairn/\`, one JSON file mirroring each summary's
+   path (e.g. \`.cairn/docs/a.summary.md.json\`). The checker recomputes the source hash
+   and compares it to the sidecar; mismatch = stale, absent = missing. This survives git
+   clone and CI (mtime does not), and it means the tracking system leaves **zero bytes**
+   in the docs you write — no stamp comment to see, ignore, or accidentally hand-edit.
+   Commit \`.cairn/\` alongside your docs; it's not gitignored.
 4. **Bottom-up in one pass** — a directory summary hashes a manifest of its children's
    hashes (a Merkle tree), so (re)write leaves-first: file summaries, then directories
    deepest-first, then stamp.
+5. **Deletions are caught too** — a sidecar left behind with no matching doc (its source
+   was deleted or renamed) is flagged as a deleted-source stamp; \`--prune\` removes both
+   the leftover summary and its sidecar.
+
+## Upgrading from an older cairn (legacy \`<!-- source-sha256 -->\` stamp)
+
+**Nothing special to do — do not go looking for a migration step.** If a summary still
+carries the old in-content \`<!-- source-sha256: ... -->\` comment, the ordinary stamp
+command (\`npx cairn check --summaries-only --stamp\`) strips it and writes the
+\`.cairn/\` sidecar in the same run, automatically. There is no separate command to
+discover or remember: whatever \`stampCommand\` this repo already runs already does it.
+(\`--migrate-stamps\` also exists, purely as an optional explicit/reportable alias for
+the same self-healing behaviour — never required.)
 
 ## Workflow when you edit docs
 
@@ -33,19 +50,27 @@ When you create or edit any doc:
    reflect the new content.
 2. Update the \`_SUMMARY.md\` of every affected directory, walking **up** the tree
    leaves-first, and keep a link to every child file and sub-directory.
-3. Run the stamp command to (re)write the \`source-sha256\` hashes bottom-up:
+3. Run the stamp command to (re)write the sidecar hashes under \`.cairn/\` bottom-up:
    \`npx cairn check --summaries-only --stamp\`.
 4. Run \`npx cairn check\` and ensure it exits 0 (green) before you finish.
+5. Commit your doc changes **together with** the \`.cairn/\` sidecar changes — a doc
+   edit without its matching sidecar update is exactly what \`check\` is designed to catch.
 
 ## Commands
 
 - \`npx cairn check\` — check summaries + links (exit 1 on any problem).
 - \`npx cairn check --summaries-only\` / \`--links-only\`.
 - \`npx cairn check --links-only --fix\` — auto-repair unambiguous dead links.
-- \`npx cairn check --summaries-only --stamp\` — write stamps of EXISTING
-  summaries bottom-up. It does **not** author prose; you write the content, then stamp.
+- \`npx cairn check --summaries-only --stamp\` — write the \`.cairn/\` sidecar hash of
+  EXISTING summaries bottom-up. It does **not** author prose; you write the content,
+  then stamp.
+- \`npx cairn check --prune\` — delete orphan summaries and orphan \`.cairn/\` sidecars
+  (source doc deleted, renamed, or below threshold).
+- \`npx cairn check --migrate-stamps\` — optional: the same self-healing \`--stamp\`
+  already does for a legacy in-content stamp, as its own named/reported step. Never
+  required.
 
-You author the prose. The tool only verifies and stamps.
+You author the prose. The tool only verifies and stamps — and it never touches your prose to do it.
 `
 
 export const SKILL_BODY = `# Writing good documentation summaries
@@ -80,7 +105,8 @@ Goal: a reader knows what lives in this directory and where to go next.
 
 ## Why leaves-first — the Merkle mental model
 
-Each summary is stamped with \`<!-- source-sha256: <hex> -->\` over its source. A
+Each summary's hash is stamped into a hidden sidecar under \`.cairn/\` (never into the
+summary's own content — that's what keeps the docs you write free of tool bytes). A
 directory summary's source is a **manifest of its children's hashes**, so a child's
 hash must be settled before its parent can be stamped. Think of it as a Merkle tree:
 change a leaf and every hash on the path to the root must be recomputed. If you stamp
@@ -94,16 +120,15 @@ top-down, parents capture stale child hashes and \`check\` stays red.
    roots. For each, write its \`_SUMMARY.md\`: orientation paragraph, then a linked line
    for every direct child (child \`.summary.md\` or doc, and each sub-dir's \`_SUMMARY.md\`).
 3. **Stamp mechanically.** Run \`npx cairn check --summaries-only --stamp\`.
-   It rewrites every \`source-sha256\` bottom-up. **Never hand-edit a sha256** — it is
-   computed, not authored; a hand-typed hash is always wrong.
+   It rewrites every \`.cairn/\` sidecar hash bottom-up. **Never hand-edit a sidecar** — it
+   is computed, not authored; a hand-typed hash is always wrong.
 4. **Verify.** Run \`npx cairn check\` and confirm exit 0.
 
 ## Tiny examples
 
-A **file summary** (\`guides/getting-started.summary.md\`):
+A **file summary** (\`guides/getting-started.summary.md\`) — pure prose, no stamp inside it:
 
 \`\`\`markdown
-<!-- source-sha256: 0000...(stamped by the tool) -->
 # Getting started — summary
 
 - Install as a dev dependency, then run the init command.
@@ -111,10 +136,15 @@ A **file summary** (\`guides/getting-started.summary.md\`):
 - First run scaffolds an example and prints the next command to run.
 \`\`\`
 
-A **directory summary** (\`guides/_SUMMARY.md\`):
+Its hash lives in \`.cairn/guides/getting-started.summary.md.json\` (stamped by the tool):
+
+\`\`\`json
+{"sha256":"0000...(stamped by the tool)","version":1}
+\`\`\`
+
+A **directory summary** (\`guides/_SUMMARY.md\`) — also stamp-free:
 
 \`\`\`markdown
-<!-- source-sha256: 0000...(stamped by the tool) -->
 # Guides
 
 How-to guides for everyday tasks, in reading order.

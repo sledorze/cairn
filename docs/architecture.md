@@ -10,12 +10,17 @@ of the codebase.
    synchronous combinator modules — `Schema`, `Either`, `ParseResult` — are the only
    dependencies allowed. Not `Effect`/`Layer`/`Runtime`: those represent the
    scheduled, effectful part of the library and belong in `program/`.).**
-   - `DocSummaries.ts` — freshness primitives: content hashing, the `source-sha256`
-     stamp, line counting, summary classification (`missing | ok | stale`).
+   - `DocSummaries.ts` — freshness primitives: content hashing, line counting,
+     summary classification (`missing | ok | stale`), plus the legacy in-content
+     stamp helpers kept only for the one-off `--migrate-stamps` path.
+   - `StampStore.ts` — the `.cairn/**` sidecar: path mapping between a node and its
+     hidden hash record, and lenient (forward-compatible) (de)serialisation.
    - `MarkdownLinks.ts` — link extraction, checkable-target rules, ambiguity-aware
      fix suggestions.
    - `SummaryTree.ts` — the hierarchical planner: expected file/directory summaries,
-     their manifest hashes, the link-completeness invariant, and the bottom-up order.
+     their manifest hashes (compared against an externally-supplied `stamps` map,
+     never read from content), the link-completeness invariant, deleted-source
+     stamp detection, and the bottom-up order.
    - `glob.ts` — a tiny dependency-free glob matcher for `ignore` and root expansion.
    - `Config.ts` — the config domain: `CairnConfigSchema` (via `effect/Schema`, also
      the source the shipped JSON Schema is generated from), the strict decode,
@@ -29,7 +34,9 @@ of the codebase.
 
 3. **`program/` — Effect programs that orchestrate IO around the pure core.**
    - `CheckLinks.ts` — scan for dead links, optionally auto-repair unambiguous ones.
-   - `CheckSummaries.ts` — compute the plan; stamp existing summaries bottom-up.
+   - `CheckSummaries.ts` — compute the plan; read/write the `.cairn/**` sidecar tree;
+     stamp existing summaries bottom-up; one-off `--migrate-stamps` off the legacy
+     in-content form.
    - `locale.ts` — report localisation (English default, French mirror).
 
 4. **Edge — config and CLI.**
@@ -43,9 +50,22 @@ of the codebase.
 
 git does not preserve modification times. After a clone or a CI checkout, every
 file shares the same timestamp, so a freshness check based on mtime silently passes
-on stale summaries. Instead, each summary embeds a `source-sha256` of the content it
-reflects, and the checker recomputes and compares. This is deterministic and
-clone-independent — the property that makes the whole system trustworthy in CI.
+on stale summaries. Instead, each summary's hash is recorded in a hidden `.cairn/**`
+sidecar (never inside the summary's own content — see `StampStore.ts`), and the
+checker recomputes the source hash and compares it to the sidecar. This is
+deterministic and clone-independent — the property that makes the whole system
+trustworthy in CI — and it keeps the tracking mechanism itself out of the prose a
+reader opens. A sidecar left behind with no matching node (source deleted or
+renamed) is the deletion signal `findDeletedStamps` reports, independent of whether
+the summary file itself was also deleted.
+
+`stampFiles` (the shared core of `stampSummaries`/`migrateStamps` in
+`CheckSummaries.ts`) unconditionally strips any legacy in-content
+`<!-- source-sha256 -->` stamp it finds before computing hashes — a deliberate
+DX decision: a repo upgrading from the old scheme needs to discover nothing new.
+Its existing `stampCommand` (already `--stamp` in every `.cairnrc.json` this tool
+ever scaffolded) self-heals in the same run — `--migrate-stamps` exists only as an
+explicitly-named alias of the identical behaviour.
 
 ## Why bottom-up in one pass
 

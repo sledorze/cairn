@@ -73,13 +73,26 @@ export const DocsFsLive = Layer.effect(
         Effect.orDie,
       )
 
+    // Every existing caller wrote into a directory that was already there (a doc's
+    // own directory, always present since the doc itself lives in it). That
+    // invariant broke the moment sidecar writes started targeting a brand-new
+    // `.cairn/**` tree (StampStore.ts / CheckSummaries.ts) — the FIRST sidecar
+    // under a given directory has no directory to write into yet. `recursive:
+    // true` makes this a no-op when the directory already exists, so it's safe
+    // to do unconditionally rather than only for `.cairn/**` paths.
+    const writeFile = (abs: string, content: string): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        yield* fs.makeDirectory(path.dirname(abs), { recursive: true })
+        yield* fs.writeFileString(abs, content)
+      }).pipe(Effect.orDie)
+
     return {
       deleteFile: (abs) => fs.remove(abs).pipe(Effect.orDie),
       exists: (abs) => fs.exists(abs).pipe(Effect.orDie),
       listFiles,
       readFile: (abs) => fs.readFileString(abs).pipe(Effect.orDie),
       stat,
-      writeFile: (abs, content) => fs.writeFileString(abs, content).pipe(Effect.orDie),
+      writeFile,
     }
   }),
 )

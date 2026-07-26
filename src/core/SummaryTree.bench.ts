@@ -2,7 +2,7 @@ import * as nodePath from 'node:path'
 
 import { bench, describe } from 'vitest'
 
-import { hashContent, isSummaryFile, sourceHashTag, summaryPathFor } from './DocSummaries.ts'
+import { hashContent, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
 import { DIR_SUMMARY, isDirSummary, planSummaries } from './SummaryTree.ts'
 
 const path = nodePath.posix
@@ -19,9 +19,19 @@ const bigContent = (seed: string): string =>
 
 const smallContent = (seed: string): string => `${seed} short note`
 
-/** A fully stamped, link-complete tree: `planSummaries` on it reports every node `ok`. */
-const buildFreshTree = ({ depth, dirsPerLevel, filesPerDir, root }: TreeShape): Map<string, string> => {
+/** A fully link-complete tree (no stamps embedded — freshness lives in a
+ * separate `stamps` map now, see `StampStore.ts` / `SummaryTree.ts`'s
+ * `PlanArgs.stamps`), plus the stamps map a real `.cairn/**` sidecar store
+ * would hold for it. `planSummaries({files, stamps, ...})` on the pair reports
+ * every node `ok` — this is `buildFreshTree`'s "steady state" fixture. */
+const buildFreshTree = ({
+  depth,
+  dirsPerLevel,
+  filesPerDir,
+  root,
+}: TreeShape): { readonly files: Map<string, string>; readonly stamps: Map<string, string> } => {
   const files = new Map<string, string>()
+  const stamps = new Map<string, string>()
 
   const visit = (dir: string, level: number): void => {
     const docTargets: string[] = []
@@ -34,10 +44,9 @@ const buildFreshTree = ({ depth, dirsPerLevel, filesPerDir, root }: TreeShape): 
       docTargets.push(docPath)
       if (big) {
         const sp = summaryPathFor(docPath)
-        files.set(
-          sp,
-          `${sourceHashTag(hashContent(content))}\n\n# summary\n\nSee [source](./${path.basename(docPath)}).`,
-        )
+        const summaryContent = `# summary\n\nSee [source](./${path.basename(docPath)}).`
+        files.set(sp, summaryContent)
+        stamps.set(sp, hashContent(content))
         inputs.push(sp)
       } else {
         inputs.push(docPath)
@@ -59,14 +68,16 @@ const buildFreshTree = ({ depth, dirsPerLevel, filesPerDir, root }: TreeShape): 
       .toSorted()
       .join('\n')
     const links = [...docTargets, ...dirTargets].map((t) => `- [link](${path.relative(dir, t)})`).join('\n')
-    files.set(`${dir}/${DIR_SUMMARY}`, `${sourceHashTag(hashContent(manifest))}\n\n${links}`)
+    files.set(`${dir}/${DIR_SUMMARY}`, links)
+    stamps.set(`${dir}/${DIR_SUMMARY}`, hashContent(manifest))
   }
 
   visit(root, 0)
-  return files
+  return { files, stamps }
 }
 
-/** Same source docs, no summaries anywhere yet — the "first run" worst case. */
+/** Same source docs, no summaries anywhere yet — the "first run" worst case
+ * (no stamps either, matching an empty/not-yet-populated `.cairn/**`). */
 const sourceOnly = (files: ReadonlyMap<string, string>): Map<string, string> =>
   new Map([...files].filter(([p]) => !isSummaryFile(p) && !isDirSummary(p)))
 
@@ -74,24 +85,24 @@ const SMALL: TreeShape = { depth: 1, dirsPerLevel: 9, filesPerDir: 10, root: '/r
 const LARGE: TreeShape = { depth: 4, dirsPerLevel: 3, filesPerDir: 16, root: '/repo/docs' }
 
 const smallFresh = buildFreshTree(SMALL)
-const smallRaw = sourceOnly(smallFresh)
+const smallRaw = sourceOnly(smallFresh.files)
 const largeFresh = buildFreshTree(LARGE)
-const largeRaw = sourceOnly(largeFresh)
+const largeRaw = sourceOnly(largeFresh.files)
 
 describe('planSummaries()', () => {
-  bench('~100 files, flat/shallow, first run (no summaries)', () => {
+  bench('~100 files, flat/shallow, first run (no summaries, no stamps)', () => {
     planSummaries({ files: smallRaw, roots: [SMALL.root] })
   })
 
   bench('~100 files, flat/shallow, steady state (fully stamped)', () => {
-    planSummaries({ files: smallFresh, roots: [SMALL.root] })
+    planSummaries({ files: smallFresh.files, roots: [SMALL.root], stamps: smallFresh.stamps })
   })
 
-  bench('~2000 files, deep/nested, first run (no summaries)', () => {
+  bench('~2000 files, deep/nested, first run (no summaries, no stamps)', () => {
     planSummaries({ files: largeRaw, roots: [LARGE.root] })
   })
 
   bench('~2000 files, deep/nested, steady state (fully stamped)', () => {
-    planSummaries({ files: largeFresh, roots: [LARGE.root] })
+    planSummaries({ files: largeFresh.files, roots: [LARGE.root], stamps: largeFresh.stamps })
   })
 })

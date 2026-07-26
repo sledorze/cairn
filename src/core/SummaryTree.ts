@@ -6,10 +6,15 @@
 //    direct docs (or their summary when the doc is big) AND the `_SUMMARY.md`
 //    of its direct sub-directories.
 //
-// Freshness is content-hash based (clone/CI-proof, unlike mtime). Each summary
-// embeds `<!-- source-sha256: H -->`:
+// Freshness is content-hash based (clone/CI-proof, unlike mtime). Each summary's
+// hash H is recorded in a hidden sidecar under `.cairn/` (see StampStore.ts),
+// never inside the summary's own content:
 //  - file summary  -> H = hash(source doc content)
 //  - dir summary   -> H = hash(manifest of its inputs' relative-path:content-hash)
+// `planSummaries` never reads or writes a sidecar itself — it's handed the
+// already-loaded `stamps` map (node path -> recorded hash) as a plain value, so
+// this whole module stays pure and storage-agnostic; `program/CheckSummaries.ts`
+// is the impure edge that loads `stamps` from `.cairn/**` via `DocsFs`.
 //
 // `planSummaries` returns every expected summary with its status and, crucially,
 // the bottom-up order in which to (re)generate them so a single pass converges:
@@ -22,14 +27,7 @@
 import * as nodePath from 'node:path'
 
 import type { Naming, SummaryStatus } from './DocSummaries.ts'
-import {
-  countLines,
-  DEFAULT_NAMING,
-  extractSourceHash,
-  hashContent,
-  isSummaryFile,
-  summaryPathFor,
-} from './DocSummaries.ts'
+import { countLines, DEFAULT_NAMING, hashContent, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
 import { matchesAny } from './glob.ts'
 import { extractLinks, isCheckableTarget, stripAnchor, stripCode } from './MarkdownLinks.ts'
 
@@ -56,14 +54,25 @@ export interface PlanArgs {
   readonly naming?: Naming
   readonly requireDirSummaries?: boolean
   readonly roots: readonly string[]
+  /** Node path -> recorded hash, loaded from `.cairn/**` sidecars. Optional and
+   * defaults to empty — an absent/not-yet-populated stamp store degrades every
+   * node to `stale`/`missing`, the correct first-run behaviour, never a crash. */
+  readonly stamps?: ReadonlyMap<string, string>
   readonly thresholdLines?: number
 }
 
 export interface SummaryPlan {
   readonly nodes: readonly PlanNode[]
   readonly orphans: readonly string[]
+  /** A `.cairn/**` sidecar whose node no longer exists — its source doc (and
+   * possibly its summary file too) was deleted, renamed, or dropped below the
+   * size threshold. See `findDeletedStamps` for why this is distinct from
+   * `orphans`. */
+  readonly orphanStamps: readonly string[]
   readonly todo: readonly PlanNode[]
 }
+
+const EMPTY_STAMPS: ReadonlyMap<string, string> = new Map()
 
 const DEFAULT_THRESHOLD_LINES = 30
 
@@ -130,10 +139,11 @@ export const planSummaries = ({
   naming = DEFAULT_NAMING,
   requireDirSummaries = true,
   roots,
+  stamps = EMPTY_STAMPS,
   thresholdLines = DEFAULT_THRESHOLD_LINES,
 }: PlanArgs): SummaryPlan => {
   const allPaths = [...files.keys()]
-  const recorded = (p: string): string | null => (files.has(p) ? extractSourceHash(files.get(p) ?? '') : null)
+  const recorded = (p: string): string | null => stamps.get(p) ?? null
 
   const sourceDocs = allPaths.filter(
     (p) => p.endsWith('.md') && !isSummaryFile(p, naming) && !isDirSummary(p, naming) && !matchesAny(p, ignore),
@@ -166,7 +176,12 @@ export const planSummaries = ({
 
   if (!requireDirSummaries) {
     const orphans = findOrphans({ files, ignore, naming, nodes: fileNodes, requireDirSummaries })
-    return { nodes: fileNodes, orphans, todo: fileNodes.filter((n) => n.status !== 'ok') }
+    const orphanStamps = findDeletedStamps({
+      expectedNodePaths: new Set(fileNodes.map((n) => n.path)),
+      ignore,
+      stampNodePaths: stamps.keys(),
+    })
+    return { nodes: fileNodes, orphanStamps, orphans, todo: fileNodes.filter((n) => n.status !== 'ok') }
   }
 
   // --- directories in scope ---
@@ -243,8 +258,30 @@ export const planSummaries = ({
 
   const nodes = [...fileNodes, ...dirNodes]
   const orphans = findOrphans({ files, ignore, naming, nodes, requireDirSummaries })
-  return { nodes, orphans, todo: nodes.filter((n) => n.status !== 'ok') }
+  const orphanStamps = findDeletedStamps({
+    expectedNodePaths: new Set(nodes.map((n) => n.path)),
+    ignore,
+    stampNodePaths: stamps.keys(),
+  })
+  return { nodes, orphanStamps, orphans, todo: nodes.filter((n) => n.status !== 'ok') }
 }
+
+interface FindDeletedStampsArgs {
+  readonly expectedNodePaths: ReadonlySet<string>
+  readonly ignore: readonly string[]
+  readonly stampNodePaths: Iterable<string>
+}
+
+/**
+ * A `.cairn/**` sidecar (see StampStore.ts) whose node no longer corresponds to
+ * any expected node. Unlike `findOrphans` (which only sees a leftover summary
+ * FILE still on disk), a sidecar is written exclusively by the tool and never
+ * touched by hand — so it remains as evidence even when the summary file
+ * itself was deleted alongside its source, catching a deletion `findOrphans`
+ * alone would miss entirely.
+ */
+const findDeletedStamps = ({ expectedNodePaths, ignore, stampNodePaths }: FindDeletedStampsArgs): string[] =>
+  [...stampNodePaths].filter((p) => !expectedNodePaths.has(p) && !matchesAny(p, ignore)).toSorted()
 
 interface FindOrphansArgs {
   readonly files: ReadonlyMap<string, string>

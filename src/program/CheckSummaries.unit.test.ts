@@ -1,11 +1,13 @@
 import { Effect } from 'effect'
+import type { Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { makeTestDocsFs } from '../io/DocsFs.ts'
+import { DocsFs, makeTestDocsFs } from '../io/DocsFs.ts'
 import {
   checkSummaries,
   explainSummaries,
   formatSummaryReport,
+  migrateStamps,
   pruneOrphans,
   stampSummaries,
   summaryExitCode,
@@ -13,24 +15,36 @@ import {
 
 const big = Array.from({ length: 40 }, (_, i) => `ligne ${i}`).join('\n')
 const tf = (content: string): { content: string; mtimeMs: number } => ({ content, mtimeMs: 0 })
+const base = '/r'
+
+/** Read a file back through the same in-memory layer, for asserting content
+ * was (or wasn't) mutated by a program under test. */
+const readBack = (layer: Layer.Layer<DocsFs>, path: string): Promise<string> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const dfs = yield* DocsFs
+      return yield* dfs.readFile(path)
+    }).pipe(Effect.provide(layer)),
+  )
 
 describe('formatSummaryReport()', () => {
   it('reports success when nothing is pending (English by default)', () => {
-    expect(formatSummaryReport({ nodes: [{} as never, {} as never], orphans: [], todo: [] })).toEqual([
-      '✅ Hierarchical summaries OK (2 summary/ies checked).',
-    ])
+    expect(formatSummaryReport({ nodes: [{} as never, {} as never], orphanStamps: [], orphans: [], todo: [] })).toEqual(
+      ['✅ Hierarchical summaries OK (2 summary/ies checked).'],
+    )
   })
 
   it('localises success to French when asked', () => {
-    expect(formatSummaryReport({ nodes: [{} as never], orphans: [], todo: [] }, { locale: 'fr' })).toEqual([
-      '✅ Résumés hiérarchiques OK (1 résumé(s) vérifié(s)).',
-    ])
+    expect(
+      formatSummaryReport({ nodes: [{} as never], orphanStamps: [], orphans: [], todo: [] }, { locale: 'fr' }),
+    ).toEqual(['✅ Résumés hiérarchiques OK (1 résumé(s) vérifié(s)).'])
   })
 
   it('includes the methodology, the configured stamp command, and the bottom-up order', () => {
     const lines = formatSummaryReport(
       {
         nodes: [],
+        orphanStamps: [],
         orphans: [],
         todo: [
           {
@@ -61,13 +75,24 @@ describe('formatSummaryReport()', () => {
     expect(lines.at(-2)).toContain('/r/docs/sub/b.summary.md')
     expect(lines.at(-1)).toContain('/r/docs/sub/_SUMMARY.md')
   })
+
+  it('reports a deleted-source stamp distinctly from an orphan summary file (S3)', () => {
+    const lines = formatSummaryReport({
+      nodes: [],
+      orphanStamps: ['/r/docs/gone.summary.md'],
+      orphans: [],
+      todo: [],
+    })
+    expect(lines.some((l) => l.includes('deleted-source stamp'))).toBeTruthy()
+    expect(lines.some((l) => l.includes('/r/docs/gone.summary.md'))).toBeTruthy()
+  })
 })
 
 describe('checkSummaries()', () => {
   it('plans every missing file and directory summary', async () => {
     const layer = makeTestDocsFs({ '/r/docs/a.md': tf(big) })
     const plan = await Effect.runPromise(
-      checkSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(plan.todo.map((n) => n.path)).toEqual(['/r/docs/a.summary.md', '/r/docs/_SUMMARY.md'])
     expect(summaryExitCode(plan)).toBe(1)
@@ -76,11 +101,74 @@ describe('checkSummaries()', () => {
   it('fails with orphans even when nothing is missing/stale', async () => {
     const layer = makeTestDocsFs({ '/r/docs/gone.summary.md': tf('# stale') })
     const plan = await Effect.runPromise(
-      checkSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(plan.todo).toEqual([])
     expect(plan.orphans).toEqual(['/r/docs/gone.summary.md'])
     expect(summaryExitCode(plan)).toBe(1)
+  })
+
+  it('reads freshness from the .cairn/** sidecar, not from summary content (S1/S2)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf('# résumé de a'), // no in-content stamp anywhere
+    })
+    await Effect.runPromise(
+      stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    const plan = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(plan.todo).toEqual([])
+    expect(summaryExitCode(plan)).toBe(0)
+
+    // S2: editing the source alone (sidecar untouched) makes it stale again.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        yield* dfs.writeFile('/r/docs/a.md', `${big}\nmore`)
+      }).pipe(Effect.provide(layer)),
+    )
+    const staleAgain = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(staleAgain.todo.map((n) => n.path)).toContain('/r/docs/a.summary.md')
+  })
+
+  it('reports a corrupt/merge-conflicted sidecar as a missing stamp, never a crash (R5)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/.cairn/docs/a.summary.md.json': tf('<<<<<<< HEAD\n{"sha256":"a"}\n=======\n'),
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf('# résumé de a'),
+    })
+    const plan = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(plan.nodes.find((n) => n.path === '/r/docs/a.summary.md')?.status).toBe('stale')
+  })
+
+  it('S3: a deleted-source stamp sidecar is reported as an orphan stamp, independent of the summary file', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf('# résumé de a'),
+    })
+    await Effect.runPromise(
+      stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+
+    const dfs2 = makeTestDocsFs({
+      '/r/.cairn/docs/_SUMMARY.md.json': tf(`{"sha256":"${'0'.repeat(64)}","version":1}`),
+      '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${'1'.repeat(64)}","version":1}`),
+      // a.md and a.summary.md both deleted — only the sidecars remain.
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
+    })
+    const plan = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(dfs2)),
+    )
+    expect(plan.orphanStamps).toContain('/r/docs/a.summary.md')
   })
 })
 
@@ -89,7 +177,7 @@ describe('explainSummaries()', () => {
     const withHeadings = `${big}\n## Configuration\nmore text`
     const layer = makeTestDocsFs({ '/r/docs/a.md': tf(withHeadings) })
     const lines = await Effect.runPromise(
-      explainSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     const text = lines.join('\n')
     expect(text).toContain('file /r/docs/a.summary.md (missing):')
@@ -102,7 +190,7 @@ describe('explainSummaries()', () => {
   it('names the stale child driving a directory summary stale', async () => {
     const layer = makeTestDocsFs({ '/r/docs/a.md': tf(big) })
     const lines = await Effect.runPromise(
-      explainSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     const dirBlock = lines.join('\n')
     expect(dirBlock).toContain('dir /r/docs/_SUMMARY.md (missing):')
@@ -111,13 +199,15 @@ describe('explainSummaries()', () => {
 
   it('reports nothing to explain when everything is fresh', async () => {
     const layer = makeTestDocsFs({
-      '/r/docs/_SUMMARY.md': tf('# résumé du dossier\n\nVoir [a](./a.md)'),
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
       '/r/docs/a.md': tf(big),
       '/r/docs/a.summary.md': tf('# résumé de a'),
     })
-    await Effect.runPromise(stampSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)))
+    await Effect.runPromise(
+      stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
     const lines = await Effect.runPromise(
-      explainSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(lines).toEqual(['Nothing to explain — all summaries are fresh.'])
   })
@@ -130,33 +220,82 @@ describe('pruneOrphans()', () => {
       '/r/docs/gone.summary.md': tf('# stale'),
     })
     const removed = await Effect.runPromise(
-      pruneOrphans({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      pruneOrphans({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(removed).toBe(1)
 
     const after = await Effect.runPromise(
-      checkSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(after.orphans).toEqual([])
+  })
+
+  it('also deletes an orphan .cairn/** sidecar (deleted-source stamp, S3)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/.cairn/docs/gone.summary.md.json': tf(`{"sha256":"${'a'.repeat(64)}","version":1}`),
+      '/r/docs/a.md': tf(big),
+    })
+    const removed = await Effect.runPromise(
+      pruneOrphans({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(removed).toBe(1)
+    const after = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(after.orphanStamps).toEqual([])
   })
 })
 
 describe('stampSummaries()', () => {
-  it('stamps authored summaries bottom-up so the tree becomes consistent in one pass', async () => {
+  it('self-heals a legacy in-content stamp without ever calling migrateStamps — no new command to discover', async () => {
+    // The exact upgrade scenario: an existing repo has old in-content stamps and no
+    // .cairn/** yet. The user (or CI) runs ONLY the command their existing
+    // .cairnrc.json `stampCommand` already points to — plain `--stamp` — never
+    // having heard of `--migrate-stamps`.
     const layer = makeTestDocsFs({
-      '/r/docs/_SUMMARY.md': tf('# résumé du dossier\n\nVoir [a](./a.md)'),
+      '/r/docs/_SUMMARY.md': tf(`<!-- source-sha256: ${'0'.repeat(64)} -->\n\nVoir [a](./a.md)`),
       '/r/docs/a.md': tf(big),
-      '/r/docs/a.summary.md': tf('# résumé de a'),
+      '/r/docs/a.summary.md': tf(`<!-- source-sha256: ${'1'.repeat(64)} -->\n\n# résumé de a`),
     })
 
     const result = await Effect.runPromise(
-      stampSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(result.migrated).toBe(2)
+    expect(result.stamped).toBe(2)
+
+    const HASH_RE = /<!--\s*source-sha256:\s*[a-f0-9]{64}\s*-->/
+    await expect(readBack(layer, '/r/docs/_SUMMARY.md')).resolves.not.toMatch(HASH_RE)
+    await expect(readBack(layer, '/r/docs/a.summary.md')).resolves.not.toMatch(HASH_RE)
+
+    const after = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(after.todo).toEqual([])
+    expect(summaryExitCode(after)).toBe(0)
+  })
+
+  it('stamps authored summaries bottom-up, writing sidecars and leaving content byte-identical (S1)', async () => {
+    const summaryContent = '# résumé du dossier\n\nVoir [a](./a.md)'
+    const fileSummaryContent = '# résumé de a'
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf(summaryContent),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf(fileSummaryContent),
+    })
+
+    const result = await Effect.runPromise(
+      stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(result.stamped).toBe(2)
     expect(result.missing).toEqual([])
 
+    // Content is untouched — the tracking system leaves zero bytes in tracked files.
+    await expect(readBack(layer, '/r/docs/_SUMMARY.md')).resolves.toBe(summaryContent)
+    await expect(readBack(layer, '/r/docs/a.summary.md')).resolves.toBe(fileSummaryContent)
+
     const after = await Effect.runPromise(
-      checkSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(after.todo).toEqual([])
     expect(summaryExitCode(after)).toBe(0)
@@ -165,9 +304,52 @@ describe('stampSummaries()', () => {
   it('reports summaries whose content has not been authored yet as missing', async () => {
     const layer = makeTestDocsFs({ '/r/docs/a.md': tf(big) })
     const result = await Effect.runPromise(
-      stampSummaries({ roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     expect(result.stamped).toBe(0)
     expect(result.missing.map((n) => n.path)).toEqual(['/r/docs/a.summary.md', '/r/docs/_SUMMARY.md'])
+  })
+})
+
+describe('migrateStamps() (S7)', () => {
+  it('strips every legacy in-content stamp, then stamps the sidecar tree, converging to green', async () => {
+    const HASH_RE = /<!--\s*source-sha256:\s*[a-f0-9]{64}\s*-->/
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf(`<!-- source-sha256: ${'0'.repeat(64)} -->\n\nVoir [a](./a.md)`),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf(`<!-- source-sha256: ${'1'.repeat(64)} -->\n\n# résumé de a`),
+    })
+
+    const result = await Effect.runPromise(
+      migrateStamps({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(result.migrated).toBe(2)
+    expect(result.stamped).toBe(2)
+
+    const dirAfter = await readBack(layer, '/r/docs/_SUMMARY.md')
+    const fileAfter = await readBack(layer, '/r/docs/a.summary.md')
+    expect(dirAfter).not.toMatch(HASH_RE)
+    expect(fileAfter).not.toMatch(HASH_RE)
+    expect(dirAfter).toBe('Voir [a](./a.md)')
+    expect(fileAfter).toBe('# résumé de a')
+
+    const after = await Effect.runPromise(
+      checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(after.todo).toEqual([])
+    expect(summaryExitCode(after)).toBe(0)
+  })
+
+  it('is idempotent: a repo with no legacy stamps just runs the ordinary stamp pass', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/_SUMMARY.md': tf('Voir [a](./a.md)'),
+      '/r/docs/a.md': tf(big),
+      '/r/docs/a.summary.md': tf('# résumé de a'),
+    })
+    const result = await Effect.runPromise(
+      migrateStamps({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+    )
+    expect(result.migrated).toBe(0)
+    expect(result.stamped).toBe(2)
   })
 })
