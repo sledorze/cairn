@@ -317,6 +317,118 @@ describe('checkLinks()', () => {
       expect(result.fixed).toBe(0)
       expect(result.broken[0]?.links.map((l) => l.target)).toEqual(['./guide.md#Setup-Pattern'])
     })
+
+    // Found via adversarial dimension-coverage review (not the original test
+    // pass): a real misreport, not file corruption — the SAME broken target
+    // repeated twice in one file (an ordinary authoring pattern, e.g. a link
+    // mentioned in prose and again in a "See also" list) was fully and
+    // correctly repaired on disk by ONE `applyFix` call (its replace is
+    // global), but the SECOND `BrokenLink` record for that same target
+    // string found nothing left to replace and was wrongly reported as
+    // still broken — wrong `fixed` count, wrong `broken` list, wrong exit
+    // code, on a run that had actually fully succeeded.
+    it('repairs a broken anchor target that is repeated TWICE in the same file, reporting both as fixed', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '## Setup Pattern\n\ntext', mtimeMs: 1 },
+        '/r/docs/a/index.md': {
+          content: 'First: [a](./guide.md#Setup-Pattern)\nSecond: [b](./guide.md#Setup-Pattern)\n',
+          mtimeMs: 1,
+        },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.fixed).toBe(2)
+      expect(result.broken).toEqual([])
+
+      const content = await Effect.runPromise(
+        Effect.gen(function* () {
+          const dfs = yield* DocsFs
+          return yield* dfs.readFile('/r/docs/a/index.md')
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(content).toBe('First: [a](./guide.md#setup-pattern)\nSecond: [b](./guide.md#setup-pattern)\n')
+
+      // Idempotent: re-running against the mutated file finds nothing left.
+      const second = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(second.fixed).toBe(0)
+      expect(second.broken).toEqual([])
+    })
+
+    // Generalizes the TWICE case above to THREE — the fix caches per unique
+    // `target` string, so this proves the cache correctly serves every
+    // subsequent occurrence, not just a hardcoded "first + second" pairing.
+    it('repairs a broken anchor target repeated THREE times in the same file', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '## Setup Pattern\n\ntext', mtimeMs: 1 },
+        '/r/docs/a/index.md': {
+          content: [
+            '[a](./guide.md#Setup-Pattern)',
+            '[b](./guide.md#Setup-Pattern)',
+            '[c](./guide.md#Setup-Pattern)',
+          ].join('\n'),
+          mtimeMs: 1,
+        },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.fixed).toBe(3)
+      expect(result.broken).toEqual([])
+      const content = await Effect.runPromise(
+        Effect.gen(function* () {
+          const dfs = yield* DocsFs
+          return yield* dfs.readFile('/r/docs/a/index.md')
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(content).toBe(
+        ['[a](./guide.md#setup-pattern)', '[b](./guide.md#setup-pattern)', '[c](./guide.md#setup-pattern)'].join('\n'),
+      )
+    })
+
+    // The repeated-target cache must not weaken occurrence-safety: a target
+    // string appearing BOTH as a real broken link (twice) AND inside a code
+    // example must still decline the whole repair, exactly as the
+    // single-occurrence case already does — the cache short-circuits on
+    // `target` alone, so this proves it doesn't accidentally bypass
+    // `applyFix`'s own per-call occurrence-count safeguard.
+    it('does NOT repair a target repeated as a real link twice AND once more inside a code example', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/guide.md': { content: '## Setup Pattern\n\ntext', mtimeMs: 1 },
+        '/r/docs/a/index.md': {
+          content: [
+            '[a](./guide.md#Setup-Pattern)',
+            '[b](./guide.md#Setup-Pattern)',
+            '```md',
+            '[demo](./guide.md#Setup-Pattern)',
+            '```',
+          ].join('\n'),
+          mtimeMs: 1,
+        },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.fixed).toBe(0)
+      expect(result.broken[0]?.links).toHaveLength(2)
+    })
+
+    it('repairs a broken PATH target (not just anchor) repeated twice in the same file', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/a/index.md': {
+          content: 'First: [a](./moved.md)\nSecond: [b](./moved.md)\n',
+          mtimeMs: 1,
+        },
+        '/r/docs/b/moved.md': { content: '# moved', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.fixed).toBe(2)
+      expect(result.broken).toEqual([])
+    })
   })
 
   // Issue #39, scenario E: cross-hierarchy target, still inside the checkout root.

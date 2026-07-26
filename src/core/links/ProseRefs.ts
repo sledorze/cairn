@@ -21,6 +21,32 @@ export interface ProseRef {
 
 const INLINE_CODE_CAPTURE_RE = /`([^`\n]+)`/g
 
+// Same shape as MarkdownLinks.ts's own (private) LINK_RE — matches
+// `[text](url)`/`![alt](url)`. Used only to MASK the text/alt span before
+// candidate extraction (below), not to check the link itself.
+const LINK_TEXT_RE = /!?\[([^\]]*)\]\([^)\s]+(?:\s+"[^"]*")?\)/g
+
+/**
+ * A backtick-styled citation inside a REAL Markdown link's text —
+ * `` [`src/x.ts`](../src/x.ts) `` — is already `CheckLinks.ts`'s concern,
+ * not this module's: found via dimension-coverage review that without this,
+ * an already-broken real link got reported TWICE (once by the link checker,
+ * once again by `--prose-refs` suggesting the exact link that already
+ * exists and is already broken) — directly undercutting this feature's own
+ * "migration aid, not a second parallel checker" purpose. Masking the link
+ * TEXT span (not the whole link — the URL itself may legitimately differ
+ * from the citation) before candidate extraction removes the double-report
+ * at the source, the same masking discipline `maskFencedCode` already uses.
+ */
+const maskLinkText = (masked: string): string =>
+  masked.replace(LINK_TEXT_RE, (whole: string, text: string) => {
+    // `text` (the regex's one capture group) starts immediately after the
+    // `[` — reliable even when `text` is empty or repeats elsewhere in
+    // `whole`, unlike an `indexOf(text)` search would be.
+    const textStart = whole.indexOf('[') + 1
+    return whole.slice(0, textStart) + ' '.repeat(text.length) + whole.slice(textStart + text.length)
+  })
+
 // Glob/template characters and a scheme separator both signal "not a literal
 // repo-relative path" — issue #47 criterion 5.
 const NON_PATH_CHARS_RE = /[*?{}<>]|:\/\//
@@ -50,6 +76,14 @@ export const looksLikeRootedPath = (candidate: string): boolean => {
   if (trimmed.startsWith('.')) {
     return false
   }
+  // An absolute path (`/etc/nginx/nginx.conf`) is a real filesystem path,
+  // not a repo-rooted one — the issue's own term "rooted repo path" means
+  // relative to the repo root, not the OS root. Found via dimension-
+  // coverage review: without this, an absolute-path citation silently
+  // joined onto `base` and produced a nonsensical suggested link.
+  if (trimmed.startsWith('/')) {
+    return false
+  }
   // A bare directory/module mention (`core/`, `links/`) has no filename to
   // actually check — also found via the same sweep, extremely common
   // shorthand for "the X module," not a specific file citation.
@@ -63,14 +97,23 @@ export const looksLikeRootedPath = (candidate: string): boolean => {
  * repo path, outside fenced code blocks. Does not check existence — pure
  * candidate extraction only. */
 export const extractProseRefs = (content: string): readonly ProseRef[] => {
-  const masked = maskFencedCode(content)
+  const masked = maskLinkText(maskFencedCode(content))
   const refs: ProseRef[] = []
   for (const match of masked.matchAll(INLINE_CODE_CAPTURE_RE)) {
     const captureStart = (match.index ?? 0) + 1 // +1 skips the opening backtick
     const captureLength = match[1]?.length ?? 0
     const text = content.slice(captureStart, captureStart + captureLength)
     if (looksLikeRootedPath(text)) {
-      refs.push({ text })
+      // `looksLikeRootedPath` decides candidacy on the TRIMMED form, but a
+      // real bug (found via adversarial dimension-coverage review, not the
+      // original test pass) pushed the untrimmed `text` — an ordinary
+      // citation with trailing whitespace inside the backticks (easy to
+      // introduce by accident, e.g. `` `src/x.ts ` ``) resolved fine as a
+      // trimmed path yet was checked/reported as the UNTRIMMED string,
+      // which never resolves — a false positive on ordinary input,
+      // violating this feature's own load-bearing "resolves ⇒ always
+      // silent" guarantee.
+      refs.push({ text: text.trim() })
     }
   }
   return refs

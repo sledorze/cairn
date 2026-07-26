@@ -206,3 +206,107 @@ describe('formatRefsReport()', () => {
     expect(lines.at(-1)).toContain('./guide.md#intro')
   })
 })
+
+// Found via dimension-coverage review: `onlyGitTracked` bounded summary
+// scanning and link-target existence, but `--refs` was never wired to it at
+// all — an untracked doc's ref-drift was scanned and stamped to a real
+// sidecar on disk regardless, defeating the CI-parity guarantee everywhere
+// else in the tool.
+describe('trackedFiles (onlyGitTracked composition)', () => {
+  it('stampRefs skips an untracked doc entirely — no sidecar written', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/scratch.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+      '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      stampRefs({ base: '/r', roots: ['/r/docs'], trackedFiles: new Set() }).pipe(Effect.provide(layer)),
+    )
+    expect(result.stamped).toBe(0)
+    const sidecarExists = await Effect.runPromise(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        return yield* dfs.exists('/r/.cairn/refs/docs/scratch.md.json')
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(sidecarExists).toBeFalsy()
+  })
+
+  it('checkRefs skips an untracked doc entirely — even one with an existing sidecar from before onlyGitTracked was enabled', async () => {
+    const layer = makeTestDocsFs({
+      '/r/.cairn/refs/docs/scratch.md.json': {
+        content: '{"refs":[{"target":"../src/engine.ts","hash":"old-hash"}]}',
+        mtimeMs: 1,
+      },
+      '/r/docs/scratch.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+      '/r/src/engine.ts': { content: 'export const x = 2\n', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkRefs({ base: '/r', roots: ['/r/docs'], trackedFiles: new Set() }).pipe(Effect.provide(layer)),
+    )
+    expect(result.checked).toBe(0)
+    expect(result.stale).toEqual([])
+  })
+
+  it('a tracked doc is still scanned/stamped normally', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/index.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+      '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+    })
+    const trackedFiles = new Set(['/r/docs/index.md'])
+    const result = await Effect.runPromise(
+      stampRefs({ base: '/r', roots: ['/r/docs'], trackedFiles }).pipe(Effect.provide(layer)),
+    )
+    expect(result.stamped).toBe(1)
+  })
+})
+
+// Found via a SECOND, independent adversarial audit of this same
+// dimension-coverage pass: `trackedFiles` was wired first, but `ignore` was
+// not — a doc matching an `ignore` glob still had its reference hashes
+// stamped to a real on-disk sidecar and still got reported as stale.
+describe('ignore (found via a second independent audit)', () => {
+  it('stampRefs skips an ignored doc entirely — no sidecar written', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/vendor/CHANGELOG.md': { content: '[core](../../src/engine.ts)', mtimeMs: 1 },
+      '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      stampRefs({ base: '/r', ignore: ['**/vendor/**'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.stamped).toBe(0)
+    const sidecarExists = await Effect.runPromise(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        return yield* dfs.exists('/r/.cairn/refs/docs/vendor/CHANGELOG.md.json')
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(sidecarExists).toBeFalsy()
+  })
+
+  it('checkRefs skips an ignored doc entirely — even one with an existing sidecar from before `ignore` was added', async () => {
+    const layer = makeTestDocsFs({
+      '/r/.cairn/refs/docs/vendor/CHANGELOG.md.json': {
+        content: '{"refs":[{"target":"../../src/engine.ts","hash":"old-hash"}]}',
+        mtimeMs: 1,
+      },
+      '/r/docs/vendor/CHANGELOG.md': { content: '[core](../../src/engine.ts)', mtimeMs: 1 },
+      '/r/src/engine.ts': { content: 'export const x = 2\n', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkRefs({ base: '/r', ignore: ['**/vendor/**'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.checked).toBe(0)
+    expect(result.stale).toEqual([])
+  })
+
+  it('a non-ignored doc is still scanned/stamped normally', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/index.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+      '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      stampRefs({ base: '/r', ignore: ['**/vendor/**'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.stamped).toBe(1)
+  })
+})

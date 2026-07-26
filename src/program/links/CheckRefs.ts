@@ -20,6 +20,7 @@ import { Effect } from 'effect'
 import { extractReferences } from '../../core/links/MarkdownLinks.ts'
 import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
+import { matchesAny } from '../../core/glob.ts'
 import { hashContent } from '../../core/hashing.ts'
 import { isWithinBase } from '../../core/paths.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
@@ -32,6 +33,19 @@ const path = nodePath.posix
 export interface CheckRefsArgs {
   readonly base: string
   readonly roots: readonly string[]
+  /** Found missing via a second, independent adversarial audit of this same
+   * dimension-coverage pass: `trackedFiles` alone was wired first, but
+   * `ignore` was not — a doc matching an `ignore` glob still had its
+   * reference hashes stamped to a real on-disk sidecar and still got
+   * reported as having stale references, exactly the "silently
+   * inconsistent with every sibling check" gap this pass exists to close. */
+  readonly ignore?: readonly string[]
+  /** Found missing via dimension-coverage review of issue #48: with
+   * `onlyGitTracked` on, an entirely untracked doc's ref-drift was still
+   * scanned and its hashes stamped to a real `.cairn/refs/**` sidecar,
+   * defeating the CI-parity guarantee `onlyGitTracked` makes everywhere
+   * else. `undefined` (the default) preserves today's behavior unchanged. */
+  readonly trackedFiles?: ReadonlySet<string> | undefined
 }
 
 export interface StaleRef {
@@ -87,11 +101,17 @@ const resolveReferenceContent = ({
     return yield* dfs.readFile(targetAbs).pipe(Effect.catchDefect(() => Effect.succeed(null)))
   })
 
-const listMdFiles = (roots: readonly string[]): Effect.Effect<readonly string[], never, DocsFs> =>
+const listMdFiles = (
+  roots: readonly string[],
+  ignore: readonly string[],
+  trackedFiles?: ReadonlySet<string>,
+): Effect.Effect<readonly string[], never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const allFiles = yield* dfs.listFiles(roots)
-    return allFiles.filter((f) => f.endsWith('.md'))
+    return allFiles.filter(
+      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
+    )
   })
 
 const toRecord = (ref: { readonly anchor: string | null; readonly target: string }, hash: string): RefRecord =>
@@ -104,11 +124,16 @@ const toRecord = (ref: { readonly anchor: string | null; readonly target: string
  * with no resolvable references gets no sidecar at all (nothing to compare
  * against later, and no reason to create an empty one).
  */
-export const stampRefs = ({ base, roots }: CheckRefsArgs): Effect.Effect<StampRefsResult, never, DocsFs> =>
+export const stampRefs = ({
+  base,
+  roots,
+  ignore = [],
+  trackedFiles,
+}: CheckRefsArgs): Effect.Effect<StampRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots)
+    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
     let stamped = 0
     for (const file of mdFiles) {
       const content = yield* dfs.readFile(file)
@@ -135,11 +160,16 @@ export const stampRefs = ({ base, roots }: CheckRefsArgs): Effect.Effect<StampRe
  * (never stamped, or every reference already broken/unrecordable) is
  * silently skipped — nothing recorded, nothing to compare.
  */
-export const checkRefs = ({ base, roots }: CheckRefsArgs): Effect.Effect<RefsCheckResult, never, DocsFs> =>
+export const checkRefs = ({
+  base,
+  roots,
+  ignore = [],
+  trackedFiles,
+}: CheckRefsArgs): Effect.Effect<RefsCheckResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots)
+    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
     const stale: FileStaleRefs[] = []
     let checked = 0
     for (const file of mdFiles) {

@@ -163,4 +163,61 @@ describe('checkProseRefs()', () => {
     })
     expect(lines.at(-1)).toBe('    ✗ `src/x.ts` (no longer resolves) → consider a link: [`src/x.ts`](../src/x.ts)')
   })
+
+  // Found via dimension-coverage review: checkLinks/checkSummaries both wire
+  // `ignore`/`trackedFiles` through explicitly; checkProseRefs had neither,
+  // silently inconsistent with every sibling check.
+  describe('ignore/trackedFiles composition (found via dimension-coverage review)', () => {
+    it('respects `ignore` — an excluded doc is never scanned for prose citations', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/vendor/CHANGELOG.md': { content: 'See `src/gone.ts` for details.', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkProseRefs({ base: '/r', ignore: ['**/vendor/**'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken).toEqual([])
+      expect(result.checked).toBe(0)
+    })
+
+    it('respects `trackedFiles` — an untracked doc is never scanned', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/scratch.md': { content: 'See `src/gone.ts` for details.', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkProseRefs({ base: '/r', roots: ['/r/docs'], trackedFiles: new Set() }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken).toEqual([])
+      expect(result.checked).toBe(0)
+    })
+
+    it('an untracked TARGET reports missing even though it physically exists — CI parity for prose citations too', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/guide.md': { content: 'See `src/untracked.ts` for details.', mtimeMs: 1 },
+        '/r/src/untracked.ts': { content: 'export {}', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkProseRefs({
+          base: '/r',
+          roots: ['/r/docs'],
+          trackedFiles: new Set(['/r/docs/guide.md']),
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken[0]?.refs.map((r) => r.text)).toEqual(['src/untracked.ts'])
+    })
+
+    it('a TRACKED target still resolves normally', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/guide.md': { content: 'See `src/tracked.ts` for details.', mtimeMs: 1 },
+        '/r/src/tracked.ts': { content: 'export {}', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkProseRefs({
+          base: '/r',
+          roots: ['/r/docs'],
+          trackedFiles: new Set(['/r/docs/guide.md', '/r/src/tracked.ts']),
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken).toEqual([])
+    })
+  })
 })
