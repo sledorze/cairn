@@ -122,4 +122,28 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
     const refsSidecarPath = path.join(p.root, '.cairn', 'refs', 'docs', '_SUMMARY.md.json')
     expect(fs.existsSync(refsSidecarPath)).toBeTruthy()
   })
+
+  // Found via adversarial "no unhandled exception" review: a doc that lists
+  // fine but can't be READ used to crash the whole run — `dfs.readFile` on
+  // the primary scan is `Effect.orDie`-wrapped. Skipped when running as
+  // root/Windows (permission bits aren't enforced the same way).
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+  it.skipIf(!supportsPosixPermissions)('stampRefs skips a permission-denied doc instead of crashing', async () => {
+    const p = project('checkrefs-unreadable', {
+      'docs/a.md': '[core](../src/engine.ts)',
+      'docs/b.md': '[core](../src/engine.ts)',
+      'src/engine.ts': 'export const x = 1\n',
+    })
+    const bPath = path.join(p.root, 'docs', 'b.md')
+    fs.chmodSync(bPath, 0o000)
+    try {
+      const result = await run(stampRefs({ base: p.root, roots: [path.join(p.root, 'docs')] }))
+      expect(result.stamped).toBe(1) // only a.md
+      expect(fs.existsSync(path.join(p.root, '.cairn', 'refs', 'docs', 'a.md.json'))).toBeTruthy()
+      expect(fs.existsSync(path.join(p.root, '.cairn', 'refs', 'docs', 'b.md.json'))).toBeFalsy()
+    } finally {
+      fs.chmodSync(bPath, 0o644)
+    }
+  })
 })

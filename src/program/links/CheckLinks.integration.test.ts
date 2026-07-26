@@ -261,4 +261,34 @@ describe('checkLinks() against the real filesystem (DocsFsLive)', () => {
       expect(reverted.broken).toEqual([])
     })
   })
+
+  // Found via adversarial "no unhandled exception" review: a doc that
+  // successfully LISTS but can't actually be READ (permission revoked, e.g.
+  // `chmod 000`) crashed the whole run with a raw internal PlatformError
+  // stack trace — `dfs.readFile` on the primary scan is `Effect.orDie`-
+  // wrapped, so an ordinary, real-world-triggerable permission problem
+  // reached the defect channel unguarded. Skipped when running as root
+  // (bypasses Unix permission bits, so the failure this test exists to
+  // prove wouldn't occur) or on Windows (`chmod` doesn't enforce POSIX bits).
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+  it.skipIf(!supportsPosixPermissions)(
+    'a permission-denied doc is reported cleanly in `unreadable`, not a crash',
+    async () => {
+      const p = project('checklinks-unreadable', {
+        'docs/a.md': '# ok',
+        'docs/b.md': '# secret',
+      })
+      const bPath = path.join(p.root, 'docs', 'b.md')
+      fs.chmodSync(bPath, 0o000)
+      try {
+        const result = await checkDocs(p)
+        expect(result.unreadable).toEqual([bPath.replaceAll('\\', '/')])
+        expect(result.checked).toBe(1) // only a.md was actually checked
+        expect(result.broken).toEqual([])
+      } finally {
+        fs.chmodSync(bPath, 0o644)
+      }
+    },
+  )
 })

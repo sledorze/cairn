@@ -100,4 +100,106 @@ describe('DocsFsLive()', () => {
     )
     expect(existsAfter).toBeFalsy()
   })
+
+  // Found via adversarial "no unhandled exception" review: `listFiles`'s
+  // per-entry `fs.stat` used to be wrapped only by the OUTER `Effect.orDie`,
+  // so a single bad entry (a broken symlink, a pathologically long/deep
+  // path) died the WHOLE scan with a raw, unhandled PlatformError — reliably
+  // reproducible against real content a messy or hostile repo can contain,
+  // not a hypothetical. Real filesystem, not the in-memory double: a broken
+  // symlink can't even be represented in `makeTestDocsFs`'s plain
+  // path->content map.
+  describe('a single bad entry must not crash the whole scan (real filesystem only)', () => {
+    it('a broken symlink is silently excluded, not a crash', async () => {
+      const brokenLinkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-'))
+      try {
+        fs.writeFileSync(path.join(brokenLinkDir, 'ok.md'), '# ok')
+        fs.symlinkSync('/nonexistent-target-xyz', path.join(brokenLinkDir, 'broken.md'))
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([brokenLinkDir])
+          }),
+        )
+        expect(files).toEqual([toPosix(path.join(brokenLinkDir, 'ok.md'))])
+      } finally {
+        fs.rmSync(brokenLinkDir, { force: true, recursive: true })
+      }
+    })
+
+    // A subdirectory with execute permission removed makes `stat` on
+    // anything inside it fail with EACCES during traversal — a real,
+    // portable, deterministic way to trigger the SAME class of failure
+    // `listFiles`'s per-entry stat must survive (any `PlatformError`, not
+    // specifically ENOENT). Skipped when running as root (root bypasses
+    // Unix permission bits entirely, so the failure this test exists to
+    // prove wouldn't actually occur) or on a platform where `chmod` doesn't
+    // enforce POSIX permission bits (Windows) — same guard style as this
+    // repo's own existing tests would need for platform-conditional cases.
+    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+    const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+    it.skipIf(!supportsPosixPermissions)(
+      'an unreadable (no-execute) subdirectory is silently excluded, not a crash',
+      async () => {
+        const permDeniedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-perm-'))
+        try {
+          fs.writeFileSync(path.join(permDeniedRoot, 'ok.md'), '# ok')
+          const lockedDir = path.join(permDeniedRoot, 'locked')
+          fs.mkdirSync(lockedDir)
+          fs.writeFileSync(path.join(lockedDir, 'inner.md'), '# inner')
+          fs.chmodSync(lockedDir, 0o000)
+          try {
+            const files = await run(
+              Effect.gen(function* () {
+                const dfs = yield* DocsFs
+                return yield* dfs.listFiles([permDeniedRoot])
+              }),
+            )
+            expect(files).toContainEqual(toPosix(path.join(permDeniedRoot, 'ok.md')))
+          } finally {
+            // Restore permissions before rmSync — an unreadable directory
+            // can't be recursively removed either.
+            fs.chmodSync(lockedDir, 0o755)
+          }
+        } finally {
+          fs.rmSync(permDeniedRoot, { force: true, recursive: true })
+        }
+      },
+    )
+
+    // Found via a SECOND, independent round of adversarial review of the
+    // first fix: an earlier version caught a `readDirectory` failure
+    // identically at EVERY level, INCLUDING the very first call on a root
+    // the caller explicitly named. That made a permission-denied ROOT
+    // silently return zero files — indistinguishable from a legitimately
+    // empty docs directory, so `cairn check` reported `✅ OK, 0 checked`
+    // and exited 0 having silently checked nothing. That is a WORSE failure
+    // mode than the original crash (a crash is at least loud); this test
+    // pins the fix: a root that can't be read at all must still fail, never
+    // silently report success.
+    it.skipIf(!supportsPosixPermissions)(
+      'a permission-denied ROOT (the directory the caller named, not a nested one) fails loudly — never silently reports zero files as success',
+      async () => {
+        const permDeniedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-root-perm-'))
+        try {
+          fs.writeFileSync(path.join(permDeniedRoot, 'ok.md'), '# ok')
+          fs.chmodSync(permDeniedRoot, 0o000)
+          try {
+            await expect(
+              run(
+                Effect.gen(function* () {
+                  const dfs = yield* DocsFs
+                  return yield* dfs.listFiles([permDeniedRoot])
+                }),
+              ),
+            ).rejects.toBeTruthy() // never resolves to an empty (or any) file list
+          } finally {
+            fs.chmodSync(permDeniedRoot, 0o755)
+          }
+        } finally {
+          fs.rmSync(permDeniedRoot, { force: true, recursive: true })
+        }
+      },
+    )
+  })
 })

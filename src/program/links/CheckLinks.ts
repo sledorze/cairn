@@ -35,6 +35,17 @@ export interface LinkCheckResult {
   readonly broken: readonly FileBroken[]
   readonly checked: number
   readonly fixed: number
+  /** A file `listFiles` found but that couldn't actually be READ (permission
+   * denied, revoked between listing and reading, etc.) — found via
+   * adversarial "no unhandled exception" review: `dfs.readFile` on the
+   * primary scan is `Effect.orDie`-wrapped, so this used to crash the whole
+   * run with a raw internal stack trace instead of a clean, actionable
+   * report. Skipped from checking (nothing meaningful can be verified about
+   * content that can't be read) but never silent — always non-empty here
+   * when it happens, and always makes `linkExitCode` non-zero, so a real,
+   * user-triggerable problem (e.g. a permission bit accidentally committed
+   * wrong) fails CI loudly and clearly instead of passing unnoticed. */
+  readonly unreadable: readonly string[]
 }
 
 export interface CheckLinksArgs {
@@ -112,6 +123,18 @@ const applyFix = (content: string, target: string, suggestion: string): { change
 }
 
 export interface FileFixResult {
+  /** True whenever `applyFix` reported a real change for at least one target
+   * — the single source of truth for "does this file need to be written,"
+   * deliberately NOT derived by comparing `content` to the original string.
+   * Found via adversarial review of the original extraction: `applyFix`'s
+   * `changed: true` does not guarantee the text actually differs (a
+   * target === suggestion replace is a textual no-op that still reports
+   * `changed: true`) — currently unreachable in practice (`suggestFix`/
+   * `suggestAnchorFix` can only ever produce a suggestion that differs from
+   * the broken target, by construction), but nothing pins that invariant in
+   * the type system, so a string-equality write-trigger would have been a
+   * latent landmine for a future caller that broke it. */
+  readonly changed: boolean
   readonly content: string
   readonly fixed: number
   readonly remaining: readonly BrokenLink[]
@@ -143,6 +166,7 @@ export const applyFixesToFile = (content: string, links: readonly BrokenLink[], 
   const remaining: BrokenLink[] = []
   let current = content
   let fixed = 0
+  let changed = false
   for (const link of links) {
     if (!fix || link.suggestion === undefined) {
       remaining.push(link)
@@ -152,6 +176,7 @@ export const applyFixesToFile = (content: string, links: readonly BrokenLink[], 
     if (succeeded === undefined) {
       const repair = applyFix(current, link.target, link.suggestion)
       current = repair.changed ? repair.content : current
+      changed ||= repair.changed
       succeeded = repair.changed
       fixedTargets.set(link.target, succeeded)
     }
@@ -161,11 +186,12 @@ export const applyFixesToFile = (content: string, links: readonly BrokenLink[], 
       remaining.push(link)
     }
   }
-  return { content: current, fixed, remaining }
+  return { changed, content: current, fixed, remaining }
 }
 
 /** 0 when no broken links remain, 1 otherwise. */
-export const linkExitCode = (result: LinkCheckResult): number => (result.broken.length > 0 ? 1 : 0)
+export const linkExitCode = (result: LinkCheckResult): number =>
+  result.broken.length > 0 || result.unreadable.length > 0 ? 1 : 0
 
 /** Human-readable report lines (pure, so it can be unit-tested). */
 export const formatLinkReport = (result: LinkCheckResult, options: LinkReportOptions = {}): string[] => {
@@ -176,13 +202,26 @@ export const formatLinkReport = (result: LinkCheckResult, options: LinkReportOpt
       pick(locale, { en: `🔧 Auto-repaired ${result.fixed} link(s).`, fr: `🔧 Auto-réparé ${result.fixed} lien(s).` }),
     )
   }
-  if (result.broken.length === 0) {
+  if (result.unreadable.length > 0) {
     lines.push(
       pick(locale, {
-        en: `✅ Markdown links OK (${result.checked} file(s) checked).`,
-        fr: `✅ Liens Markdown OK (${result.checked} fichier(s) vérifié(s)).`,
+        en: `⚠️  ${result.unreadable.length} file(s) could not be read (permission denied?):`,
+        fr: `⚠️  ${result.unreadable.length} fichier(s) illisible(s) (permission refusée ?) :`,
       }),
     )
+    for (const file of result.unreadable) {
+      lines.push(`  ✗ ${file}`)
+    }
+  }
+  if (result.broken.length === 0) {
+    if (result.unreadable.length === 0) {
+      lines.push(
+        pick(locale, {
+          en: `✅ Markdown links OK (${result.checked} file(s) checked).`,
+          fr: `✅ Liens Markdown OK (${result.checked} fichier(s) vérifié(s)).`,
+        }),
+      )
+    }
     return lines
   }
   const total = result.broken.reduce((n, f) => n + f.links.length, 0)
@@ -366,8 +405,21 @@ export const checkLinks = ({
       readonly syncBroken: readonly BrokenLink[]
     }
     const scans: FileScan[] = []
+    const unreadable: string[] = []
     for (const file of mdFiles) {
-      const content = yield* dfs.readFile(file)
+      // A file `listFiles` found but that can't actually be READ (permission
+      // denied, revoked between listing and reading) must not crash the
+      // whole run — found via adversarial "no unhandled exception" review,
+      // reproduced for real against a `chmod 000` doc. `dfs.readFile` is
+      // `Effect.orDie`-wrapped, so this reaches the DEFECT channel, not a
+      // typed failure — `Effect.catchDefect` is the right combinator here
+      // (contrast `DocsFs.ts`'s `listFiles` fix, which needed `Effect.catch`
+      // because THAT failure is still a typed `PlatformError` at that point).
+      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+      if (content === null) {
+        unreadable.push(file)
+        continue
+      }
       const { broken: syncBroken, pending } = checkContent({ content, existsAbs, fileAbs: file, inRoots, index })
       scans.push({ content, file, pending, resolvedExtra: [], syncBroken })
     }
@@ -406,7 +458,7 @@ export const checkLinks = ({
       }
       const result = applyFixesToFile(scan.content, links, fix)
       fixed += result.fixed
-      if (result.content !== scan.content) {
+      if (result.changed) {
         yield* dfs.writeFile(scan.file, result.content)
       }
       if (result.remaining.length > 0) {
@@ -414,5 +466,5 @@ export const checkLinks = ({
       }
     }
 
-    return { broken, checked: mdFiles.length, fixed }
+    return { broken, checked: mdFiles.length - unreadable.length, fixed, unreadable }
   })

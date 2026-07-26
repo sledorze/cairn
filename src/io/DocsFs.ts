@@ -3,6 +3,7 @@
 // (via @effect/platform-node); `makeTestDocsFs` provides an in-memory layer.
 
 import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
 
 import { toPosix } from '../core/paths.ts'
 
@@ -37,6 +38,75 @@ export const DocsFsLive = Layer.effect(
     // descriptors well clear of typical `ulimit -n` defaults.
     const STAT_CONCURRENCY = 32
 
+    // A single bad entry anywhere in the tree — a broken symlink, an
+    // unreadable subdirectory, a pathologically long/deep path — must not
+    // crash the WHOLE scan (found via adversarial "no unhandled exception"
+    // review, reproduced for real: a permission-denied subdirectory made
+    // even `fs.readDirectory(root, { recursive: true })` itself fail
+    // entirely — Node's built-in recursive walk gives up on the first
+    // subdirectory it can't `scandir`, not just the one bad entry). Walking
+    // one directory level at a time — rather than using `recursive: true`
+    // — means a directory-level failure (`readDirectory`) is caught exactly
+    // where it happens, so only the unreadable SUBTREE is excluded, not
+    // every file elsewhere in the same root.
+    // `atRoot` distinguishes the directory the CALLER explicitly asked to
+    // scan from every directory `walk` discovers by recursing into it.
+    // Found via a SECOND round of adversarial review, reproduced for real:
+    // an earlier version of this fix caught a `readDirectory` failure at
+    // EVERY level identically, including the very first call on `root`
+    // itself — so a permission-denied ROOT (as opposed to a nested
+    // subdirectory) silently returned zero files instead of the nested-
+    // failure "exclude just that subtree" behavior this fix intends. Zero
+    // files reads as "nothing to check," which is INDISTINGUISHABLE from a
+    // legitimately empty docs directory — `cairn check` would report
+    // `✅ OK, 0 checked` and exit 0 having silently checked nothing, which
+    // is a worse failure mode than the original crash (a crash is at least
+    // loud). A directory the caller explicitly named as a root must fail
+    // loudly if it can't be read at all; only directories discovered DURING
+    // traversal get the lenient "exclude the bad subtree" treatment.
+    // No explicit return-type annotation: `atRoot: true` deliberately lets a
+    // real `readDirectory` failure propagate as a typed error (caught by the
+    // outer `listFiles`'s `.pipe(Effect.orDie)`, same as it always has been
+    // for a genuinely inaccessible root) — annotating this `never`-error
+    // would silently re-swallow the exact failure this fix exists to
+    // surface, right back to the bug found via adversarial review.
+    const walk = (dir: string, atRoot: boolean): Effect.Effect<readonly string[], PlatformError> =>
+      Effect.gen(function* () {
+        const readDir = fs.readDirectory(dir)
+        const names = yield* atRoot ? readDir : readDir.pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
+        const nested = yield* Effect.forEach(
+          names,
+          (name) => {
+            const abs = path.join(dir, name)
+            return fs.stat(abs).pipe(
+              Effect.flatMap((info) => {
+                if (info.type === 'Directory') {
+                  return walk(abs, false)
+                }
+                // Matches the pre-existing contract exactly: only regular
+                // files are collected. Anything else (a device, socket, or
+                // other non-regular entry `fs.stat` can report) is silently
+                // excluded, same as before.
+                return Effect.succeed(info.type === 'File' ? [abs] : [])
+              }),
+              // `fs.stat`'s failure is a typed `PlatformError` (ENOENT on a
+              // broken symlink, EACCES, ENAMETOOLONG, ...), not a defect —
+              // `Effect.catch` (v4's `catchAll`) is the right combinator
+              // here, not `catchDefect`. Confirmed by construction: a
+              // `catchDefect`-only version still crashed on a real broken
+              // symlink, because the failure never reaches the defect
+              // channel at all. Entries found by recursing (never the
+              // caller-named root itself) always get this lenient
+              // treatment — a bad FILE stat inside an otherwise-readable
+              // root is excluded, never treated as root-level failure.
+              Effect.catch(() => Effect.succeed<readonly string[]>([])),
+            )
+          },
+          { concurrency: STAT_CONCURRENCY },
+        )
+        return nested.flat()
+      })
+
     const listFiles = (roots: readonly string[]): Effect.Effect<readonly string[]> =>
       Effect.gen(function* () {
         const out: string[] = []
@@ -45,20 +115,9 @@ export const DocsFsLive = Layer.effect(
           if (!present) {
             continue
           }
-          const entries = yield* fs.readDirectory(root, { recursive: true })
-          const abses = yield* Effect.forEach(
-            entries,
-            (entry) => {
-              const abs = path.join(root, entry)
-              return fs.stat(abs).pipe(Effect.map((info) => (info.type === 'File' ? abs : null)))
-            },
-            { concurrency: STAT_CONCURRENCY },
-          )
-          for (const abs of abses) {
-            if (abs !== null) {
-              // Normalise to POSIX so the pure planners see `/` paths on every OS.
-              out.push(toPosix(abs))
-            }
+          for (const abs of yield* walk(root, true)) {
+            // Normalise to POSIX so the pure planners see `/` paths on every OS.
+            out.push(toPosix(abs))
           }
         }
         return out

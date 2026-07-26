@@ -136,7 +136,14 @@ export const stampRefs = ({
     const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
     let stamped = 0
     for (const file of mdFiles) {
-      const content = yield* dfs.readFile(file)
+      // Found via adversarial "no unhandled exception" review: a doc that
+      // lists fine but can't be READ (permission denied) must not crash the
+      // whole run — skipped exactly like an untracked/ignored file already
+      // is, same discipline as `CheckSummaries.ts`'s own `readMarkdown` fix.
+      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+      if (content === null) {
+        continue
+      }
       const fromDir = path.dirname(file)
       const records: RefRecord[] = []
       for (const ref of extractReferences(content)) {
@@ -178,7 +185,12 @@ export const checkRefs = ({
       if (!sidecarExists) {
         continue
       }
-      const recorded = parseRefs(yield* dfs.readFile(sidecarPath))
+      // Same discipline as the primary-doc read above: an unreadable
+      // sidecar (permission denied) is treated as "nothing recorded," not a
+      // crash — consistent with `parseStamp`/`parseRefs`'s own existing
+      // contract that a corrupt/unparseable sidecar is silently skipped.
+      const sidecarContent = yield* dfs.readFile(sidecarPath).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+      const recorded = sidecarContent === null ? null : parseRefs(sidecarContent)
       if (recorded === null) {
         continue
       }
