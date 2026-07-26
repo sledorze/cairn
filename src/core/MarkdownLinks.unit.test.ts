@@ -78,6 +78,18 @@ describe('stripAnchor()', () => {
     expect(stripAnchor('a.md?x=1')).toBe('a.md')
     expect(stripAnchor('a.md')).toBe('a.md')
   })
+
+  // CodeQL flagged the prior `/\?.*$/`-based query strip as a polynomial-ReDoS
+  // risk on library input; parseTarget now strips via plain indexOf/slice.
+  // Construction proof, not an assumption: CodeQL's own repro shape ("many
+  // repetitions of '?'") should complete near-instantly, not scale badly.
+  it('stays fast on a target with many repeated `?` characters', () => {
+    const adversarial = `a.md${'?'.repeat(200_000)}`
+    const start = performance.now()
+    stripAnchor(adversarial)
+    const elapsedMs = performance.now() - start
+    expect(elapsedMs).toBeLessThan(1000)
+  })
 })
 
 describe('buildBasenameIndex()', () => {

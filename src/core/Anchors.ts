@@ -6,14 +6,7 @@
 
 import GithubSlugger from 'github-slugger'
 
-const FENCED_CODE_RE = /(^|\n)[ \t]*(```|~~~)[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/g
-
-/** Blank out fenced code blocks only (keep newlines) — a heading-shaped line
- * inside a fence must not be misparsed as a real heading. Inline code spans
- * are deliberately left untouched: a real heading like `## \`foo\`` must keep
- * its text so it slugs the same way GitHub renders it. */
-const maskFences = (content: string): string =>
-  content.replaceAll(FENCED_CODE_RE, (block) => block.replaceAll(/[^\n]/g, ' '))
+import { maskFencedCode } from './markdownFences.ts'
 
 const ATX_RE = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/
 const SETEXT_RE = /^(=+|-+)[ \t]*$/
@@ -47,7 +40,7 @@ const flattenInlineLinks = (headingText: string): string =>
   headingText.replaceAll(HEADING_LINK_RE, (_whole: string, text: string) => text)
 
 /** Heading text, in document order, from ATX (`# H`) and setext (`H\n===`)
- * headings. `masked` must already have fenced code blanked (see `maskFences`) —
+ * headings. `masked` must already have fenced code blanked (see `maskFencedCode`) —
  * a setext underline requires the line above to be non-blank, non-heading
  * text, so a thematic break (`---` after a blank line) is never mistaken for
  * a setext heading. */
@@ -79,7 +72,7 @@ const extractHeadingTexts = (masked: string): string[] => {
  * these as-authored).
  */
 export const extractAnchors = (content: string): ReadonlySet<string> => {
-  const masked = maskFences(content)
+  const masked = maskFencedCode(content)
   const slugger = new GithubSlugger()
   const anchors = new Set<string>()
   for (const raw of extractHeadingTexts(masked)) {

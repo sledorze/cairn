@@ -5,6 +5,7 @@
 import * as nodePath from 'node:path'
 
 import { extractAnchors } from './Anchors.ts'
+import { maskFencedCode } from './markdownFences.ts'
 
 // Reason in POSIX so link resolution is identical on every OS (inputs are
 // normalised to `/` at the IO boundary).
@@ -75,18 +76,16 @@ export interface CheckContentArgs {
 }
 
 const LINK_RE = /!?\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
-const FENCED_CODE_RE = /(^|\n)[ \t]*(```|~~~)[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/g
 const INLINE_CODE_RE = /`[^`\n]*`/g
 
 /**
- * Blank out fenced (``` / ~~~) and inline (`code`) spans so links that only
- * appear inside code examples are NOT treated as real links. Newlines are kept
- * so line-based reasoning is unaffected; other characters become spaces.
+ * Blank out fenced (``` / ~~~, via `maskFencedCode`) and inline (`code`)
+ * spans so links that only appear inside code examples are NOT treated as
+ * real links. Newlines are kept so line-based reasoning is unaffected; other
+ * characters become spaces.
  */
 export const stripCode = (content: string): string =>
-  content
-    .replaceAll(FENCED_CODE_RE, (block) => block.replaceAll(/[^\n]/g, ' '))
-    .replaceAll(INLINE_CODE_RE, (block) => ' '.repeat(block.length))
+  maskFencedCode(content).replaceAll(INLINE_CODE_RE, (block) => ' '.repeat(block.length))
 
 const LINK_DEF_RE = /^[ \t]*\[([^\]]+)\]:[ \t]*<?([^>\s]+)>?/gm
 
@@ -132,11 +131,17 @@ export interface ParsedTarget {
   readonly path: string
 }
 
-/** Split a link target into its path and (optional) `#anchor`, dropping any `?query`. */
+/** Split a link target into its path and (optional) `#anchor`, dropping any
+ * `?query` — plain `indexOf`/`slice`, not a regex (CodeQL flagged the
+ * previous `/\?.*$/` form as a polynomial-ReDoS risk on library input). */
 export const parseTarget = (target: string): ParsedTarget => {
   const hashIdx = target.indexOf('#')
   const rawPath = hashIdx === -1 ? target : target.slice(0, hashIdx)
-  return { anchor: hashIdx === -1 ? null : target.slice(hashIdx + 1), path: rawPath.replace(/\?.*$/, '') }
+  const queryIdx = rawPath.indexOf('?')
+  return {
+    anchor: hashIdx === -1 ? null : target.slice(hashIdx + 1),
+    path: queryIdx === -1 ? rawPath : rawPath.slice(0, queryIdx),
+  }
 }
 
 /** Drop `#anchor` and `?query` from a target. */
