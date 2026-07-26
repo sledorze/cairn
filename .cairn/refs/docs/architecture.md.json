@@ -9,8 +9,20 @@
       "target": "../src/core/StampStore.ts"
     },
     {
+      "hash": "a4f41e3910beeb30ad9ba77a0c62b896c62eb0595607d21845f91fc961f3cfc5",
+      "target": "../src/core/RefStore.ts"
+    },
+    {
       "hash": "9428c1ea5fb82b7a980e6a92b3013b9a4e568ce4a95b08b22c90aecbf7b97daf",
       "target": "../src/core/MarkdownLinks.ts"
+    },
+    {
+      "hash": "89595f965614412b52c83f991e5f9ab18e4efd221f9aa1d4a1988d3369176d83",
+      "target": "../src/core/Anchors.ts"
+    },
+    {
+      "hash": "5bfa685863110627c84b684b290e472a2d0e3b4f9ea51dee0e44de66040caaf4",
+      "target": "../src/core/markdownFences.ts"
     },
     {
       "hash": "0511831488fb50bcd346b7b05e219ec6d92996d955f70867a7cc1c57a9b35015",
@@ -19,6 +31,10 @@
     {
       "hash": "d2fb651a2c9f94e3c699f2869a78afdcde3c261b00b5a461c1c6fcc390df1f98",
       "target": "../src/core/glob.ts"
+    },
+    {
+      "hash": "3ae2429b07bffb90c8c0836297e273b60f7540480cf1ede58dadbf14c167eadb",
+      "target": "../src/core/paths.ts"
     },
     {
       "hash": "c48e2b7c5dca32adafcad08a00b611d69b7135ca4b74dbdc21d2d0f8df005a45",
@@ -33,8 +49,16 @@
       "target": "../src/program/CheckLinks.ts"
     },
     {
+      "hash": "65ab2af8c2783c1729c3add764e0ba55c05fe755c1c18cc63a6561bf93dfbf1a",
+      "target": "../src/program/CheckRefs.ts"
+    },
+    {
       "hash": "1201966ba5c72844de6cf352c0e5bd313297cdb49683f54203d68210d08217e7",
       "target": "../src/program/CheckSummaries.ts"
+    },
+    {
+      "hash": "9fba9a4f2bf48a258be85c64828d7745139e354e4aba6c1444e8310c9c6f7c75",
+      "target": "../src/program/JsonReport.ts"
     },
     {
       "hash": "ae71c02b41cf8a5f869a34620b07384977ce1f7c5837e9ca671a020163048717",
