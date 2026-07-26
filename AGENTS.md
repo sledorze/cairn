@@ -119,3 +119,66 @@ fix with a NEGATIVE test — not just "the target file gets fixed correctly," bu
 adjacent, superficially-similar file is provably left untouched" (see
 `CheckSummaries.unit.test.ts`'s "never strips the legacy pattern from a SOURCE doc" test for
 the pattern to copy).
+
+# Shipping one iteration well
+
+No `CONTRIBUTING.md` exists, and the "Release convention" section above only covers
+changesets — neither says how to actually take a change from idea to merged PR. This section
+does. It's not aspirational: every rule below is a concrete lesson, distilled from real
+incidents that a lighter process missed.
+
+**Full local verify before every push, every time — not just before "done."**
+`pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check` (`pnpm verify` runs
+all five). `lefthook.yml`'s hooks already automate most of this — `pre-commit` runs
+lint/format, `pre-push` runs typecheck+test+build, then `check`, then the perf-regression
+gate — but that's not a reason to treat it as covered: hooks are skippable (`git ... --no-verify`),
+and no hook can construct the actual scenario a feature is meant to catch for you (see
+"Dogfood," next). Treat the hooks as the backstop, not the practice. A change that "obviously
+can't affect X" still gets the full pass regardless: the reference content-hash tracking
+feature (`RefStore.ts`) silently clobbered an unrelated summary sidecar the first time it ran
+for real — `tsc`/`vitest` were both green throughout, because nothing in the type system or
+the unit tests encoded "these two sidecar kinds must never share a path." Only running the
+real CLI against the real repo caught it.
+
+**Dogfood the actual CLI against the actual repo before calling a feature done — unit tests
+that pass are necessary, not sufficient.** Build `dist/cli.js` (or run via `tsx`) and run it
+for real, including the negative case: construct the exact scenario the feature is meant to
+catch (a renamed file, a reworded heading, a changed reference target), confirm it's
+reported, then revert and confirm it's clean again. Every check-detection feature in this
+repo (`CheckLinks.ts`'s anchor/cross-hierarchy validation, `CheckRefs.ts`'s drift tracking)
+had a real gap that only showed up this way — a blank error-report field, a crash on an
+unusual link shape, a false negative on a multi-reference doc — never caught by `tsc` or a
+unit test written before the dogfooding pass found the gap.
+
+**Convert every manual dogfooding proof into a permanent test before moving on.** A bug you
+found by hand and fixed, with no test added, is a bug that can silently come back. The
+pattern that's worked repeatedly here: a real temp directory (`src/testSupport/tempProject.ts`),
+BEFORE/AFTER structure — assert clean, mutate a file on real disk exactly like a later commit
+would, assert the specific break is now caught with real (not placeholder) detail, then
+revert and re-assert clean. Prefer this over the in-memory test double alone when the thing
+under test is specifically about real filesystem behaviour (path resolution, sidecar
+placement, content hashing) — the in-memory double is faster and still worth keeping
+alongside it, but it can't catch what only the real `DocsFsLive` binding exercises.
+
+**Treat a structural/architectural claim in a doc as unverified until grepped, not just
+re-read.** "The architecture doc reflects the code" and "these two modules don't depend on
+each other" are exactly the kind of claim that silently rots as a codebase grows — this repo
+has caught real drift here twice (undocumented files after a feature PR; a mutual dependency
+between two directories that were supposed to be one-directional). Verify by construction:
+grep every import, confirm every doc-linked path resolves, confirm every real source file is
+named somewhere. For anything you can't easily self-check (you wrote both the code and the
+doc, so you're not a neutral reader of either), get an independent read — a fresh subagent
+with no context beyond "verify this claim," not a re-read of your own reasoning.
+
+**One logical concern per PR, based on the right parent branch.** If work B genuinely
+depends on work A landing first (A fixes a doc that B's own changes then build further on),
+branch B off A's branch, not off `main` — don't let a dependent change get PR'd against a
+`main` that doesn't have the prerequisite yet. Small, focused PRs are also what makes the
+rest of this section practical: a full verify pass and a dogfooding pass are fast and legible
+on one concern, and slow and easy to skim past on five.
+
+**A changeset for every user-facing change** (see "Release convention" above) — and write
+its summary for someone who will never read the PR description: what changed, and whether
+it can flip a previously-passing repo to failing (a new check getting stricter is a real,
+sharp-edged behaviour change, not just a bugfix, even though it "only" makes `cairn` more
+correct).
