@@ -119,3 +119,21 @@ export const parseLineAnchor = (anchor: string): LineRange | null => {
 
 /** True when `range` falls within a file of `lineCount` lines (1-indexed, inclusive). */
 export const isValidLineAnchor = (range: LineRange, lineCount: number): boolean => range.end <= lineCount
+
+const MAX_LISTED_ANCHORS = 8
+
+/**
+ * Human-readable summary of a document's available anchors, for actionable
+ * error messages — what's actually there, so fixing a broken `#fragment`
+ * doesn't require opening the target file first. Capped so a document with
+ * hundreds of headings doesn't produce an unreadable wall of text.
+ */
+export const describeAnchors = (anchors: ReadonlySet<string>): string => {
+  if (anchors.size === 0) {
+    return 'target has no headings or anchors'
+  }
+  const list = [...anchors]
+  const shown = list.slice(0, MAX_LISTED_ANCHORS)
+  const suffix = list.length > MAX_LISTED_ANCHORS ? `, and ${list.length - MAX_LISTED_ANCHORS} more` : ''
+  return `available anchors: ${shown.join(', ')}${suffix}`
+}

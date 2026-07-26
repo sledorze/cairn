@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractAnchors, isValidLineAnchor, normalizeAnchor, parseLineAnchor } from './Anchors.ts'
+import { describeAnchors, extractAnchors, isValidLineAnchor, normalizeAnchor, parseLineAnchor } from './Anchors.ts'
 
 describe('extractAnchors()', () => {
   it('slugs ATX headings GitHub-style', () => {
@@ -108,5 +108,23 @@ describe('isValidLineAnchor()', () => {
 
   it('accepts a range ending exactly at the last line', () => {
     expect(isValidLineAnchor({ end: 25, start: 25 }, 25)).toBeTruthy()
+  })
+})
+
+describe('describeAnchors()', () => {
+  it('lists every anchor when few enough', () => {
+    expect(describeAnchors(new Set(['intro', 'setup']))).toBe('available anchors: intro, setup')
+  })
+
+  it('says so when a document has no anchors at all', () => {
+    expect(describeAnchors(new Set())).toBe('target has no headings or anchors')
+  })
+
+  it('caps a long list and states how many more there are, rather than dumping everything', () => {
+    const anchors = new Set(Array.from({ length: 12 }, (_, i) => `heading-${i}`))
+    const description = describeAnchors(anchors)
+    expect(description).toBe(
+      'available anchors: heading-0, heading-1, heading-2, heading-3, heading-4, heading-5, heading-6, heading-7, and 4 more',
+    )
   })
 })

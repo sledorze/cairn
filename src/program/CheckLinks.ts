@@ -6,7 +6,13 @@ import * as nodePath from 'node:path'
 
 import { Effect } from 'effect'
 
-import { extractAnchors, isValidLineAnchor, normalizeAnchor, parseLineAnchor } from '../core/Anchors.ts'
+import {
+  describeAnchors,
+  extractAnchors,
+  isValidLineAnchor,
+  normalizeAnchor,
+  parseLineAnchor,
+} from '../core/Anchors.ts'
 import { matchesAny } from '../core/glob.ts'
 import type { BrokenLink, PendingCheck } from '../core/MarkdownLinks.ts'
 import { buildBasenameIndex, checkContent, stripCode, suggestFix } from '../core/MarkdownLinks.ts'
@@ -131,11 +137,12 @@ const linkHint = (locale: Locale, link: BrokenLink): string => {
   if (link.suggestion !== undefined) {
     return pick(locale, { en: ` → suggestion: ${link.suggestion}`, fr: ` → suggestion : ${link.suggestion}` })
   }
+  const detail = link.detail !== undefined ? ` — ${link.detail}` : ''
   if (link.reason === 'anchor') {
-    return pick(locale, { en: ' (heading/anchor not found)', fr: ' (ancre introuvable)' })
+    return pick(locale, { en: ` (heading/anchor not found${detail})`, fr: ` (ancre introuvable${detail})` })
   }
   if (link.reason === 'line') {
-    return pick(locale, { en: ' (line number out of range)', fr: ' (numéro de ligne hors limites)' })
+    return pick(locale, { en: ` (line number out of range${detail})`, fr: ` (numéro de ligne hors limites${detail})` })
   }
   return pick(locale, { en: ' (no unique target)', fr: ' (aucune cible unique)' })
 }
@@ -215,7 +222,11 @@ const resolvePendingCheck = ({
     const lineRange = parseLineAnchor(normalized)
     if (lineRange) {
       const lineCount = content.split('\n').length
-      return isValidLineAnchor(lineRange, lineCount) ? null : { reason: 'line', target: item.target, text: item.text }
+      if (isValidLineAnchor(lineRange, lineCount)) {
+        return null
+      }
+      const detail = `target has ${lineCount} line${lineCount === 1 ? '' : 's'}`
+      return { detail, reason: 'line', target: item.target, text: item.text }
     }
 
     if (!item.targetAbs.toLowerCase().endsWith('.md')) {
@@ -230,7 +241,9 @@ const resolvePendingCheck = ({
       anchors = extractAnchors(content)
       anchorCache.set(item.targetAbs, anchors)
     }
-    return anchors.has(normalized) ? null : { reason: 'anchor', target: item.target, text: item.text }
+    return anchors.has(normalized)
+      ? null
+      : { detail: describeAnchors(anchors), reason: 'anchor', target: item.target, text: item.text }
   })
 
 export const checkLinks = ({

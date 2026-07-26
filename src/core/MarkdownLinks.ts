@@ -4,7 +4,7 @@
 
 import * as nodePath from 'node:path'
 
-import { extractAnchors } from './Anchors.ts'
+import { describeAnchors, extractAnchors } from './Anchors.ts'
 import { maskFencedCode } from './markdownFences.ts'
 
 // Reason in POSIX so link resolution is identical on every OS (inputs are
@@ -28,6 +28,11 @@ export interface MarkdownLinkDef {
 export type BrokenReason = 'anchor' | 'line' | 'path'
 
 export interface BrokenLink {
+  /** Short, human-readable elaboration — what's actually there instead, so
+   * fixing this doesn't require opening the target file first. E.g. for
+   * `reason: 'anchor'`, the target's real headings; for `reason: 'line'`,
+   * the target's real line count. */
+  readonly detail?: string
   readonly reason?: BrokenReason
   readonly suggestion?: string
   readonly target: string
@@ -107,6 +112,44 @@ export const extractLinkDefinitions = (content: string): MarkdownLinkDef[] => {
   return defs
 }
 
+/** Start offset of a regex match's first capture group, given the group's
+ * own text starts right after the FIRST `[` in the whole match (true for
+ * both `LINK_RE`'s text group and `LINK_DEF_RE`'s label group). */
+const captureGroupStart = (match: RegExpMatchArray): number => (match.index ?? 0) + match[0].indexOf('[') + 1
+
+/**
+ * Like `extractLinks`, but matches against `masked` (to keep the existing
+ * "a link written inside a code example isn't a real link" exclusion,
+ * unchanged) while reading the TEXT back from `original` at that same
+ * position. Without this, a link whose own visible text is itself
+ * backtick-styled (e.g. `` [`glob.ts`](../glob.ts) ``) reports as blank —
+ * `stripCode`'s inline-code masking blanks that backtick span before
+ * extraction ever sees it, since it can't distinguish "styling inside a
+ * link's text" from "a link written inside a code example." Errors need the
+ * real text to be actionable, so this is a position-preserving re-read, not a
+ * masking change (masking's own exclusion behaviour must stay exactly as-is).
+ */
+const extractLinksPreservingText = (original: string, masked: string): MarkdownLink[] => {
+  const links: MarkdownLink[] = []
+  for (const match of masked.matchAll(LINK_RE)) {
+    const textStart = captureGroupStart(match)
+    const textLength = match[1]?.length ?? 0
+    links.push({ target: match[2] ?? '', text: original.slice(textStart, textStart + textLength) })
+  }
+  return links
+}
+
+/** The `extractLinkDefinitions` counterpart of `extractLinksPreservingText`. */
+const extractLinkDefinitionsPreservingLabel = (original: string, masked: string): MarkdownLinkDef[] => {
+  const defs: MarkdownLinkDef[] = []
+  for (const match of masked.matchAll(LINK_DEF_RE)) {
+    const labelStart = captureGroupStart(match)
+    const labelLength = match[1]?.length ?? 0
+    defs.push({ label: original.slice(labelStart, labelStart + labelLength), target: match[2] ?? '' })
+  }
+  return defs
+}
+
 /** True only for relative paths we can resolve on disk — INCLUDING a bare
  * `#heading` (same-page anchor), now checkable against the file's own
  * headings (issue #39, scenario C); previously always skipped. */
@@ -146,6 +189,45 @@ export const parseTarget = (target: string): ParsedTarget => {
 
 /** Drop `#anchor` and `?query` from a target. */
 export const stripAnchor = (target: string): string => parseTarget(target).path
+
+export interface Reference {
+  readonly anchor: string | null
+  readonly target: string
+}
+
+/**
+ * Every real (checkable, cross-file) reference a doc makes — deduped by
+ * `(target, anchor)` — for issue #39 Scenario I's content-hash drift
+ * tracking (`../program/CheckRefs.ts`). Same-page anchors (`path === ''`)
+ * are excluded: a same-page fragment isn't a reference to another file's
+ * content, it's a position within this one — `checkContent`'s own anchor
+ * check already covers whether it resolves.
+ */
+export const extractReferences = (content: string): Reference[] => {
+  const masked = stripCode(content)
+  const candidates: MarkdownLink[] = [
+    ...extractLinks(masked),
+    ...extractLinkDefinitions(masked).map((def) => ({ target: def.target, text: '' })),
+  ]
+  const seen = new Set<string>()
+  const refs: Reference[] = []
+  for (const link of candidates) {
+    if (!isCheckableTarget(link.target)) {
+      continue
+    }
+    const { anchor, path: target } = parseTarget(link.target)
+    if (target === '') {
+      continue
+    }
+    const key = `${target}#${anchor ?? ''}`
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    refs.push({ anchor, target })
+  }
+  return refs
+}
 
 /** Map basename -> list of absolute paths, for ambiguity-aware fixing. */
 export const buildBasenameIndex = (absPaths: readonly string[]): Map<string, string[]> => {
@@ -202,9 +284,12 @@ export const checkContent = ({
   const pending: PendingCheck[] = []
   const masked = stripCode(content)
   const candidates: MarkdownLink[] = [
-    ...extractLinks(masked),
+    ...extractLinksPreservingText(content, masked),
     // Reference-style definitions are checked by their target too.
-    ...extractLinkDefinitions(masked).map((def) => ({ target: def.target, text: `[${def.label}]` })),
+    ...extractLinkDefinitionsPreservingLabel(content, masked).map((def) => ({
+      target: def.target,
+      text: `[${def.label}]`,
+    })),
   ]
 
   let sourceAnchors: ReadonlySet<string> | null = null
@@ -219,7 +304,12 @@ export const checkContent = ({
     if (rel === '') {
       // Same-page anchor: no other file to read, resolve now.
       if (anchor !== null && !getSourceAnchors().has(anchor)) {
-        broken.push({ reason: 'anchor', target: link.target, text: link.text })
+        broken.push({
+          detail: describeAnchors(getSourceAnchors()),
+          reason: 'anchor',
+          target: link.target,
+          text: link.text,
+        })
       }
       continue
     }

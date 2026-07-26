@@ -4,6 +4,7 @@ import {
   buildBasenameIndex,
   checkContent,
   extractLinks,
+  extractReferences,
   isCheckableTarget,
   stripAnchor,
   stripCode,
@@ -161,7 +162,9 @@ describe('checkContent()', () => {
   it('flags a same-page anchor that has no matching heading', () => {
     const content = '# Real Heading\n\nsee [ghost](#not-a-real-heading)'
     const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
-    expect(result.broken).toEqual([{ reason: 'anchor', target: '#not-a-real-heading', text: 'ghost' }])
+    expect(result.broken).toEqual([
+      { detail: 'available anchors: real-heading', reason: 'anchor', target: '#not-a-real-heading', text: 'ghost' },
+    ])
     expect(result.pending).toEqual([])
   })
 
@@ -208,5 +211,97 @@ describe('checkContent()', () => {
     const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
     expect(result.broken).toEqual([])
     expect(result.pending).toEqual([])
+  })
+
+  // Found via dogfooding (renaming a real file docs/architecture.md links to
+  // with `[\`glob.ts\`](../src/core/glob.ts)`-style text): a broken link's
+  // reported text must be the AUTHORED text, not blanked by stripCode's
+  // inline-code masking just because the visible text happens to be
+  // backtick-styled — an error report with blank text isn't actionable.
+  it('reports the real text of a broken link even when its visible text is backtick-styled', () => {
+    const content = '[`glob.ts`](./missing.md)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([{ reason: 'path', target: './missing.md', text: '`glob.ts`' }])
+  })
+
+  it('reports the real text of a link deferred to `pending`, backtick-styled or not', () => {
+    const content = '[`exists.md`](./exists.md#heading)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.pending).toEqual([
+      {
+        anchor: 'heading',
+        fromDir: '/r/docs/a',
+        target: './exists.md#heading',
+        targetAbs: '/r/docs/a/exists.md',
+        text: '`exists.md`',
+      },
+    ])
+  })
+
+  it('keeps text correctly aligned per-link across several backtick-styled links in one document (position math does not drift)', () => {
+    const content = [
+      '- [`a.md`](./a-missing.md)',
+      '- fine: [`exists.md`](./exists.md)',
+      '- also broken: [`c.md`](./c-missing.md)',
+    ].join('\n')
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([
+      { reason: 'path', target: './a-missing.md', text: '`a.md`' },
+      { reason: 'path', target: './c-missing.md', text: '`c.md`' },
+    ])
+  })
+
+  it('reports the real label of a broken reference-style definition even when backtick-styled', () => {
+    const content = 'See [`the doc`][d].\n\n[`the doc`]: ./missing.md'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([{ reason: 'path', target: './missing.md', text: '[`the doc`]' }])
+  })
+})
+
+describe('extractReferences()', () => {
+  it('extracts a plain cross-file reference with no anchor', () => {
+    expect(extractReferences('[core](../src/core/engine.ts)')).toEqual([
+      { anchor: null, target: '../src/core/engine.ts' },
+    ])
+  })
+
+  it('extracts a cross-file reference with an anchor', () => {
+    expect(extractReferences('[intro](./guide.md#getting-started)')).toEqual([
+      { anchor: 'getting-started', target: './guide.md' },
+    ])
+  })
+
+  it('excludes same-page anchors — not a reference to another file', () => {
+    expect(extractReferences('[jump](#local-section)')).toEqual([])
+  })
+
+  it('excludes external/non-checkable targets', () => {
+    expect(extractReferences('[site](https://example.com) [mail](mailto:a@b.c)')).toEqual([])
+  })
+
+  it('excludes links written inside a code example', () => {
+    expect(extractReferences('`[fake](../src/x.ts)`')).toEqual([])
+  })
+
+  it('dedupes by (target, anchor) — a file linked twice the same way is one reference', () => {
+    const content = '[a](../src/x.ts) and again [b](../src/x.ts)'
+    expect(extractReferences(content)).toEqual([{ anchor: null, target: '../src/x.ts' }])
+  })
+
+  it('treats the same target with different anchors as distinct references', () => {
+    const content = '[one](./guide.md#a) [two](./guide.md#b)'
+    expect(extractReferences(content)).toEqual([
+      { anchor: 'a', target: './guide.md' },
+      { anchor: 'b', target: './guide.md' },
+    ])
+  })
+
+  it('includes reference-style link definitions', () => {
+    const content = 'see [x][d]\n\n[d]: ../src/x.ts'
+    expect(extractReferences(content)).toEqual([{ anchor: null, target: '../src/x.ts' }])
+  })
+
+  it('returns an empty array for a document with no references', () => {
+    expect(extractReferences('just prose, no links')).toEqual([])
   })
 })

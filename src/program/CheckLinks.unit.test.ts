@@ -50,6 +50,32 @@ describe('formatLinkReport()', () => {
     expect(lines.at(-1)).toBe('    ✗ [t](../x.ts#L999) (line number out of range)')
   })
 
+  // "meaningful and actionable": what's actually there, not just "wrong."
+  it('appends detail to the anchor hint so the fix is visible without opening the file', () => {
+    const lines = formatLinkReport({
+      broken: [
+        {
+          file: 'a.md',
+          links: [{ detail: 'available anchors: intro, setup', reason: 'anchor', target: './b.md#nope', text: 't' }],
+        },
+      ],
+      checked: 1,
+      fixed: 0,
+    })
+    expect(lines.at(-1)).toBe('    ✗ [t](./b.md#nope) (heading/anchor not found — available anchors: intro, setup)')
+  })
+
+  it('appends detail to the line hint', () => {
+    const lines = formatLinkReport({
+      broken: [
+        { file: 'a.md', links: [{ detail: 'target has 5 lines', reason: 'line', target: '../x.ts#L999', text: 't' }] },
+      ],
+      checked: 1,
+      fixed: 0,
+    })
+    expect(lines.at(-1)).toBe('    ✗ [t](../x.ts#L999) (line number out of range — target has 5 lines)')
+  })
+
   it('still reports "(no unique target)" for a path failure with no suggestion', () => {
     const lines = formatLinkReport({
       broken: [{ file: 'a.md', links: [{ reason: 'path', target: './ghost.md', text: 't' }] }],
@@ -158,7 +184,9 @@ describe('checkLinks()', () => {
       checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
     )
     expect(result.broken).toHaveLength(1)
-    expect(result.broken[0]?.links).toEqual([{ reason: 'anchor', target: './guide.md#nope', text: 'bad' }])
+    expect(result.broken[0]?.links).toEqual([
+      { detail: 'available anchors: getting-started', reason: 'anchor', target: './guide.md#nope', text: 'bad' },
+    ])
   })
 
   // Issue #39, scenario C: same-file heading anchor.
@@ -169,7 +197,9 @@ describe('checkLinks()', () => {
     const result = await Effect.runPromise(
       checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
     )
-    expect(result.broken[0]?.links).toEqual([{ reason: 'anchor', target: '#not-real', text: 'ghost' }])
+    expect(result.broken[0]?.links).toEqual([
+      { detail: 'available anchors: real-heading', reason: 'anchor', target: '#not-real', text: 'ghost' },
+    ])
   })
 
   // Issue #39, scenario E: cross-hierarchy target, still inside the checkout root.
@@ -199,7 +229,9 @@ describe('checkLinks()', () => {
     const result = await Effect.runPromise(
       checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
     )
-    expect(result.broken[0]?.links).toEqual([{ reason: 'line', target: '../../src/cli.ts#L100', text: 'badline' }])
+    expect(result.broken[0]?.links).toEqual([
+      { detail: 'target has 3 lines', reason: 'line', target: '../../src/cli.ts#L100', text: 'badline' },
+    ])
   })
 
   // Corner case (found via self-review, reproduced by construction — a real
