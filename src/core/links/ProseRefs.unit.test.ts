@@ -84,4 +84,39 @@ describe('extractProseRefs()', () => {
   it('finds nothing in a doc with no backtick citations', () => {
     expect(extractProseRefs('Just plain prose, no code spans at all.')).toEqual([])
   })
+
+  // Found via adversarial dimension-coverage review (not the original test
+  // pass): candidacy was decided on the TRIMMED form but the untrimmed text
+  // was what got reported — a citation with trailing whitespace inside the
+  // backticks (easy to introduce by accident) was checked against a path
+  // that could never resolve, a false positive on ordinary input.
+  it('trims whitespace inside the backticks before it is ever reported (not just before deciding candidacy)', () => {
+    expect(extractProseRefs('See `src/services/auth.ts ` please.')).toEqual([{ text: 'src/services/auth.ts' }])
+    expect(extractProseRefs('See ` src/services/auth.ts` please.')).toEqual([{ text: 'src/services/auth.ts' }])
+  })
+
+  // Found via the same review: an absolute path is a real filesystem path,
+  // not a repo-ROOTED one (the issue's own term) — without this exclusion
+  // it silently joined onto `base` and produced a nonsensical suggestion.
+  it('excludes an absolute-path-shaped citation — never a "rooted repo path" candidate', () => {
+    expect(extractProseRefs('See `/etc/nginx/nginx.conf` for the real config.')).toEqual([])
+  })
+
+  // Found via the same review: a backtick-styled citation inside a REAL
+  // Markdown link's text is already CheckLinks.ts's concern — double-
+  // reporting it (once by the link checker, once again by --prose-refs
+  // suggesting the exact link that already exists) undercuts this
+  // feature's own "migration aid, not a second parallel checker" purpose.
+  it("does not double-extract a backtick citation that is already inside a real Markdown link's text", () => {
+    expect(extractProseRefs('See [`src/services/gone.ts`](../src/services/gone.ts) for details.')).toEqual([])
+  })
+
+  it('still extracts an UNLINKED citation elsewhere in the same doc as a real link', () => {
+    const content = 'See [`src/a.ts`](../src/a.ts) and separately `src/b.ts` in prose.'
+    expect(extractProseRefs(content)).toEqual([{ text: 'src/b.ts' }])
+  })
+
+  it('does not mistake an image (`![alt](url)`) for a masked link — same masking rule applies', () => {
+    expect(extractProseRefs('![`src/diagram.png`](../src/diagram.png)')).toEqual([])
+  })
 })

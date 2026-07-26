@@ -290,7 +290,12 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   }
 
   if (parsed.refs) {
-    const refsArgs = { base: cwd, roots: absRoots }
+    const refsArgs = {
+      base: cwd,
+      ignore: config.ignore,
+      roots: absRoots,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
+    }
     if (parsed.stamp) {
       const result = yield* stampRefs(refsArgs)
       yield* Console.log(
@@ -307,7 +312,12 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   }
 
   if (parsed.prose) {
-    const result = yield* checkProseRefs({ base: cwd, roots: absRoots })
+    const result = yield* checkProseRefs({
+      base: cwd,
+      ignore: config.ignore,
+      roots: absRoots,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
+    })
     yield* Console.log(formatProseRefsReport(result, { locale }).join('\n'))
     code = Math.max(code, proseRefsExitCode(result))
   }

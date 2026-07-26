@@ -62,7 +62,11 @@ export interface LinkReportOptions {
   readonly locale?: Locale
 }
 
-const withAncestors = (files: readonly string[]): Set<string> => {
+/** Exported for `CheckProseRefs.ts`'s own `trackedUniverse` — same shape,
+ * same reasoning (a tracked file's ancestor directories must also read as
+ * "known" so a physically-present target isn't rejected purely because a
+ * containing directory itself isn't a git blob). */
+export const withAncestors = (files: readonly string[]): Set<string> => {
   const set = new Set<string>(files)
   for (const file of files) {
     let dir = path.dirname(file)
@@ -351,12 +355,35 @@ export const checkLinks = ({
 
       const remaining: BrokenLink[] = []
       let changed = false
-      for (const link of links) {
-        const repair =
-          fix && link.suggestion !== undefined ? applyFix(content, link.target, link.suggestion) : undefined
-        if (repair?.changed) {
+      // Issue #49 dimension-coverage review: a broken target repeated more
+      // than once in the same file (e.g. the same dead link mentioned twice
+      // in prose and again in a "See also" list) produced a real misreport.
+      // `applyFix`'s occurrence-safe replace is GLOBAL (fixes every
+      // occurrence of `target` in one call, by design — occurrence-safety
+      // only works all-or-nothing), so calling it again for the SECOND
+      // `BrokenLink` record with the identical `target` string found nothing
+      // left to replace (`countOccurrences` now 0) and fell through to
+      // "unfixed" — even though the file was already fully, correctly
+      // repaired by the first call. Caching the outcome per unique `target`
+      // (same target ⇒ same suggestion, since both are deterministic
+      // functions of `target` + the resolved data) makes every record
+      // sharing that target agree with what actually happened on disk.
+      const fixedTargets = new Map<string, boolean>()
+      const attemptFix = (target: string, suggestion: string): boolean => {
+        const cached = fixedTargets.get(target)
+        if (cached !== undefined) {
+          return cached
+        }
+        const repair = applyFix(content, target, suggestion)
+        if (repair.changed) {
           content = repair.content
           changed = true
+        }
+        fixedTargets.set(target, repair.changed)
+        return repair.changed
+      }
+      for (const link of links) {
+        if (fix && link.suggestion !== undefined && attemptFix(link.target, link.suggestion)) {
           fixed += 1
         } else {
           remaining.push(link)

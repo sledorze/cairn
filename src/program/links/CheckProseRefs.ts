@@ -21,8 +21,10 @@ import * as nodePath from 'node:path'
 import { Effect } from 'effect'
 
 import { extractProseRefs } from '../../core/links/ProseRefs.ts'
+import { matchesAny } from '../../core/glob.ts'
 import { isWithinBase } from '../../core/paths.ts'
 import { DocsFs } from '../../io/DocsFs.ts'
+import { withAncestors } from './CheckLinks.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
 
@@ -53,6 +55,14 @@ export interface ProseRefsResult {
 export interface CheckProseRefsArgs {
   readonly base: string
   readonly roots: readonly string[]
+  /** Found missing via dimension-coverage review: `checkLinks`/`checkSummaries`
+   * both wire `ignore`/`trackedFiles` through explicitly (with comments
+   * explaining why); this program had neither, so a doc excluded via `ignore`
+   * or invisible to a fresh CI checkout via `onlyGitTracked` was still
+   * scanned for prose citations — silently inconsistent with every sibling
+   * check, not a deliberate scope cut. */
+  readonly ignore?: readonly string[]
+  readonly trackedFiles?: ReadonlySet<string> | undefined
 }
 
 export interface ProseRefsReportOptions {
@@ -72,11 +82,17 @@ const resolveOne = ({
   dfs,
   fromDir,
   text,
+  trackedUniverse,
 }: {
   readonly base: string
   readonly dfs: { exists: (p: string) => Effect.Effect<boolean> }
   readonly fromDir: string
   readonly text: string
+  /** Same shape as `CheckLinks.ts`'s own `trackedUniverse` (files + their
+   * ancestor directories): a physically-present target counts as "resolves"
+   * only if it's ALSO tracked, so `onlyGitTracked` bounds prose-citation
+   * targets exactly the way it already bounds real link targets. */
+  readonly trackedUniverse: ReadonlySet<string> | undefined
 }): Effect.Effect<BrokenProseRef | null> =>
   Effect.gen(function* () {
     const targetAbs = path.join(base, text)
@@ -105,15 +121,24 @@ const resolveOne = ({
       return null
     }
 
-    const exists = yield* dfs.exists(targetAbs)
+    const physicallyExists = yield* dfs.exists(targetAbs)
+    const exists = physicallyExists && (trackedUniverse === undefined || trackedUniverse.has(targetAbs))
     return exists ? null : { reason: 'missing', suggestion, text }
   })
 
-export const checkProseRefs = ({ base, roots }: CheckProseRefsArgs): Effect.Effect<ProseRefsResult, never, DocsFs> =>
+export const checkProseRefs = ({
+  base,
+  roots,
+  ignore = [],
+  trackedFiles,
+}: CheckProseRefsArgs): Effect.Effect<ProseRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const allFiles = yield* dfs.listFiles(roots)
-    const mdFiles = allFiles.filter((f) => f.endsWith('.md'))
+    const mdFiles = allFiles.filter(
+      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
+    )
+    const trackedUniverse = trackedFiles === undefined ? undefined : withAncestors([...trackedFiles])
 
     const broken: FileBrokenProseRefs[] = []
     for (const file of mdFiles) {
@@ -125,7 +150,7 @@ export const checkProseRefs = ({ base, roots }: CheckProseRefsArgs): Effect.Effe
       const fromDir = path.dirname(file)
       const fileBroken: BrokenProseRef[] = []
       for (const candidate of candidates) {
-        const result = yield* resolveOne({ base, dfs, fromDir, text: candidate.text })
+        const result = yield* resolveOne({ base, dfs, fromDir, text: candidate.text, trackedUniverse })
         if (result) {
           fileBroken.push(result)
         }
