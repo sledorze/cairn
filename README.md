@@ -94,6 +94,17 @@ wrong-but-similar match would confidently point the link at the WRONG heading, w
 than leaving it broken). Two anchors that case-collide, or no match at all, are left unchanged
 and still reported.
 
+A single unreadable file never crashes the whole run: a broken symlink or a permission-denied
+subdirectory encountered while scanning is silently excluded from that scan (matching how any
+other non-file entry is treated), while a scan root you explicitly configured still fails
+loudly if it can't be read at all. A permission-denied doc file, specifically for
+`cairn check`/`--links-only`, is reported explicitly rather than silently skipped: it's listed
+by path in a new `unreadable` array on the result (also present in `--json` output) and makes
+the run exit non-zero, same as a broken link would. `--summaries-only`, `--refs`, and
+`--prose-refs` skip an unreadable doc without crashing too, though without that same explicit
+`unreadable` reporting — for `--summaries-only` specifically, an unreadable-but-existing
+summary currently reads as `missing` rather than distinctly `unreadable`.
+
 `cairn check --refs` is a separate, **opt-in** signal, off by default and not part of the
 `path`/`anchor`/`line` checks above: it tracks the _content_ of what a link points to, not
 just whether the link resolves. `--refs --stamp` records a hash of every reference target;
