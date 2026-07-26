@@ -202,6 +202,42 @@ describe('checkLinks()', () => {
     expect(result.broken[0]?.links).toEqual([{ reason: 'line', target: '../../src/cli.ts#L100', text: 'badline' }])
   })
 
+  // Corner case (found via self-review, reproduced by construction — a real
+  // crash, not a hypothetical): an anchor on a link that resolves to a
+  // DIRECTORY, not a file. `exists`/`known` only prove the path resolves to
+  // *something*; reading a directory's content dies (ENOENT/EISDIR), which
+  // must never take the whole `checkLinks` run down over one unusual link —
+  // existence already holds, so this is unverifiable, not broken.
+  it('does not crash on an anchor whose target resolves to a directory, in-root', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a/index.md': { content: '[see](../lib/#config)', mtimeMs: 1 },
+      '/r/docs/lib/readme.md': { content: '# x', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken).toEqual([])
+  })
+
+  it('does not crash on an anchor whose target resolves to a directory, out-of-root', async () => {
+    const files: Record<string, string> = {
+      '/r/docs/a/index.md': '[see](../../lib/#config)',
+    }
+    const service: DocsFsService = {
+      deleteFile: () => Effect.succeed(undefined),
+      exists: (abs) => Effect.succeed(abs === '/r/lib' || abs in files),
+      listFiles: () => Effect.succeed(Object.keys(files)),
+      readFile: (abs) => (abs in files ? Effect.succeed(files[abs] ?? '') : Effect.die(new Error(`ENOENT: ${abs}`))),
+      stat: () => Effect.die('not used in this test'),
+      writeFile: () => Effect.succeed(undefined),
+    }
+    const layer = Layer.succeed(DocsFs, service)
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken).toEqual([])
+  })
+
   // Efficiency (found via self-review, not the issue text): a plain
   // existence-only cross-hierarchy link (no `#fragment`) must never read the
   // target's content — only its existence needs proving.

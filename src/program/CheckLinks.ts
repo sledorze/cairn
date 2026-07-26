@@ -162,7 +162,7 @@ const resolvePendingCheck = ({
 }: {
   readonly base: string
   readonly existsCache: Map<string, boolean>
-  readonly contentCache: Map<string, string>
+  readonly contentCache: Map<string, string | null>
   readonly anchorCache: Map<string, ReadonlySet<string>>
   readonly dfs: DocsFsService
   readonly index: ReadonlyMap<string, readonly string[]>
@@ -198,8 +198,17 @@ const resolvePendingCheck = ({
 
     let content = contentCache.get(item.targetAbs)
     if (content === undefined) {
-      content = yield* dfs.readFile(item.targetAbs)
+      // `exists` only proves the path resolves to SOMETHING — a directory
+      // (from `known`'s ancestor-dir entries, or from a real out-of-root
+      // directory) also "exists" but isn't readable as text, and would
+      // otherwise die here (Effect.orDie) and take the whole run down over
+      // one malformed/unusual link. Existence already holds, so this is
+      // genuinely unverifiable, not broken and not a crash.
+      content = yield* dfs.readFile(item.targetAbs).pipe(Effect.catchDefect(() => Effect.succeed(null)))
       contentCache.set(item.targetAbs, content)
+    }
+    if (content === null) {
+      return null
     }
 
     const normalized = normalizeAnchor(item.anchor)
@@ -258,7 +267,7 @@ export const checkLinks = ({
     // Resolve every deferred anchor/cross-hierarchy check once, sharing
     // per-target caches across the whole run.
     const existsCache = new Map<string, boolean>()
-    const contentCache = new Map<string, string>()
+    const contentCache = new Map<string, string | null>()
     const anchorCache = new Map<string, ReadonlySet<string>>()
     for (const scan of scans) {
       for (const item of scan.pending) {
