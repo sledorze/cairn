@@ -68,6 +68,46 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
     expect(reverted.stale).toEqual([])
   })
 
+  it('tracks several real references in one doc independently — mirrors the real docs/architecture.md shape (10+ links in one file)', async () => {
+    const p = project('checkrefs-multi', {
+      'docs/guide.md': '# Guide\n\n## Getting Started\n',
+      'docs/index.md': [
+        '[a](../src/a.ts)',
+        '[b](../src/b.ts)',
+        '[c](../src/c.ts)',
+        '[guide](./guide.md#getting-started)',
+      ].join('\n'),
+      'src/a.ts': 'export const a = 1\n',
+      'src/b.ts': 'export const b = 1\n',
+      'src/c.ts': 'export const c = 1\n',
+    })
+    const args = { base: p.root, roots: [path.join(p.root, 'docs')] }
+
+    await run(stampRefs(args))
+    const before = await run(checkRefs(args))
+    expect(before.stale).toEqual([])
+
+    // Change only b.ts on real disk — a.ts/c.ts/the guide anchor must stay silent.
+    p.write('src/b.ts', 'export const b = 2 // changed\n')
+    const afterB = await run(checkRefs(args))
+    expect(afterB.stale).toHaveLength(1)
+    expect(afterB.stale[0]?.refs.map((r) => r.target)).toEqual(['../src/b.ts'])
+
+    // Now also change c.ts — both, and only both, drifted refs are reported,
+    // each correctly paired with its own real hash.
+    p.write('src/c.ts', 'export const c = 2 // also changed\n')
+    const afterBoth = await run(checkRefs(args))
+    const byTarget = new Map(afterBoth.stale[0]?.refs.map((r) => [r.target, r]))
+    expect([...byTarget.keys()].toSorted()).toEqual(['../src/b.ts', '../src/c.ts'])
+    expect(byTarget.get('../src/b.ts')?.currentHash).not.toBe(byTarget.get('../src/c.ts')?.currentHash)
+
+    // Revert both — back to fully clean.
+    p.write('src/b.ts', 'export const b = 1\n')
+    p.write('src/c.ts', 'export const c = 1\n')
+    const reverted = await run(checkRefs(args))
+    expect(reverted.stale).toEqual([])
+  })
+
   it("does not collide with _SUMMARY.md's own real freshness sidecar (the exact bug caught while dogfooding this feature)", async () => {
     const p = project('checkrefs-summary-collision', {
       '.cairn/docs/_SUMMARY.md.json': '{"sha256":"real-freshness-hash","version":1}',
