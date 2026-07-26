@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
-import { checkLinks, formatLinkReport, linkExitCode } from './CheckLinks.ts'
+import { applyFixesToFile, checkLinks, formatLinkReport, linkExitCode } from './CheckLinks.ts'
 
 describe('formatLinkReport()', () => {
   it('reports success with the checked count (English by default)', () => {
@@ -83,6 +83,83 @@ describe('formatLinkReport()', () => {
       fixed: 0,
     })
     expect(lines.at(-1)).toBe('    ✗ [t](./ghost.md) (no unique target)')
+  })
+})
+
+// Pure, no DocsFs/Effect needed — extracted out of checkLinks's Effect.gen
+// block specifically to be independently unit-testable (TDD: the fix for
+// issue #49's repeated-target misreport now has its own direct test surface,
+// not just proven indirectly via checkLinks()'s end-to-end tests below).
+describe('applyFixesToFile()', () => {
+  it('reports links unchanged when fix is off, even with a suggestion available', () => {
+    const links = [{ suggestion: '../b/x.md', target: './x.md', text: 't' }]
+    const result = applyFixesToFile('[t](./x.md)', links, false)
+    expect(result).toEqual({ content: '[t](./x.md)', fixed: 0, remaining: links })
+  })
+
+  it('applies a single unambiguous fix', () => {
+    const result = applyFixesToFile('[t](./x.md)', [{ suggestion: '../b/x.md', target: './x.md', text: 't' }], true)
+    expect(result).toEqual({ content: '[t](../b/x.md)', fixed: 1, remaining: [] })
+  })
+
+  it('leaves a link with no suggestion unfixed, reported in `remaining`', () => {
+    const link = { reason: 'path' as const, target: './ghost.md', text: 't' }
+    const result = applyFixesToFile('[t](./ghost.md)', [link], true)
+    expect(result).toEqual({ content: '[t](./ghost.md)', fixed: 0, remaining: [link] })
+  })
+
+  // The direct regression test for issue #49's dimension-coverage fix — the
+  // one this function was extracted specifically to make directly testable.
+  it('fixes the SAME target repeated twice, counting both as fixed (not just the first)', () => {
+    const content = 'First: [a](./x.md) Second: [b](./x.md)'
+    const links = [
+      { suggestion: '../b/x.md', target: './x.md', text: 'a' },
+      { suggestion: '../b/x.md', target: './x.md', text: 'b' },
+    ]
+    const result = applyFixesToFile(content, links, true)
+    expect(result).toEqual({
+      content: 'First: [a](../b/x.md) Second: [b](../b/x.md)',
+      fixed: 2,
+      remaining: [],
+    })
+  })
+
+  it('fixes the SAME target repeated three times', () => {
+    const content = '[a](./x.md) [b](./x.md) [c](./x.md)'
+    const links = ['a', 'b', 'c'].map((text) => ({ suggestion: '../b/x.md', target: './x.md', text }))
+    const result = applyFixesToFile(content, links, true)
+    expect(result.fixed).toBe(3)
+    expect(result.remaining).toEqual([])
+    expect(result.content).toBe('[a](../b/x.md) [b](../b/x.md) [c](../b/x.md)')
+  })
+
+  it('does not fix a target that also appears inside a code span (occurrence-safety), even when repeated', () => {
+    const content = '[a](./x.md) [b](./x.md)\n\n```md\n[demo](./x.md)\n```'
+    const links = [
+      { suggestion: '../b/x.md', target: './x.md', text: 'a' },
+      { suggestion: '../b/x.md', target: './x.md', text: 'b' },
+    ]
+    const result = applyFixesToFile(content, links, true)
+    expect(result.fixed).toBe(0)
+    expect(result.remaining).toEqual(links)
+    expect(result.content).toBe(content)
+  })
+
+  it('mixes a fixable and an unfixable link in the same file, unrelated targets', () => {
+    const content = '[a](./x.md) [b](./ghost.md)'
+    const links = [
+      { suggestion: '../b/x.md', target: './x.md', text: 'a' },
+      { reason: 'path' as const, target: './ghost.md', text: 'b' },
+    ]
+    const result = applyFixesToFile(content, links, true)
+    expect(result.fixed).toBe(1)
+    expect(result.remaining).toEqual([links[1]])
+    expect(result.content).toBe('[a](../b/x.md) [b](./ghost.md)')
+  })
+
+  it('returns the original content object-equal (by value) when nothing was fixed', () => {
+    const result = applyFixesToFile('no links here', [], true)
+    expect(result).toEqual({ content: 'no links here', fixed: 0, remaining: [] })
   })
 })
 

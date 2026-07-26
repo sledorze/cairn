@@ -111,6 +111,59 @@ const applyFix = (content: string, target: string, suggestion: string): { change
   return { changed, content: next }
 }
 
+export interface FileFixResult {
+  readonly content: string
+  readonly fixed: number
+  readonly remaining: readonly BrokenLink[]
+}
+
+/**
+ * Apply every unambiguous fix among `links` to `content`, once per unique
+ * `target` string — a pure fold, no mutable closure state. Given an honest
+ * standalone signature (rather than living as a closure inside `checkLinks`'s
+ * `Effect.gen` block) so this is independently unit-testable and its
+ * behavior doesn't depend on capturing outer variables.
+ *
+ * Fixing is keyed by `target`, not by individual `BrokenLink` record: issue
+ * #49's dimension-coverage review found that a broken target repeated more
+ * than once in the same file (e.g. the same dead link mentioned twice in
+ * prose and again in a "See also" list) produced a real misreport when
+ * `applyFix` was called again per record — its occurrence-safe replace is
+ * GLOBAL (fixes every occurrence of `target` in one call, by design;
+ * occurrence-safety only works all-or-nothing), so the second call against
+ * already-repaired content found nothing left to replace and fell through
+ * to "unfixed," even though the file was already fully, correctly repaired
+ * by the first call. Folding a `target -> outcome` map alongside `content`
+ * (same target ⇒ same suggestion, since both are deterministic functions of
+ * `target` + the resolved data) makes every record sharing that target
+ * agree with what actually happened on disk, in one pass.
+ */
+export const applyFixesToFile = (content: string, links: readonly BrokenLink[], fix: boolean): FileFixResult => {
+  const fixedTargets = new Map<string, boolean>()
+  const remaining: BrokenLink[] = []
+  let current = content
+  let fixed = 0
+  for (const link of links) {
+    if (!fix || link.suggestion === undefined) {
+      remaining.push(link)
+      continue
+    }
+    let succeeded = fixedTargets.get(link.target)
+    if (succeeded === undefined) {
+      const repair = applyFix(current, link.target, link.suggestion)
+      current = repair.changed ? repair.content : current
+      succeeded = repair.changed
+      fixedTargets.set(link.target, succeeded)
+    }
+    if (succeeded) {
+      fixed += 1
+    } else {
+      remaining.push(link)
+    }
+  }
+  return { content: current, fixed, remaining }
+}
+
 /** 0 when no broken links remain, 1 otherwise. */
 export const linkExitCode = (result: LinkCheckResult): number => (result.broken.length > 0 ? 1 : 0)
 
@@ -347,53 +400,17 @@ export const checkLinks = ({
     let fixed = 0
 
     for (const scan of scans) {
-      let content = scan.content
       const links = [...scan.syncBroken, ...scan.resolvedExtra]
       if (links.length === 0) {
         continue
       }
-
-      const remaining: BrokenLink[] = []
-      let changed = false
-      // Issue #49 dimension-coverage review: a broken target repeated more
-      // than once in the same file (e.g. the same dead link mentioned twice
-      // in prose and again in a "See also" list) produced a real misreport.
-      // `applyFix`'s occurrence-safe replace is GLOBAL (fixes every
-      // occurrence of `target` in one call, by design — occurrence-safety
-      // only works all-or-nothing), so calling it again for the SECOND
-      // `BrokenLink` record with the identical `target` string found nothing
-      // left to replace (`countOccurrences` now 0) and fell through to
-      // "unfixed" — even though the file was already fully, correctly
-      // repaired by the first call. Caching the outcome per unique `target`
-      // (same target ⇒ same suggestion, since both are deterministic
-      // functions of `target` + the resolved data) makes every record
-      // sharing that target agree with what actually happened on disk.
-      const fixedTargets = new Map<string, boolean>()
-      const attemptFix = (target: string, suggestion: string): boolean => {
-        const cached = fixedTargets.get(target)
-        if (cached !== undefined) {
-          return cached
-        }
-        const repair = applyFix(content, target, suggestion)
-        if (repair.changed) {
-          content = repair.content
-          changed = true
-        }
-        fixedTargets.set(target, repair.changed)
-        return repair.changed
+      const result = applyFixesToFile(scan.content, links, fix)
+      fixed += result.fixed
+      if (result.content !== scan.content) {
+        yield* dfs.writeFile(scan.file, result.content)
       }
-      for (const link of links) {
-        if (fix && link.suggestion !== undefined && attemptFix(link.target, link.suggestion)) {
-          fixed += 1
-        } else {
-          remaining.push(link)
-        }
-      }
-      if (changed) {
-        yield* dfs.writeFile(scan.file, content)
-      }
-      if (remaining.length > 0) {
-        broken.push({ file: scan.file, links: remaining })
+      if (result.remaining.length > 0) {
+        broken.push({ file: scan.file, links: result.remaining })
       }
     }
 
