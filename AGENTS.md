@@ -124,16 +124,21 @@ the pattern to copy).
 
 No `CONTRIBUTING.md` exists, and the "Release convention" section above only covers
 changesets — neither says how to actually take a change from idea to merged PR. This section
-does. It's not aspirational: every rule below is a concrete lesson, distilled from a real
-incident that a lighter process missed.
+does. It's not aspirational: every rule below is a concrete lesson, distilled from real
+incidents that a lighter process missed.
 
 **Full local verify before every push, every time — not just before "done."**
 `pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check` (`pnpm verify` runs
-all five). A change that "obviously can't affect X" still gets the full pass: the reference
-content-hash tracking feature (`RefStore.ts`) silently clobbered an unrelated summary
-sidecar the first time it ran for real — `tsc`/`vitest` were both green throughout, because
-nothing in the type system or the unit tests encoded "these two sidecar kinds must never
-share a path." Only running the real CLI against the real repo caught it.
+all five). `lefthook.yml`'s hooks already automate most of this — `pre-commit` runs
+lint/format, `pre-push` runs typecheck+test+build, then `check`, then the perf-regression
+gate — but that's not a reason to treat it as covered: hooks are skippable (`git ... --no-verify`),
+and no hook can construct the actual scenario a feature is meant to catch for you (see
+"Dogfood," next). Treat the hooks as the backstop, not the practice. A change that "obviously
+can't affect X" still gets the full pass regardless: the reference content-hash tracking
+feature (`RefStore.ts`) silently clobbered an unrelated summary sidecar the first time it ran
+for real — `tsc`/`vitest` were both green throughout, because nothing in the type system or
+the unit tests encoded "these two sidecar kinds must never share a path." Only running the
+real CLI against the real repo caught it.
 
 **Dogfood the actual CLI against the actual repo before calling a feature done — unit tests
 that pass are necessary, not sufficient.** Build `dist/cli.js` (or run via `tsx`) and run it
