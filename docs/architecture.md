@@ -83,10 +83,15 @@ summary links to every child") — is one-directional and real, not a cycle.
      filenames are configurable; owns `Locale` too (`program/locale.ts`
      re-exports it) since `core/` cannot depend on `program/`).
 
-2. **[`io/`](../src/io/) — the filesystem capability, expressed as an Effect service.**
+2. **[`io/`](../src/io/) — real capabilities, each expressed as an Effect service.**
    - [`DocsFs.ts`](../src/io/DocsFs.ts) — `DocsFsLive` binds to the real Node
      platform; `makeTestDocsFs` provides an in-memory layer so the programs
      are tested without touching disk.
+   - [`Git.ts`](../src/io/Git.ts) — `onlyGitTracked` (issue #48)'s one real
+     capability: `GitFsLive.listTrackedFiles` shells out to the real `git`
+     binary (`ls-files`, the index — tracked + staged); `GitUnavailableError`
+     is its one named failure mode (never a silent fallback). `makeTestGitFs`
+     mirrors `DocsFs.ts`'s in-memory-double convention.
 
 3. **[`program/`](../src/program/) — Effect programs that orchestrate IO around the pure core.**
    - **[`summaries/`](../src/program/summaries/)**

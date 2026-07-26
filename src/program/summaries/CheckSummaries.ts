@@ -34,6 +34,12 @@ export interface CheckSummariesArgs {
   readonly requireDirSummaries?: boolean
   readonly roots: readonly string[]
   readonly thresholdLines?: number
+  /** Issue #48 (`onlyGitTracked`): when supplied, `readMarkdown` only considers
+   * files in this set — absolute POSIX paths, as `GitFs.listTrackedFiles`
+   * returns them. `undefined` (the default) preserves today's behavior
+   * byte-for-byte: every file the glob/roots scan finds is in scope,
+   * regardless of git state. */
+  readonly trackedFiles?: ReadonlySet<string> | undefined
 }
 
 export interface SummaryReportOptions {
@@ -79,13 +85,21 @@ const toPlanArgs = (
   ...(args.thresholdLines === undefined ? {} : { thresholdLines: args.thresholdLines }),
 })
 
-const readMarkdown = (roots: readonly string[]): Effect.Effect<Map<string, string>, never, DocsFs> =>
+const readMarkdown = (
+  roots: readonly string[],
+  trackedFiles?: ReadonlySet<string>,
+): Effect.Effect<Map<string, string>, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const all = yield* dfs.listFiles(roots)
     const files = new Map<string, string>()
     for (const file of all) {
-      if (file.endsWith('.md')) {
+      // Issue #48: an untracked doc is invisible to a fresh CI checkout, so a
+      // local run with `onlyGitTracked` on must be too — restricting the file
+      // set BEFORE reading (not filtering the plan afterward) means an
+      // untracked-only directory also never becomes "in scope, needs a
+      // `_SUMMARY.md`" in the first place.
+      if (file.endsWith('.md') && (trackedFiles === undefined || trackedFiles.has(file))) {
         files.set(file, yield* dfs.readFile(file))
       }
     }
@@ -266,7 +280,7 @@ const explainPlan = (
 
 export const checkSummaries = (args: CheckSummariesArgs): Effect.Effect<SummaryPlan, never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots)
+    const files = yield* readMarkdown(args.roots, args.trackedFiles)
     const stamps = yield* readStamps(layoutFor(args.base))
     return planSummaries(toPlanArgs(files, args, stamps))
   })
@@ -277,7 +291,7 @@ export const explainSummaries = (
   options: SummaryReportOptions = {},
 ): Effect.Effect<string[], never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots)
+    const files = yield* readMarkdown(args.roots, args.trackedFiles)
     const stamps = yield* readStamps(layoutFor(args.base))
     const plan = planSummaries(toPlanArgs(files, args, stamps))
     return explainPlan(plan, files, options)
@@ -355,7 +369,7 @@ const stampFiles = (files: Map<string, string>, args: CheckSummariesArgs): Effec
 
 export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampResult, never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots)
+    const files = yield* readMarkdown(args.roots, args.trackedFiles)
     return yield* stampFiles(files, args)
   })
 
@@ -367,7 +381,7 @@ export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampRes
  */
 export const migrateStamps = (args: CheckSummariesArgs): Effect.Effect<MigrateResult, never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots)
+    const files = yield* readMarkdown(args.roots, args.trackedFiles)
     return yield* stampFiles(files, args)
   })
 
@@ -378,7 +392,7 @@ export const pruneOrphans = (args: CheckSummariesArgs): Effect.Effect<number, ne
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = layoutFor(args.base)
-    const files = yield* readMarkdown(args.roots)
+    const files = yield* readMarkdown(args.roots, args.trackedFiles)
     const stamps = yield* readStamps(layout)
     const plan = planSummaries(toPlanArgs(files, args, stamps))
     for (const orphan of plan.orphans) {

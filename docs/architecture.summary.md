@@ -24,7 +24,9 @@ Separation of concerns: pure decisions, IO at the edges.
     `paths` (POSIX normalisation + `isWithinBase` containment), `Config`
     (schema/decode/`extends` merge/defaults — depends on `summaries/DocSummaries` for the
     configurable `Naming` type; also owns `Locale`, since `core/` can't depend on `program/`).
-- **`io/`** `DocsFs`: Effect service — `DocsFsLive` (Node) + `makeTestDocsFs` (in-memory).
+- **`io/`**: `DocsFs` (Effect service — `DocsFsLive` (Node) + `makeTestDocsFs` in-memory) and
+  `Git` (`onlyGitTracked`'s real `git ls-files` capability — `GitFsLive` + `makeTestGitFs`,
+  `GitUnavailableError` its one named failure mode).
 - **`program/`**, same two-subdomain split:
   - **`summaries/`**: `CheckSummaries` (reads/writes the `.cairn/**` sidecar tree;
     `stampFiles` self-heals a legacy in-content stamp on every ordinary `--stamp`, so

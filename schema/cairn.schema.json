@@ -41,6 +41,10 @@
           "description": "Prose locale for generated guidance and report strings. Default \"en\"."
         },
         "naming": { "$ref": "#/$defs/CairnNamingConfig" },
+        "onlyGitTracked": {
+          "type": "boolean",
+          "description": "Restrict the scanned file universe to files `git ls-files` reports as tracked/staged (issue #48) — so a local run sees the same files a fresh CI checkout would, ignoring untracked scratch docs and links to them. Default false (unchanged, glob-only behavior)."
+        },
         "requireDirSummaries": {
           "type": "boolean",
           "description": "Require a directory summary in every in-scope directory. Default true."

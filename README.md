@@ -163,6 +163,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `checks.links`             | Enable Markdown link checking                                                           |
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                     |
 | `ignore`                   | Globs to exclude from scanning                                                          |
+| `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`   |
 | `stampCommand`             | Command agents should run to stamp hashes                                               |
 | `locale`                   | Prose locale for generated guidance: `en` or `fr`                                       |
 
@@ -170,6 +171,19 @@ Config is validated strictly (via `effect/Schema`): an **unknown key or a wrong-
 value fails loudly** with a file-scoped, actionable error, instead of being silently
 ignored. A typo like `"thresholdLins"` is a bug you want caught, not a setting that
 quietly reverts to the default.
+
+### CI parity: `onlyGitTracked`
+
+`cairn check` normally scans whatever matches `roots`/`ignore` **on disk**, regardless of
+git state — so a local run can see files a fresh CI checkout never would (an in-progress,
+not-yet-`git add`-ed doc), or resolve a link against a target file that only exists
+locally. Set `"onlyGitTracked": true` to restrict both the doc-scanning universe AND
+link-target existence checks to `git ls-files`' tracked-or-staged set (the index, not
+just the last commit) — an untracked doc is skipped entirely (no "missing summary"), and
+a link to an untracked file reports broken even if the file is sitting right there on
+disk, matching exactly what CI would see. Default `false` (unchanged, glob-only
+behavior); when enabled, a missing/unavailable `git` binary is a hard error, never a
+silent fallback to "check everything" or "check nothing."
 
 ### Sharing config with `extends`
 
