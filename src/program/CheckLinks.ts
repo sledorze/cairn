@@ -6,9 +6,12 @@ import * as nodePath from 'node:path'
 
 import { Effect } from 'effect'
 
+import { extractAnchors, isValidLineAnchor, normalizeAnchor, parseLineAnchor } from '../core/Anchors.ts'
 import { matchesAny } from '../core/glob.ts'
-import type { BrokenLink } from '../core/MarkdownLinks.ts'
-import { buildBasenameIndex, checkContent, stripCode } from '../core/MarkdownLinks.ts'
+import type { BrokenLink, PendingCheck } from '../core/MarkdownLinks.ts'
+import { buildBasenameIndex, checkContent, stripCode, suggestFix } from '../core/MarkdownLinks.ts'
+import { isWithinBase } from '../core/paths.ts'
+import type { DocsFsService } from '../io/DocsFs.ts'
 import { DocsFs } from '../io/DocsFs.ts'
 import type { Locale } from './locale.ts'
 import { pick } from './locale.ts'
@@ -28,6 +31,11 @@ export interface LinkCheckResult {
 }
 
 export interface CheckLinksArgs {
+  /** The repository checkout root — the hard boundary a target outside
+   * `roots` may still be verified within (issue #39's security requirement:
+   * nothing outside `base` is ever stat'd, so cairn can't be turned into a
+   * filesystem-existence oracle by an untrusted PR's link targets). */
+  readonly base: string
   readonly fix: boolean
   readonly ignore?: readonly string[]
   readonly roots: readonly string[]
@@ -118,7 +126,83 @@ export const formatLinkReport = (result: LinkCheckResult, options: LinkReportOpt
   return lines
 }
 
+/**
+ * Resolve one deferred `PendingCheck` with real IO, bounded by `base`
+ * (issue #39's security requirement — a target outside `base` is never
+ * stat'd, existence-oracle risk closed regardless of what's actually there).
+ * `contentCache`/`anchorCache` are shared across every pending check in a run
+ * so a file referenced by many links is only ever read/slugged once.
+ */
+const resolvePendingCheck = ({
+  base,
+  contentCache,
+  anchorCache,
+  dfs,
+  index,
+  item,
+  known,
+}: {
+  readonly base: string
+  readonly contentCache: Map<string, string | null>
+  readonly anchorCache: Map<string, ReadonlySet<string>>
+  readonly dfs: DocsFsService
+  readonly index: ReadonlyMap<string, readonly string[]>
+  readonly item: PendingCheck
+  readonly known: ReadonlySet<string>
+}): Effect.Effect<BrokenLink | null> =>
+  Effect.gen(function* () {
+    let content = contentCache.get(item.targetAbs)
+    if (content === undefined) {
+      let exists: boolean
+      if (known.has(item.targetAbs)) {
+        exists = true
+      } else if (isWithinBase(item.targetAbs, base)) {
+        exists = yield* dfs.exists(item.targetAbs)
+      } else {
+        // Outside the checkout root entirely: never touched, unconditionally
+        // "cannot verify" — the observable signal stays constant regardless
+        // of what's actually on disk there.
+        exists = false
+      }
+      content = exists ? yield* dfs.readFile(item.targetAbs) : null
+      contentCache.set(item.targetAbs, content)
+    }
+
+    if (content === null) {
+      const suggestion = suggestFix({ fromDir: item.fromDir, index, target: item.target })
+      return suggestion
+        ? { reason: 'path', suggestion, target: item.target, text: item.text }
+        : { reason: 'path', target: item.target, text: item.text }
+    }
+
+    if (item.anchor === null) {
+      return null
+    }
+
+    const normalized = normalizeAnchor(item.anchor)
+    const lineRange = parseLineAnchor(normalized)
+    if (lineRange) {
+      const lineCount = content.split('\n').length
+      return isValidLineAnchor(lineRange, lineCount) ? null : { reason: 'line', target: item.target, text: item.text }
+    }
+
+    if (!item.targetAbs.toLowerCase().endsWith('.md')) {
+      // A non-line, non-md fragment is a symbol anchor (`x.ts#someExport`) —
+      // explicitly out of v1 scope (issue #39, scenario G): unverifiable, so
+      // never flagged broken rather than risk a false positive.
+      return null
+    }
+
+    let anchors = anchorCache.get(item.targetAbs)
+    if (!anchors) {
+      anchors = extractAnchors(content)
+      anchorCache.set(item.targetAbs, anchors)
+    }
+    return anchors.has(normalized) ? null : { reason: 'anchor', target: item.target, text: item.text }
+  })
+
 export const checkLinks = ({
+  base,
   fix,
   ignore = [],
   roots,
@@ -131,14 +215,42 @@ export const checkLinks = ({
     const index = buildBasenameIndex(allFiles)
     const known = withAncestors(allFiles)
     const existsAbs = (p: string): boolean => known.has(p)
+    const inRoots = (p: string): boolean => roots.some((root) => p === root || p.startsWith(`${root}/`))
     const mdFiles = allFiles.filter((file) => file.endsWith('.md') && !matchesAny(file, ignore))
+
+    interface FileScan {
+      content: string
+      readonly file: string
+      readonly pending: readonly PendingCheck[]
+      readonly resolvedExtra: BrokenLink[]
+      readonly syncBroken: readonly BrokenLink[]
+    }
+    const scans: FileScan[] = []
+    for (const file of mdFiles) {
+      const content = yield* dfs.readFile(file)
+      const { broken: syncBroken, pending } = checkContent({ content, existsAbs, fileAbs: file, inRoots, index })
+      scans.push({ content, file, pending, resolvedExtra: [], syncBroken })
+    }
+
+    // Resolve every deferred anchor/cross-hierarchy check once, sharing a
+    // per-target cache across the whole run.
+    const contentCache = new Map<string, string | null>()
+    const anchorCache = new Map<string, ReadonlySet<string>>()
+    for (const scan of scans) {
+      for (const item of scan.pending) {
+        const result = yield* resolvePendingCheck({ anchorCache, base, contentCache, dfs, index, item, known })
+        if (result) {
+          scan.resolvedExtra.push(result)
+        }
+      }
+    }
 
     const broken: FileBroken[] = []
     let fixed = 0
 
-    for (const file of mdFiles) {
-      let content = yield* dfs.readFile(file)
-      const links = checkContent({ content, existsAbs, fileAbs: file, index })
+    for (const scan of scans) {
+      let content = scan.content
+      const links = [...scan.syncBroken, ...scan.resolvedExtra]
       if (links.length === 0) {
         continue
       }
@@ -157,10 +269,10 @@ export const checkLinks = ({
         }
       }
       if (changed) {
-        yield* dfs.writeFile(file, content)
+        yield* dfs.writeFile(scan.file, content)
       }
       if (remaining.length > 0) {
-        broken.push({ file, links: remaining })
+        broken.push({ file: scan.file, links: remaining })
       }
     }
 

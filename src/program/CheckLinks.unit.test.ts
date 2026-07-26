@@ -1,7 +1,8 @@
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { makeTestDocsFs } from '../io/DocsFs.ts'
+import type { DocsFsService } from '../io/DocsFs.ts'
+import { DocsFs, makeTestDocsFs } from '../io/DocsFs.ts'
 import { checkLinks, formatLinkReport, linkExitCode } from './CheckLinks.ts'
 
 describe('formatLinkReport()', () => {
@@ -41,7 +42,9 @@ const seed = (): Record<string, { content: string; mtimeMs: number }> => ({
 describe('checkLinks()', () => {
   it('reports broken links with suggestions and does not write when fix is off', async () => {
     const layer = makeTestDocsFs(seed())
-    const result = await Effect.runPromise(checkLinks({ fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
 
     expect(result.fixed).toBe(0)
     expect(result.broken).toHaveLength(1)
@@ -54,13 +57,17 @@ describe('checkLinks()', () => {
 
   it('auto-repairs unambiguous links and persists the change', async () => {
     const layer = makeTestDocsFs(seed())
-    const first = await Effect.runPromise(checkLinks({ fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    const first = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
 
     expect(first.fixed).toBe(1)
     expect(first.broken[0]?.links.map((l) => l.target)).toEqual(['./nope.md'])
 
     // Re-running against the same (mutated) layer proves the fix was written.
-    const second = await Effect.runPromise(checkLinks({ fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    const second = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
     expect(second.broken[0]?.links.map((l) => l.target)).toEqual(['./nope.md'])
   })
 
@@ -69,10 +76,14 @@ describe('checkLinks()', () => {
       '/r/docs/a/index.md': { content: 'see [x][d]\n\n[d]: ./moved.md', mtimeMs: 1 },
       '/r/docs/b/moved.md': { content: '# moved', mtimeMs: 1 },
     })
-    const result = await Effect.runPromise(checkLinks({ fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
     expect(result.fixed).toBe(1)
     expect(result.broken).toEqual([])
-    const after = await Effect.runPromise(checkLinks({ fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    const after = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
     expect(after.broken).toEqual([])
   })
 
@@ -84,7 +95,9 @@ describe('checkLinks()', () => {
       },
       '/r/docs/b/moved.md': { content: '# moved', mtimeMs: 1 },
     })
-    const result = await Effect.runPromise(checkLinks({ fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)))
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: true, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
     // The real link is broken and fixable, but fixing would corrupt the code
     // block, so it is reported instead of rewritten.
     expect(result.fixed).toBe(0)
@@ -97,8 +110,114 @@ describe('checkLinks()', () => {
       '/r/docs/vendor/CHANGELOG.md': { content: '[dead](./also-nope.md)', mtimeMs: 1 },
     })
     const result = await Effect.runPromise(
-      checkLinks({ fix: false, ignore: ['**/vendor/**'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      checkLinks({ base: '/r', fix: false, ignore: ['**/vendor/**'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
     )
     expect(result.broken.map((b) => b.file)).toEqual(['/r/docs/keep.md'])
+  })
+
+  // Issue #39, scenario B: cross-file heading anchor.
+  it('flags a cross-file anchor that has no matching heading, and leaves a real one alone', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a/guide.md': { content: '## Getting Started\n\ntext', mtimeMs: 1 },
+      '/r/docs/a/index.md': {
+        content: '[intro](./guide.md#getting-started) [bad](./guide.md#nope)',
+        mtimeMs: 1,
+      },
+    })
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken).toHaveLength(1)
+    expect(result.broken[0]?.links).toEqual([{ reason: 'anchor', target: './guide.md#nope', text: 'bad' }])
+  })
+
+  // Issue #39, scenario C: same-file heading anchor.
+  it('flags a same-page anchor with no matching heading end to end', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a/index.md': { content: '# Real Heading\n\nsee [ghost](#not-real)', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken[0]?.links).toEqual([{ reason: 'anchor', target: '#not-real', text: 'ghost' }])
+  })
+
+  // Issue #39, scenario E: cross-hierarchy target, still inside the checkout root.
+  it('resolves a real cross-hierarchy target instead of always reporting it broken, and still catches a genuinely missing one', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a/index.md': {
+        content: '[code](../../src/cli.ts) [ghost](../../src/ghost.ts)',
+        mtimeMs: 1,
+      },
+      '/r/src/cli.ts': { content: 'export {}', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken[0]?.links).toEqual([{ reason: 'path', target: '../../src/ghost.ts', text: 'ghost' }])
+  })
+
+  // Issue #39, scenario F: line anchor on a cross-hierarchy non-md target.
+  it('validates a GitHub-style line anchor against the real target line count', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a/index.md': {
+        content: '[line](../../src/cli.ts#L2) [badline](../../src/cli.ts#L100)',
+        mtimeMs: 1,
+      },
+      '/r/src/cli.ts': { content: 'line1\nline2\nline3', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken[0]?.links).toEqual([{ reason: 'line', target: '../../src/cli.ts#L100', text: 'badline' }])
+  })
+
+  // Issue #39, scenario G (explicit non-goal): a symbol-shaped anchor on a
+  // non-md target is unverifiable — never flagged, not treated as broken.
+  it('does not flag a symbol-shaped anchor on a real non-md target (out of v1 scope, not a false positive)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a/index.md': { content: '[sym](../../src/cli.ts#someExport)', mtimeMs: 1 },
+      '/r/src/cli.ts': { content: 'export const x = 1', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken).toEqual([])
+  })
+
+  // Issue #39 security requirement: a target outside the checkout root (`base`)
+  // is never stat'd/read at all — the observable signal (broken) must be
+  // constant regardless of what's actually there, so cairn can't be turned
+  // into a filesystem-existence oracle by an untrusted PR's link target.
+  it('never touches the filesystem for a target resolving outside `base`', async () => {
+    const files: Record<string, string> = {
+      '/r/docs/a/index.md': '[escape](../../../etc/passwd)',
+    }
+    let outsideBaseTouched = false
+    const guard = (abs: string): void => {
+      if (!abs.startsWith('/r/')) {
+        outsideBaseTouched = true
+      }
+    }
+    const service: DocsFsService = {
+      deleteFile: () => Effect.succeed(undefined),
+      exists: (abs) => {
+        guard(abs)
+        return Effect.succeed(abs in files)
+      },
+      listFiles: () => Effect.succeed(Object.keys(files)),
+      readFile: (abs) => {
+        guard(abs)
+        return Effect.succeed(files[abs] ?? '')
+      },
+      stat: () => Effect.die('not used in this test'),
+      writeFile: () => Effect.succeed(undefined),
+    }
+    const layer = Layer.succeed(DocsFs, service)
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(outsideBaseTouched).toBeFalsy()
+    expect(result.broken[0]?.links).toEqual([{ reason: 'path', target: '../../../etc/passwd', text: 'escape' }])
   })
 })

@@ -163,7 +163,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   }
 
   if (config.checks.links && !parsed.summariesOnly) {
-    const links = yield* checkLinks({ fix: parsed.fix, ignore: config.ignore, roots: absRoots })
+    const links = yield* checkLinks({ base: cwd, fix: parsed.fix, ignore: config.ignore, roots: absRoots })
     linksResult = links
     if (!parsed.json) {
       yield* Console.log(formatLinkReport(links, { locale }).join('\n'))

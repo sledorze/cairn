@@ -4,6 +4,8 @@
 
 import * as nodePath from 'node:path'
 
+import { extractAnchors } from './Anchors.ts'
+
 // Reason in POSIX so link resolution is identical on every OS (inputs are
 // normalised to `/` at the IO boundary).
 const path = nodePath.posix
@@ -18,7 +20,14 @@ export interface MarkdownLinkDef {
   readonly target: string
 }
 
+/** Why a link was reported broken — additive on `BrokenLink` (issue #39):
+ * `'path'` the target itself doesn't resolve (the original, only check);
+ * `'anchor'` the target resolves but its `#heading` fragment doesn't;
+ * `'line'` the target resolves but its `#L10`/`#L10-L20` fragment is out of range. */
+export type BrokenReason = 'anchor' | 'line' | 'path'
+
 export interface BrokenLink {
+  readonly reason?: BrokenReason
   readonly suggestion?: string
   readonly target: string
   readonly text: string
@@ -30,11 +39,39 @@ export interface SuggestFixArgs {
   readonly target: string
 }
 
+/**
+ * A checkable link whose target's existence and/or `#fragment` couldn't be
+ * decided without IO — either the target resolves outside the eagerly-listed
+ * `roots` (its existence itself is unknown), or it carries an anchor (its
+ * validity needs the target's real content, which `checkContent` — pure and
+ * IO-free — never reads for a file other than the one it's scanning). The
+ * caller (../program/CheckLinks.ts) resolves these, bounded by `base`.
+ */
+export interface PendingCheck {
+  /** `null` when the target itself has no `#fragment` — only existence (out of `roots`) is unresolved. */
+  readonly anchor: string | null
+  readonly fromDir: string
+  readonly target: string
+  readonly targetAbs: string
+  readonly text: string
+}
+
+export interface CheckContentResult {
+  readonly broken: readonly BrokenLink[]
+  readonly pending: readonly PendingCheck[]
+}
+
 export interface CheckContentArgs {
   readonly content: string
   readonly existsAbs: (absPath: string) => boolean
   readonly fileAbs: string
   readonly index?: ReadonlyMap<string, readonly string[]>
+  /** True for any absolute path inside the eagerly-listed `roots` (regardless
+   * of whether it exists there) — lets `checkContent` tell "genuinely absent,
+   * in-root" (resolvable now, no IO) apart from "outside `roots` entirely"
+   * (existence itself unknown, deferred to `pending`). Defaults to "everything
+   * is in-root", matching this function's original, `roots`-only behaviour. */
+  readonly inRoots?: (absPath: string) => boolean
 }
 
 const LINK_RE = /!?\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
@@ -71,14 +108,13 @@ export const extractLinkDefinitions = (content: string): MarkdownLinkDef[] => {
   return defs
 }
 
-/** True only for relative paths we can resolve on disk. */
+/** True only for relative paths we can resolve on disk — INCLUDING a bare
+ * `#heading` (same-page anchor), now checkable against the file's own
+ * headings (issue #39, scenario C); previously always skipped. */
 export const isCheckableTarget = (target: string): boolean => {
   if (!target) {
     return false
   }
-  if (target.startsWith('#')) {
-    return false
-  } // same-page anchor
   if (target.startsWith('//')) {
     return false
   } // protocol-relative URL
@@ -88,8 +124,23 @@ export const isCheckableTarget = (target: string): boolean => {
   return true
 }
 
+export interface ParsedTarget {
+  /** The raw text after `#`, or `null` if the target carries no fragment. */
+  readonly anchor: string | null
+  /** The target with `#anchor`/`?query` removed; `''` for a bare `#anchor`
+   * (same-page fragment — the "path" is the current file itself). */
+  readonly path: string
+}
+
+/** Split a link target into its path and (optional) `#anchor`, dropping any `?query`. */
+export const parseTarget = (target: string): ParsedTarget => {
+  const hashIdx = target.indexOf('#')
+  const rawPath = hashIdx === -1 ? target : target.slice(0, hashIdx)
+  return { anchor: hashIdx === -1 ? null : target.slice(hashIdx + 1), path: rawPath.replace(/\?.*$/, '') }
+}
+
 /** Drop `#anchor` and `?query` from a target. */
-export const stripAnchor = (target: string): string => target.replace(/[#?].*$/, '')
+export const stripAnchor = (target: string): string => parseTarget(target).path
 
 /** Map basename -> list of absolute paths, for ambiguity-aware fixing. */
 export const buildBasenameIndex = (absPaths: readonly string[]): Map<string, string[]> => {
@@ -125,34 +176,70 @@ export const suggestFix = ({ fromDir, index, target }: SuggestFixArgs): string |
 }
 
 /**
- * Check one file's content for broken relative links. Returns the broken ones,
- * each with an optional `suggestion` when an `index` is supplied.
+ * Check one file's content for broken relative links, path existence and
+ * `#fragment` validity. Resolves everything decidable without IO — an
+ * in-`roots` path's existence (`existsAbs`, unchanged fast path) and a
+ * same-page `#anchor` (the file's own content is already in hand, no IO
+ * needed — issue #39 scenario C) — synchronously into `broken`. Anything
+ * needing another file's content (a cross-file anchor, or a target outside
+ * `roots` whose existence isn't yet known) is deferred into `pending` for the
+ * caller (../program/CheckLinks.ts) to resolve with real, `base`-bounded IO.
  */
-export const checkContent = ({ content, existsAbs, fileAbs, index }: CheckContentArgs): BrokenLink[] => {
+export const checkContent = ({
+  content,
+  existsAbs,
+  fileAbs,
+  index,
+  inRoots = () => true,
+}: CheckContentArgs): CheckContentResult => {
   const fromDir = path.dirname(fileAbs)
   const broken: BrokenLink[] = []
+  const pending: PendingCheck[] = []
   const masked = stripCode(content)
   const candidates: MarkdownLink[] = [
     ...extractLinks(masked),
     // Reference-style definitions are checked by their target too.
     ...extractLinkDefinitions(masked).map((def) => ({ target: def.target, text: `[${def.label}]` })),
   ]
+
+  let sourceAnchors: ReadonlySet<string> | null = null
+  const getSourceAnchors = (): ReadonlySet<string> => (sourceAnchors ??= extractAnchors(content))
+
   for (const link of candidates) {
     if (!isCheckableTarget(link.target)) {
       continue
     }
-    const rel = stripAnchor(link.target)
-    if (!rel) {
+    const { anchor, path: rel } = parseTarget(link.target)
+
+    if (rel === '') {
+      // Same-page anchor: no other file to read, resolve now.
+      if (anchor !== null && !getSourceAnchors().has(anchor)) {
+        broken.push({ reason: 'anchor', target: link.target, text: link.text })
+      }
       continue
     }
+
     const abs = path.resolve(fromDir, rel)
     if (existsAbs(abs)) {
+      if (anchor !== null) {
+        pending.push({ anchor, fromDir, target: link.target, targetAbs: abs, text: link.text })
+      }
       continue
     }
+    if (!inRoots(abs)) {
+      // Outside the eagerly-listed universe: existence itself is unknown —
+      // never assume broken (issue #39 scenario E), defer to real IO.
+      pending.push({ anchor, fromDir, target: link.target, targetAbs: abs, text: link.text })
+      continue
+    }
+    // In `roots` and genuinely absent — `existsAbs` already covers the
+    // complete in-root existence universe, no IO needed to know this.
     const suggestion = index ? suggestFix({ fromDir, index, target: link.target }) : null
     broken.push(
-      suggestion ? { suggestion, target: link.target, text: link.text } : { target: link.target, text: link.text },
+      suggestion
+        ? { reason: 'path', suggestion, target: link.target, text: link.text }
+        : { reason: 'path', target: link.target, text: link.text },
     )
   }
-  return broken
+  return { broken, pending }
 }

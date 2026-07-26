@@ -57,7 +57,6 @@ describe('isCheckableTarget()', () => {
     expect(isCheckableTarget('https://x.com')).toBeFalsy()
     expect(isCheckableTarget('http://x.com')).toBeFalsy()
     expect(isCheckableTarget('mailto:a@b.c')).toBeFalsy()
-    expect(isCheckableTarget('#section')).toBeFalsy()
     expect(isCheckableTarget('')).toBeFalsy()
     expect(isCheckableTarget('//cdn.example.com/x')).toBeFalsy()
   })
@@ -66,6 +65,10 @@ describe('isCheckableTarget()', () => {
     expect(isCheckableTarget('./a.md')).toBeTruthy()
     expect(isCheckableTarget('../a/b.md')).toBeTruthy()
     expect(isCheckableTarget('sub/dir/')).toBeTruthy()
+  })
+
+  it('accepts a bare same-page anchor (issue #39: now checkable, not silently skipped)', () => {
+    expect(isCheckableTarget('#section')).toBeTruthy()
   })
 })
 
@@ -116,19 +119,55 @@ describe('checkContent()', () => {
   it('flags a broken relative link and leaves good ones alone', () => {
     const content = '[ok](./exists.md) [dead](./missing.md) [ext](https://x.com)'
     const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
-    expect(result.map((r) => r.target)).toEqual(['./missing.md'])
+    expect(result.broken.map((r) => r.target)).toEqual(['./missing.md'])
+    expect(result.broken[0]?.reason).toBe('path')
+    expect(result.pending).toEqual([])
   })
 
-  it('ignores anchors when resolving existence', () => {
+  it('defers a cross-file anchor to `pending` instead of ignoring it (issue #39: was silently unchecked)', () => {
     const content = '[ok](./exists.md#heading)'
-    expect(checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })).toEqual([])
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([])
+    expect(result.pending).toEqual([
+      {
+        anchor: 'heading',
+        fromDir: '/r/docs/a',
+        target: './exists.md#heading',
+        targetAbs: '/r/docs/a/exists.md',
+        text: 'ok',
+      },
+    ])
+  })
+
+  it('resolves a same-page anchor synchronously — no IO, no `pending` entry', () => {
+    const content = '# Getting Started\n\nsee [above](#getting-started)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([])
+    expect(result.pending).toEqual([])
+  })
+
+  it('flags a same-page anchor that has no matching heading', () => {
+    const content = '# Real Heading\n\nsee [ghost](#not-a-real-heading)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([{ reason: 'anchor', target: '#not-a-real-heading', text: 'ghost' }])
+    expect(result.pending).toEqual([])
+  })
+
+  it('defers an out-of-`roots` target to `pending` instead of assuming it broken (issue #39 scenario E)', () => {
+    const inRoots = (p: string): boolean => p.startsWith('/r/docs/')
+    const content = '[code](../../src/cli.ts)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md', inRoots })
+    expect(result.broken).toEqual([])
+    expect(result.pending).toEqual([
+      { anchor: null, fromDir: '/r/docs/a', target: '../../src/cli.ts', targetAbs: '/r/src/cli.ts', text: 'code' },
+    ])
   })
 
   it('attaches a suggested fix when provided an index', () => {
     const index = buildBasenameIndex(['/r/docs/b/missing.md'])
     const content = '[dead](./missing.md)'
     const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md', index })
-    expect(result[0]?.suggestion).toBe('../b/missing.md')
+    expect(result.broken[0]?.suggestion).toBe('../b/missing.md')
   })
 
   it('does not flag links that only appear inside code examples', () => {
@@ -139,19 +178,23 @@ describe('checkContent()', () => {
       '```',
       'and `[inline](./nope.md)`',
     ].join('\n')
-    expect(checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })).toEqual([])
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([])
+    expect(result.pending).toEqual([])
   })
 
   it('flags a broken reference-style link definition, with a suggestion', () => {
     const index = buildBasenameIndex(['/r/docs/b/missing.md'])
     const content = 'See [the doc][d].\n\n[d]: ./missing.md'
     const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md', index })
-    expect(result.map((r) => r.target)).toEqual(['./missing.md'])
-    expect(result[0]?.suggestion).toBe('../b/missing.md')
+    expect(result.broken.map((r) => r.target)).toEqual(['./missing.md'])
+    expect(result.broken[0]?.suggestion).toBe('../b/missing.md')
   })
 
   it('accepts a reference definition whose target exists', () => {
     const content = '[ok][e]\n\n[e]: ./exists.md'
-    expect(checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })).toEqual([])
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([])
+    expect(result.pending).toEqual([])
   })
 })
