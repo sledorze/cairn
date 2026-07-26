@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { hashContent, sourceHashTag } from './DocSummaries.ts'
 import type { Naming } from './DocSummaries.ts'
 import { planSummaries } from './SummaryTree.ts'
 
@@ -10,14 +9,12 @@ describe('planSummaries() link-completeness ignores code blocks', () => {
   it('does not count a child link that only appears inside a code fence', () => {
     const files = new Map<string, string>([
       ['/r/docs/a.md', big],
-      ['/r/docs/a.summary.md', `${sourceHashTag(hashContent(big))}\n\n# s`],
+      ['/r/docs/a.summary.md', '# s'],
+      // The only mention of the child is inside a fenced code block, so it doesn't
+      // count as a real link — this must be caught by `missingLinks` regardless of
+      // the recorded stamp, so no `stamps` map is needed to exercise it.
+      ['/r/docs/_SUMMARY.md', '```md\n[a](./a.md)\n```\n'],
     ])
-    const expectedHash = planSummaries({ files, roots: ['/r/docs'], thresholdLines: 30 }).nodes.find(
-      (n) => n.path === '/r/docs/_SUMMARY.md',
-    )?.expectedHash
-    const stamp = sourceHashTag(expectedHash ?? '')
-    // The only mention of the child is inside a fenced code block.
-    files.set('/r/docs/_SUMMARY.md', `${stamp}\n\n\`\`\`md\n[a](./a.md)\n\`\`\`\n`)
     const node = planSummaries({ files, roots: ['/r/docs'], thresholdLines: 30 }).nodes.find(
       (n) => n.path === '/r/docs/_SUMMARY.md',
     )
@@ -86,6 +83,32 @@ describe('planSummaries() with requireDirSummaries: false', () => {
       thresholdLines: 30,
     })
     expect(plan.orphans).toEqual([])
+  })
+
+  it('still reads freshness from the stamps map (the early-return branch must not skip stamp lookup)', () => {
+    const files = new Map<string, string>([
+      ['/r/docs/sub/a.md', big],
+      ['/r/docs/sub/a.summary.md', '# résumé'],
+    ])
+    const expectedHash = planSummaries({ files, requireDirSummaries: false, roots: ['/r/docs'], thresholdLines: 30 })
+      .nodes[0]?.expectedHash
+    const stamps = new Map([['/r/docs/sub/a.summary.md', expectedHash ?? '']])
+    const plan = planSummaries({ files, requireDirSummaries: false, roots: ['/r/docs'], stamps, thresholdLines: 30 })
+    expect(plan.nodes[0]?.status).toBe('ok')
+    expect(plan.todo).toEqual([])
+  })
+
+  it('flags a deleted-source stamp even with requireDirSummaries: false', () => {
+    const stamps = new Map([['/r/docs/sub/a.summary.md', 'x'.repeat(64)]])
+    const noFiles = new Map<string, string>()
+    const plan = planSummaries({
+      files: noFiles,
+      requireDirSummaries: false,
+      roots: ['/r/docs'],
+      stamps,
+      thresholdLines: 30,
+    })
+    expect(plan.orphanStamps).toEqual(['/r/docs/sub/a.summary.md'])
   })
 })
 

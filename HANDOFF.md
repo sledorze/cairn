@@ -11,10 +11,17 @@ documentation summaries** plus a **dead-link** check.
 
 - File summary `X.summary.md` for every `.md` over the threshold (default 30 lines).
 - Directory summary `_SUMMARY.md` aggregating direct children and linking each.
-- **Freshness by content hash** (`<!-- source-sha256: … -->`), NOT mtime: git does
-  not preserve mtimes, so a time-based check silently passes on stale summaries after
-  a clone. It is a Merkle tree of docs — regenerate leaves-first, then deepest
-  directories, then stamp → converges in one pass.
+- **Freshness by content hash**, NOT mtime: git does not preserve mtimes, so a
+  time-based check silently passes on stale summaries after a clone. The hash is
+  recorded in a hidden `.cairn/**` sidecar mirroring the docs tree, never inside the
+  summary's own content (see `src/core/StampStore.ts`) — so tracking metadata never
+  pollutes authored prose. It is a Merkle tree of docs — regenerate leaves-first,
+  then deepest directories, then stamp → converges in one pass. A sidecar left
+  behind with no matching doc is a deletion signal; `--prune` removes it. If you find
+  an old repo with a legacy in-content `<!-- source-sha256 -->` stamp, there is
+  **nothing special to do**: the ordinary `--stamp` command self-heals it in the same
+  run (`--migrate-stamps` is only an optional, explicitly-named alias for the same
+  behavior — never required).
 - **Two layers** (the core design): (1) _enforcement_ = the agent-agnostic CLI (the
   CI guarantee); (2) _guidance_ = `cairn init` renders ONE convention body into
   `.claude/rules/*.md` (`paths:`), `.github/instructions/*.instructions.md`
@@ -28,7 +35,7 @@ Open in the devcontainer ("Reopen in Container") — `postCreate.sh` provisions
 everything (Node 22, pnpm via corepack, gh, gitleaks, hadolint, zsh, lefthook).
 Otherwise, by hand: `corepack enable && pnpm install --frozen-lockfile`. Then
 **validate**: `pnpm verify` (= lint + typecheck + test + build + check). Expected:
-86 tests green, "Markdown links OK", "Hierarchical summaries OK".
+180 tests green, "Markdown links OK", "Hierarchical summaries OK".
 
 ## Commands
 
@@ -68,6 +75,11 @@ Otherwise, by hand: `corepack enable && pnpm install --frozen-lockfile`. Then
 - The npm package publishes **`dist` only** (`files: ["dist"]`) — never the tests.
 - To validate the devcontainer, run the **actual `bash .devcontainer/postCreate.sh`**
   in a fresh clone, not just `pnpm install`.
+- A write path scoped by "does the content match this pattern" alone WILL fire on a
+  legitimate doc that happens to quote the pattern (e.g. a doc documenting cairn's own
+  former stamp format). Scope any content-mutating write by structural classification
+  first (`isSummaryFile`/`isDirSummary` or equivalent) — see AGENTS.md's "Content-mutation
+  safety" section for the full incident and the required negative-test pattern.
 
 ## Deliberate non-goals (pinned by tests — do not "fix")
 

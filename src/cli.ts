@@ -25,6 +25,7 @@ import {
   checkSummaries,
   explainSummaries,
   formatSummaryReport,
+  migrateStamps,
   pruneOrphans,
   stampSummaries,
   summaryExitCode,
@@ -45,10 +46,17 @@ const rootOption = Flag.string('root').pipe(
 )
 const fixOption = Flag.boolean('fix').pipe(Flag.withDescription('Auto-repair unambiguous dead links.'))
 const stampOption = Flag.boolean('stamp').pipe(
-  Flag.withDescription('Rewrite `source-sha256` stamps of existing summaries, bottom-up.'),
+  Flag.withDescription('Rewrite the freshness stamp of existing summaries into their `.cairn/**` sidecar, bottom-up.'),
 )
 const pruneOption = Flag.boolean('prune').pipe(
-  Flag.withDescription('Delete orphan summaries (source doc deleted, renamed, or below threshold).'),
+  Flag.withDescription(
+    'Delete orphan summaries and orphan .cairn/** sidecars (source doc deleted, renamed, or below threshold).',
+  ),
+)
+const migrateStampsOption = Flag.boolean('migrate-stamps').pipe(
+  Flag.withDescription(
+    'One-off: strip the legacy in-content `<!-- source-sha256 -->` stamp from every summary, then stamp the .cairn/** sidecar tree.',
+  ),
 )
 const explainOption = Flag.boolean('explain').pipe(
   Flag.withDescription('Explain why each stale/missing summary is not ok.'),
@@ -109,6 +117,7 @@ interface CheckParsed {
   readonly json: boolean
   readonly linksOnly: boolean
   readonly locale: Option.Option<Locale>
+  readonly migrateStamps: boolean
   readonly prune: boolean
   readonly root: readonly string[]
   readonly roots: readonly string[]
@@ -124,14 +133,15 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   const config = yield* loadConfigOrFail(cwd, overrides, Option.getOrUndefined(parsed.config))
   const locale = config.locale
 
-  if (parsed.json && parsed.stamp) {
-    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp' }))
+  if (parsed.json && (parsed.stamp || parsed.migrateStamps)) {
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp/--migrate-stamps' }))
     yield* Effect.sync(() => (process.exitCode = 1))
     return
   }
 
   const absRoots = expandRoots(cwd, config.roots)
   const summaryArgs = {
+    base: cwd,
     ignore: config.ignore,
     naming: config.naming,
     requireDirSummaries: config.requireDirSummaries,
@@ -173,14 +183,30 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
         )
       }
     }
-    if (parsed.stamp) {
+    if (parsed.migrateStamps) {
+      const result = yield* migrateStamps(summaryArgs)
+      yield* Console.log(
+        pick(locale, {
+          en: `🔄 Migrated ${result.migrated} legacy in-content stamp(s) off; stamped ${result.stamped} summary/ies (sidecar, bottom-up).`,
+          fr: `🔄 ${result.migrated} ancien(s) tampon(s) intégré(s) migré(s) ; ${result.stamped} résumé(s) tamponné(s) (fichier annexe, de bas en haut).`,
+        }),
+      )
+    } else if (parsed.stamp) {
       const result = yield* stampSummaries(summaryArgs)
       yield* Console.log(
         pick(locale, {
-          en: `🔖 Stamped ${result.stamped} summary/ies (bottom-up).`,
-          fr: `🔖 ${result.stamped} résumé(s) tamponné(s) (de bas en haut).`,
+          en: `🔖 Stamped ${result.stamped} summary/ies (.cairn/** sidecar, bottom-up).`,
+          fr: `🔖 ${result.stamped} résumé(s) tamponné(s) (fichier annexe .cairn/**, de bas en haut).`,
         }),
       )
+      if (result.migrated > 0) {
+        yield* Console.log(
+          pick(locale, {
+            en: `🔄 Also cleaned up ${result.migrated} legacy in-content stamp(s) along the way — nothing else to do.`,
+            fr: `🔄 ${result.migrated} ancien(s) tampon(s) intégré(s) nettoyé(s) au passage — rien d'autre à faire.`,
+          }),
+        )
+      }
       if (result.missing.length > 0) {
         yield* Console.log(
           pick(locale, {
@@ -225,6 +251,7 @@ const checkConfigShape = {
   json: jsonOption,
   linksOnly: linksOnlyOption,
   locale: localeOption,
+  migrateStamps: migrateStampsOption,
   prune: pruneOption,
   root: rootOption,
   roots: rootsArgs,

@@ -76,6 +76,18 @@ describe('DocsFsLive()', () => {
     expect(content).toBe('# written')
   })
 
+  it('writes a file whose parent directory tree does not exist yet, creating it (needed for .cairn/** sidecars)', async () => {
+    const target = path.join(root, '.cairn', 'a', 'x.summary.md.json')
+    const content = await run(
+      Effect.gen(function* () {
+        const dfs = yield* DocsFs
+        yield* dfs.writeFile(target, '{"sha256":"abc","version":1}')
+        return yield* dfs.readFile(target)
+      }),
+    )
+    expect(content).toBe('{"sha256":"abc","version":1}')
+  })
+
   it('deletes a file so it no longer exists', async () => {
     const target = path.join(root, 'a', 'to-delete.md')
     const existsAfter = await run(

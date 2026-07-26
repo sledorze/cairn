@@ -1,17 +1,30 @@
 // Effect programs for the hierarchical summary system.
-//  - `checkSummaries`  -> the plan (what is missing/stale, bottom-up order).
-//  - `stampSummaries`  -> (re)writes the source-hash stamp of EXISTING summaries
-//     bottom-up, so a parent's manifest sees its freshly-stamped children.
+//  - `checkSummaries`   -> the plan (what is missing/stale, bottom-up order).
+//  - `stampSummaries`   -> (re)writes the freshness stamp of EXISTING summaries,
+//     bottom-up, into their `.cairn/**` sidecar (never into the summary's own
+//     content — see StampStore.ts).
+//  - `migrateStamps`    -> one-off: strips the legacy in-content stamp from
+//     every summary, then runs the sidecar stamp pass over the stripped tree.
 // Pure planning lives in ../core/SummaryTree.ts; freshness primitives in
-// ../core/DocSummaries.ts.
+// ../core/DocSummaries.ts; sidecar path mapping + (de)serialisation in
+// ../core/StampStore.ts.
 
 import { Effect } from 'effect'
 
 import { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 import type { Naming } from '../core/DocSummaries.ts'
-import { countLines, withSourceHash } from '../core/DocSummaries.ts'
+import { countLines, isSummaryFile, stripSourceHash } from '../core/DocSummaries.ts'
 import type { PlanArgs, PlanNode, SummaryPlan } from '../core/SummaryTree.ts'
-import { nodeExpectedHash, planSummaries } from '../core/SummaryTree.ts'
+import { isDirSummary, nodeExpectedHash, planSummaries } from '../core/SummaryTree.ts'
+import type { MetaLayout } from '../core/StampStore.ts'
+import {
+  metaRootFor,
+  nodePathForSidecar,
+  parseStamp,
+  serializeStamp,
+  sidecarPathFor,
+  STAMP_VERSION,
+} from '../core/StampStore.ts'
 import { DocsFs } from '../io/DocsFs.ts'
 import type { Locale } from './locale.ts'
 import { enOnly, pick } from './locale.ts'
@@ -19,6 +32,9 @@ import { enOnly, pick } from './locale.ts'
 export { DEFAULT_STAMP_COMMAND } from '../core/Config.ts'
 
 export interface CheckSummariesArgs {
+  /** Project root every root/node path and every `.cairn/**` sidecar is
+   * resolved under (see StampStore.ts's `MetaLayout`). Real usage: `process.cwd()`. */
+  readonly base: string
   readonly ignore?: readonly string[]
   readonly naming?: Naming
   readonly requireDirSummaries?: boolean
@@ -32,17 +48,40 @@ export interface SummaryReportOptions {
 }
 
 export interface StampResult {
+  /** Legacy in-content `<!-- source-sha256 -->` stamps stripped along the way —
+   * an ordinary `--stamp` run (the one every existing `.cairnrc.json`'s
+   * `stampCommand` already points to) self-heals a repo upgrading off the old
+   * scheme with ZERO new command to discover; this count is only surfaced so
+   * that self-healing is visible, not silent-and-unverifiable. */
+  readonly migrated: number
   readonly missing: readonly PlanNode[]
   readonly stamped: number
 }
 
-/** Assemble the pure planner's arguments from the program args + file map. */
-const toPlanArgs = (files: ReadonlyMap<string, string>, args: CheckSummariesArgs): PlanArgs => ({
+/** Alias kept for the explicit, nameable one-shot migration entry point
+ * (`--migrate-stamps`) — identical shape to `StampResult` now that stripping
+ * is unconditional in `stampFiles`, but naming it distinctly documents intent
+ * at the call site (`cli.ts`) and in reports. */
+export type MigrateResult = StampResult
+
+const EMPTY_STAMPS: ReadonlyMap<string, string> = new Map()
+
+const layoutFor = (base: string): MetaLayout => ({ base, metaRoot: metaRootFor(base) })
+
+/** Assemble the pure planner's arguments from the program args + file map.
+ * `stamps` defaults to empty — callers that don't need freshness status (the
+ * stamp-writing pass itself) can omit it entirely and skip loading it. */
+const toPlanArgs = (
+  files: ReadonlyMap<string, string>,
+  args: CheckSummariesArgs,
+  stamps: ReadonlyMap<string, string> = EMPTY_STAMPS,
+): PlanArgs => ({
   files,
   ...(args.ignore === undefined ? {} : { ignore: args.ignore }),
   ...(args.naming === undefined ? {} : { naming: args.naming }),
   ...(args.requireDirSummaries === undefined ? {} : { requireDirSummaries: args.requireDirSummaries }),
   roots: args.roots,
+  stamps,
   ...(args.thresholdLines === undefined ? {} : { thresholdLines: args.thresholdLines }),
 })
 
@@ -59,14 +98,43 @@ const readMarkdown = (roots: readonly string[]): Effect.Effect<Map<string, strin
     return files
   })
 
-/** 0 when nothing is missing/stale and no orphans remain, 1 otherwise. */
-export const summaryExitCode = (plan: SummaryPlan): number => (plan.todo.length > 0 || plan.orphans.length > 0 ? 1 : 0)
+/**
+ * Load every stamp recorded under `.cairn/**` into a `node path -> sha256` map.
+ * A sidecar that can't be mapped back to a node path, or whose content is
+ * corrupt/merge-conflicted/hand-edited (`parseStamp` returns `null`), is simply
+ * skipped — its node then reads as `stale`/`missing`, never a crash (see
+ * StampStore.ts's own contract). Absent `.cairn/` (first run) yields an empty
+ * map via `dfs.listFiles`, also without error.
+ */
+const readStamps = (layout: MetaLayout): Effect.Effect<Map<string, string>, never, DocsFs> =>
+  Effect.gen(function* () {
+    const dfs = yield* DocsFs
+    const sidecarPaths = yield* dfs.listFiles([layout.metaRoot])
+    const stamps = new Map<string, string>()
+    for (const sidecarPath of sidecarPaths) {
+      const nodeAtPath = nodePathForSidecar(sidecarPath, layout)
+      if (nodeAtPath === null) {
+        continue
+      }
+      const record = parseStamp(yield* dfs.readFile(sidecarPath))
+      if (record !== null) {
+        stamps.set(nodeAtPath, record.sha256)
+      }
+    }
+    return stamps
+  })
+
+/** 0 when nothing is missing/stale, no orphan summaries, and no deleted-source
+ * stamps remain, 1 otherwise. */
+export const summaryExitCode = (plan: SummaryPlan): number =>
+  plan.todo.length > 0 || plan.orphans.length > 0 || plan.orphanStamps.length > 0 ? 1 : 0
 
 /** Report lines: methodology + the bottom-up update order, for a one-pass fix. */
 export const formatSummaryReport = (plan: SummaryPlan, options: SummaryReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
   const stampCommand = options.stampCommand ?? DEFAULT_STAMP_COMMAND
-  if (plan.todo.length === 0 && plan.orphans.length === 0) {
+  const totalOrphans = plan.orphans.length + plan.orphanStamps.length
+  if (plan.todo.length === 0 && totalOrphans === 0) {
     return [
       pick(locale, {
         en: `✅ Hierarchical summaries OK (${plan.nodes.length} summary/ies checked).`,
@@ -80,13 +148,23 @@ export const formatSummaryReport = (plan: SummaryPlan, options: SummaryReportOpt
       fr: `  ✗ résumé orphelin (source disparue) : ${p}`,
     }),
   )
+  // A `.cairn/**` sidecar with no corresponding node — its source (and possibly
+  // its summary file too) was deleted; the sidecar, never touched by hand, is
+  // what caught it (see StampStore.ts / SummaryTree.ts's `findDeletedStamps`).
+  const orphanStampLines = plan.orphanStamps.map((p) =>
+    pick(locale, {
+      en: `  ✗ deleted-source stamp (sidecar left behind): ${p}`,
+      fr: `  ✗ tampon d'une source supprimée (fichier annexe orphelin) : ${p}`,
+    }),
+  )
   if (plan.todo.length === 0) {
     return [
       pick(locale, {
-        en: `❌ ${plan.orphans.length} orphan summary/ies (source doc deleted, renamed, or below threshold):`,
-        fr: `❌ ${plan.orphans.length} résumé(s) orphelin(s) (source supprimée, renommée, ou sous le seuil) :`,
+        en: `❌ ${totalOrphans} orphan summary/ies or stamp(s) (source doc deleted, renamed, or below threshold):`,
+        fr: `❌ ${totalOrphans} résumé(s) ou tampon(s) orphelin(s) (source supprimée, renommée, ou sous le seuil) :`,
       }),
       ...orphanLines,
+      ...orphanStampLines,
     ]
   }
   const lines = pick(locale, {
@@ -128,14 +206,15 @@ export const formatSummaryReport = (plan: SummaryPlan, options: SummaryReportOpt
     }
     lines.push(`  - [${tag}] ${node.path} : ${reason}`)
   }
-  if (plan.orphans.length > 0) {
+  if (totalOrphans > 0) {
     lines.push(
       '',
       pick(locale, {
-        en: `${plan.orphans.length} orphan summary/ies (source doc deleted, renamed, or below threshold):`,
-        fr: `${plan.orphans.length} résumé(s) orphelin(s) (source supprimée, renommée, ou sous le seuil) :`,
+        en: `${totalOrphans} orphan summary/ies or stamp(s) (source doc deleted, renamed, or below threshold):`,
+        fr: `${totalOrphans} résumé(s) ou tampon(s) orphelin(s) (source supprimée, renommée, ou sous le seuil) :`,
       }),
       ...orphanLines,
+      ...orphanStampLines,
     )
   }
   return lines
@@ -194,7 +273,8 @@ const explainPlan = (
 export const checkSummaries = (args: CheckSummariesArgs): Effect.Effect<SummaryPlan, never, DocsFs> =>
   Effect.gen(function* () {
     const files = yield* readMarkdown(args.roots)
-    return planSummaries(toPlanArgs(files, args))
+    const stamps = yield* readStamps(layoutFor(args.base))
+    return planSummaries(toPlanArgs(files, args, stamps))
   })
 
 /** `--explain`: why each todo node is not ok (see `explainPlan` for what this can and cannot show). */
@@ -204,18 +284,56 @@ export const explainSummaries = (
 ): Effect.Effect<string[], never, DocsFs> =>
   Effect.gen(function* () {
     const files = yield* readMarkdown(args.roots)
-    const plan = planSummaries(toPlanArgs(files, args))
+    const stamps = yield* readStamps(layoutFor(args.base))
+    const plan = planSummaries(toPlanArgs(files, args, stamps))
     return explainPlan(plan, files, options)
   })
 
 /**
- * Stamp every EXISTING summary with its current source/manifest hash, bottom-up.
- * Summaries whose content has not been authored yet are returned as `missing`.
+ * Stamp every EXISTING summary with its current source/manifest hash, bottom-up,
+ * into its `.cairn/**` sidecar — never into the summary's own content. Summaries
+ * whose content has not been authored yet are returned as `missing`.
+ *
+ * ALWAYS strips a legacy in-content `<!-- source-sha256 -->` stamp first, if one
+ * is still there, before computing any hash — not just when explicitly asked to
+ * migrate. This is the actual fix for the discoverability gap a one-off
+ * `--migrate-stamps` command alone would leave: an upgrading repo's EXISTING
+ * `stampCommand` (already `cairn check --summaries-only --stamp` in every
+ * `.cairnrc.json` this tool ever scaffolded) is what a user or CI already runs
+ * — making that command self-heal means there is no new command to discover,
+ * search for, or forget to run. `--migrate-stamps` (`migrateStamps`, below)
+ * still exists as an explicit, nameable entry point for anyone who wants to run
+ * the cleanup as its own reported step, but it is no longer load-bearing.
+ *
+ * Doesn't need to load `stamps` first: this loop writes every node's hash
+ * unconditionally (not just the stale ones), so `planSummaries`' ordering is all
+ * it needs from the planner — freshness status plays no role in stamping itself.
  */
-export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampResult, never, DocsFs> =>
+const stampFiles = (files: Map<string, string>, args: CheckSummariesArgs): Effect.Effect<StampResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const files = yield* readMarkdown(args.roots)
+    const layout = layoutFor(args.base)
+
+    // Only ever strips a SUMMARY file's own legacy stamp — never a plain source
+    // doc. A source doc's prose can legitimately contain the literal
+    // `<!-- source-sha256: <64hex> -->` text (e.g. a doc that documents cairn's
+    // OWN former stamp format, with a real-looking example) — that text is the
+    // user's content, not tool metadata, and `stampFiles` must never touch it.
+    // Restricting to `isSummaryFile`/`isDirSummary` is what keeps "the tool
+    // never writes into content" true for every file it doesn't own.
+    let migrated = 0
+    for (const [p, content] of files) {
+      if (!isSummaryFile(p, args.naming) && !isDirSummary(p, args.naming)) {
+        continue
+      }
+      const stripped = stripSourceHash(content)
+      if (stripped !== content) {
+        files.set(p, stripped)
+        yield* dfs.writeFile(p, stripped)
+        migrated += 1
+      }
+    }
+
     const order = planSummaries(toPlanArgs(files, args)).nodes
 
     const missing: PlanNode[] = []
@@ -227,29 +345,55 @@ export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampRes
       }
       // A node's `inputs` are structurally stable (only summary CONTENT changes
       // during stamping, never which paths feed a node) — so its hash can be
-      // recomputed directly from `inputs` + their current content. Bottom-up
-      // order guarantees any child this node depends on was already stamped
-      // above, so `files` already reflects it. This avoids a full replan of the
-      // whole tree per node (previously O(nodes) work repeated once per node).
+      // recomputed directly from `inputs` + their current content. Content no
+      // longer carries a stamp (that's the whole point of the sidecar), so —
+      // unlike the old in-content scheme — a child's just-written sidecar never
+      // changes ITS OWN content, and therefore never perturbs a parent's
+      // manifest hash; bottom-up order is preserved for a single-pass write, but
+      // no longer required for correctness of the hash itself.
       const expectedHash = nodeExpectedHash({ files, inputs: node.inputs, kind: node.kind, path: node.path })
-      const stampedContent = withSourceHash(files.get(node.path) ?? '', expectedHash)
-      files.set(node.path, stampedContent)
-      yield* dfs.writeFile(node.path, stampedContent)
+      const sidecarContent = serializeStamp({ sha256: expectedHash, version: STAMP_VERSION })
+      yield* dfs.writeFile(sidecarPathFor(node.path, layout), sidecarContent)
       stamped += 1
     }
-    return { missing, stamped }
+    return { migrated, missing, stamped }
   })
 
-/** Delete every orphan summary (source doc gone) and report how many were removed. */
+export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampResult, never, DocsFs> =>
+  Effect.gen(function* () {
+    const files = yield* readMarkdown(args.roots)
+    return yield* stampFiles(files, args)
+  })
+
+/**
+ * Explicit, nameable one-shot entry point (`--migrate-stamps`) for the SAME
+ * self-healing `stampFiles` already does unconditionally on every `--stamp` —
+ * kept for anyone who wants to run/report the cleanup as its own step, not
+ * because plain `--stamp` needs it to be correct.
+ */
+export const migrateStamps = (args: CheckSummariesArgs): Effect.Effect<MigrateResult, never, DocsFs> =>
+  Effect.gen(function* () {
+    const files = yield* readMarkdown(args.roots)
+    return yield* stampFiles(files, args)
+  })
+
+/** Delete every orphan summary file (source doc gone) AND every orphan
+ * `.cairn/**` sidecar (deleted-source stamp — see `SummaryPlan.orphanStamps`),
+ * reporting the total count removed. */
 export const pruneOrphans = (args: CheckSummariesArgs): Effect.Effect<number, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
+    const layout = layoutFor(args.base)
     const files = yield* readMarkdown(args.roots)
-    const plan = planSummaries(toPlanArgs(files, args))
+    const stamps = yield* readStamps(layout)
+    const plan = planSummaries(toPlanArgs(files, args, stamps))
     for (const orphan of plan.orphans) {
       yield* dfs.deleteFile(orphan)
     }
-    return plan.orphans.length
+    for (const orphanStamp of plan.orphanStamps) {
+      yield* dfs.deleteFile(sidecarPathFor(orphanStamp, layout))
+    }
+    return plan.orphans.length + plan.orphanStamps.length
   })
 
 // Re-exported so callers can recognise summary files without importing two modules.

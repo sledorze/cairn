@@ -16,15 +16,18 @@ compares modification times. But **git does not preserve mtimes**: after a clone
 checkout, every file looks freshly written, so a time-based check silently passes on
 summaries that are actually stale. The bug you meant to catch ships anyway.
 
-`cairn` checks **content**, not clocks. Each summary embeds the SHA-256 of the
-source it summarizes as its first line:
+`cairn` checks **content**, not clocks. The SHA-256 of the source each summary
+summarizes is recorded in a hidden sidecar under `.cairn/`, mirroring your docs tree —
+never inside the summary itself, so the tracking system leaves zero bytes in the docs
+you write:
 
-```markdown
-<!-- source-sha256: 3f9a…(64 hex) -->
+```
+.cairn/docs/guide.summary.md.json  →  {"sha256": "3f9a…(64 hex)", "version": 1}
 ```
 
-The checker recomputes the source hash and compares. Mismatch means stale, missing means
-missing — and it behaves identically on your laptop and in CI, before and after a clone.
+The checker recomputes the source hash and compares it to the sidecar. Mismatch means
+stale, missing means missing — and it behaves identically on your laptop and in CI,
+before and after a clone. Commit `.cairn/` alongside your docs; it isn't gitignored.
 
 ## Install
 
@@ -42,24 +45,36 @@ The round-trip when you touch a doc:
 
 1. **Edit** `docs/guide.md`.
 2. `npx cairn check` **flags it stale** — the source hash no longer matches the
-   stamp in `guide.summary.md`.
+   sidecar recorded for `guide.summary.md`.
 3. **Write** the updated `guide.summary.md` (and update any parent `_SUMMARY.md`).
-4. **Stamp**: `npx cairn check --summaries-only --stamp` rewrites the
-   `source-sha256` lines bottom-up.
+4. **Stamp**: `npx cairn check --summaries-only --stamp` rewrites the `.cairn/`
+   sidecar hashes bottom-up — your summary's content is never touched.
 5. **Check** again — `npx cairn check` exits 0. Green.
 
-You author the prose; the tool verifies and stamps. It never invents content.
+You author the prose; the tool verifies and stamps. It never invents content, and it
+never writes into content either.
 
 ### Commands
 
-| Command                                   | What it does                                             |
-| ----------------------------------------- | -------------------------------------------------------- |
-| `cairn check`                             | Check summaries + links; exit 1 on any problem           |
-| `cairn check --summaries-only`            | Check only summary freshness                             |
-| `cairn check --links-only`                | Check only Markdown links                                |
-| `cairn check --links-only --fix`          | Auto-repair unambiguous dead links                       |
-| `cairn check --summaries-only --stamp`    | Rewrite `source-sha256` of existing summaries, bottom-up |
-| `cairn init --agent claude\|copilot\|all` | Scaffold agent guidance files                            |
+| Command                                   | What it does                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `cairn check`                             | Check summaries + links; exit 1 on any problem                            |
+| `cairn check --summaries-only`            | Check only summary freshness                                              |
+| `cairn check --links-only`                | Check only Markdown links                                                 |
+| `cairn check --links-only --fix`          | Auto-repair unambiguous dead links                                        |
+| `cairn check --summaries-only --stamp`    | Rewrite the `.cairn/` sidecar hash of existing summaries, bottom-up       |
+| `cairn check --prune`                     | Delete orphan summaries and orphan `.cairn/` sidecars                     |
+| `cairn check --migrate-stamps`            | Optional: same self-healing `--stamp` already does, as its own named step |
+| `cairn init --agent claude\|copilot\|all` | Scaffold agent guidance files                                             |
+
+### Upgrading from an older cairn
+
+Nothing to look up. If a summary still carries the old in-content
+`<!-- source-sha256: ... -->` comment, the ordinary `--stamp` command strips it and
+writes the `.cairn/` sidecar in the same run — automatically, every time. There is no
+separate migration step to discover: whatever `stampCommand` your repo already runs
+already handles it. `--migrate-stamps` exists only as an optional, explicitly-named
+alias for the same behavior, for anyone who wants the cleanup reported as its own step.
 
 ## The two summary kinds
 
