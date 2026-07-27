@@ -56,6 +56,24 @@ describe('extractAnchors()', () => {
     expect(extractAnchors('## ![diagram](./d.png) Overview')).toEqual(new Set(['diagram-overview']))
   })
 
+  // A structural sibling of MarkdownLinks.ts's own LINK_RE ReDoS fix, found
+  // by auditing for the same unbounded `[^\]]*`/`[^)\s]+` shape elsewhere in
+  // the codebase (CodeQL flagged LINK_RE specifically; this one wasn't
+  // flagged, but is exploitable the same way — same style/threshold as that
+  // fix's regression test).
+  it('stays fast slugging a heading with many unclosed brackets (no closing `]` anywhere)', () => {
+    const adversarial = `# ${'\\['.repeat(80_000)}`
+    const start = performance.now()
+    extractAnchors(adversarial)
+    const elapsedMs = performance.now() - start
+    // Bounded implementation measured ~250ms locally; the UNBOUNDED (pre-fix)
+    // shape measured ~5s on this same input — a ~20x gap, so 3s leaves
+    // healthy margin for a slower/shared CI runner (matching MarkdownLinks.ts's
+    // own ReDoS test, which really did flake once at a tighter threshold)
+    // while still reliably catching a regression back to unbounded.
+    expect(elapsedMs).toBeLessThan(3000)
+  })
+
   it('decodes HTML entities before slugging', () => {
     expect(extractAnchors('## Q&amp;A')).toEqual(new Set(['qa']))
   })

@@ -24,7 +24,14 @@ const INLINE_CODE_CAPTURE_RE = /`([^`\n]+)`/g
 // Same shape as MarkdownLinks.ts's own (private) LINK_RE — matches
 // `[text](url)`/`![alt](url)`. Used only to MASK the text/alt span before
 // candidate extraction (below), not to check the link itself.
-const LINK_TEXT_RE = /!?\[([^\]]*)\]\([^)\s]+(?:\s+"[^"]*")?\)/g
+//
+// Quantifiers bounded at 2000 chars — this comment used to just note the
+// shared shape; it shares LINK_RE's quadratic ReDoS too (verified
+// empirically: ~4x time per 2x input on many unclosed-`[` content, same as
+// LINK_RE's own pre-fix measurements), applied via `.replace` on real
+// document prose. Found while auditing for siblings after CodeQL flagged
+// LINK_RE, not by CodeQL itself flagging this file.
+const LINK_TEXT_RE = /!?\[([^\]]{0,2000})\]\([^)\s]{1,2000}(?:\s+"[^"]{0,2000}")?\)/g
 
 /**
  * A backtick-styled citation inside a REAL Markdown link's text —
