@@ -119,4 +119,22 @@ describe('extractProseRefs()', () => {
   it('does not mistake an image (`![alt](url)`) for a masked link — same masking rule applies', () => {
     expect(extractProseRefs('![`src/diagram.png`](../src/diagram.png)')).toEqual([])
   })
+
+  // A structural sibling of MarkdownLinks.ts's own LINK_RE ReDoS fix, found
+  // by auditing for the same unbounded `[^\]]*`/`[^)\s]+` shape elsewhere in
+  // the codebase (CodeQL flagged LINK_RE specifically; this one wasn't
+  // flagged, but is exploitable the same way — same style/threshold as that
+  // fix's regression test).
+  it('stays fast scanning prose with many unclosed brackets (no closing `]` anywhere)', () => {
+    const adversarial = '\\['.repeat(80_000)
+    const start = performance.now()
+    extractProseRefs(adversarial)
+    const elapsedMs = performance.now() - start
+    // Bounded implementation measured ~250ms locally; the UNBOUNDED (pre-fix)
+    // shape measured ~5s on this same input — a ~20x gap, so 3s leaves
+    // healthy margin for a slower/shared CI runner (matching MarkdownLinks.ts's
+    // own ReDoS test, which really did flake once at a tighter threshold)
+    // while still reliably catching a regression back to unbounded.
+    expect(elapsedMs).toBeLessThan(3000)
+  })
 })
