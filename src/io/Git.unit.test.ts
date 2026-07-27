@@ -44,6 +44,24 @@ const runIgnoredDirsFailure = (layer: ReturnType<typeof makeTestGitFs>): Promise
     ).pipe(Effect.provide(layer)),
   )
 
+const runWorktreeDirs = (layer: ReturnType<typeof makeTestGitFs>): Promise<readonly string[]> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      return yield* gitFs.listWorktreeDirs('/base')
+    }).pipe(Effect.provide(layer)),
+  )
+
+const runWorktreeDirsFailure = (layer: ReturnType<typeof makeTestGitFs>): Promise<GitUnavailableError> =>
+  Effect.runPromise(
+    Effect.flip(
+      Effect.gen(function* () {
+        const gitFs = yield* GitFs
+        return yield* gitFs.listWorktreeDirs('/base')
+      }),
+    ).pipe(Effect.provide(layer)),
+  )
+
 describe('makeTestGitFs()', () => {
   it('listTrackedFiles() reports the supplied set', async () => {
     const tracked = new Set(['/base/a.md'])
@@ -76,5 +94,26 @@ describe('makeTestGitFs()', () => {
     // other's failure.
     const trackedResult = await runTracked(makeTestGitFs(new Set(['/base/x.md']), error))
     expect(trackedResult).toBeInstanceOf(Set)
+  })
+
+  it('listWorktreeDirs() defaults to empty when not supplied', async () => {
+    const result = await runWorktreeDirs(makeTestGitFs(new Set()))
+    expect(result).toEqual([])
+  })
+
+  it('listWorktreeDirs() reports the supplied dirs', async () => {
+    const dirs = ['/base/.claude/worktrees/some-branch']
+    const result = await runWorktreeDirs(makeTestGitFs(new Set(), [], dirs))
+    expect(result).toBe(dirs)
+  })
+
+  it('listWorktreeDirs() fails with a supplied GitUnavailableError, independent of the other two methods', async () => {
+    const error = new GitUnavailableError({ base: '/base', message: 'worktree-dirs boom' })
+    const reported = await runWorktreeDirsFailure(makeTestGitFs(new Set(), [], error))
+    expect(reported).toBe(error)
+    const trackedResult = await runTracked(makeTestGitFs(new Set(['/base/x.md']), [], error))
+    expect(trackedResult).toBeInstanceOf(Set)
+    const ignoredResult = await runIgnoredDirs(makeTestGitFs(new Set(), ['/base/dist'], error))
+    expect(ignoredResult).toEqual(['/base/dist'])
   })
 })

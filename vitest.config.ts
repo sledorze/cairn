@@ -28,10 +28,10 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 87.19,
-        functions: 97.7,
-        lines: 98.34,
-        statements: 98.19,
+        branches: 87.46,
+        functions: 98.54,
+        lines: 98.72,
+        statements: 98.55,
       },
     },
     include: ['src/**/*.test.ts'],

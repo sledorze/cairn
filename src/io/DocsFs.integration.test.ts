@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -127,6 +128,82 @@ describe('DocsFsLive()', () => {
       }
     })
 
+    // `Dirent.isSymbolicLink()` only reports that the entry IS a symlink,
+    // never what it points at — a working symlink needs a real,
+    // link-following `stat` to resolve its target, exactly like every
+    // entry used to need before switching to `withFileTypes: true`. A
+    // symlink resolving to a regular FILE is the case an earlier draft of
+    // this optimization silently dropped (conflated with "not a
+    // directory, therefore excluded") — this pins the fix.
+    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+    const supportsSymlinks = process.platform !== 'win32' && !isRoot
+    it.skipIf(!supportsSymlinks)('a symlink resolving to a real file is included, not silently dropped', async () => {
+      const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-file-'))
+      try {
+        fs.writeFileSync(path.join(linkDir, 'target.md'), '# target')
+        fs.symlinkSync(path.join(linkDir, 'target.md'), path.join(linkDir, 'link.md'))
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([linkDir])
+          }),
+        )
+        expect([...files].toSorted()).toEqual(
+          [toPosix(path.join(linkDir, 'target.md')), toPosix(path.join(linkDir, 'link.md'))].toSorted(),
+        )
+      } finally {
+        fs.rmSync(linkDir, { force: true, recursive: true })
+      }
+    })
+
+    it.skipIf(!supportsSymlinks)('a symlink resolving to a real directory is recursed into', async () => {
+      const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-dir-'))
+      try {
+        fs.mkdirSync(path.join(linkDir, 'real'))
+        fs.writeFileSync(path.join(linkDir, 'real', 'inner.md'), '# inner')
+        fs.symlinkSync(path.join(linkDir, 'real'), path.join(linkDir, 'linked'), 'dir')
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([linkDir])
+          }),
+        )
+        expect(files).toContainEqual(toPosix(path.join(linkDir, 'linked', 'inner.md')))
+      } finally {
+        fs.rmSync(linkDir, { force: true, recursive: true })
+      }
+    })
+
+    // A named pipe (FIFO) is neither a regular file nor a directory —
+    // `Dirent.isFile()`/`isDirectory()` are both false for it, same as any
+    // other non-regular entry (a socket, a device). Excluded silently, same
+    // as before this optimization; real, not simulated, since a FIFO can't
+    // be represented in `makeTestDocsFs`'s plain path->content map either.
+    let supportsMkfifo = process.platform !== 'win32'
+    if (supportsMkfifo) {
+      try {
+        execFileSync('mkfifo', ['--version'], { stdio: 'ignore' })
+      } catch {
+        supportsMkfifo = false
+      }
+    }
+    it.skipIf(!supportsMkfifo)('a named pipe (FIFO) entry is silently excluded, not a crash', async () => {
+      const fifoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-fifo-'))
+      try {
+        fs.writeFileSync(path.join(fifoDir, 'ok.md'), '# ok')
+        execFileSync('mkfifo', [path.join(fifoDir, 'pipe.md')])
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([fifoDir])
+          }),
+        )
+        expect(files).toEqual([toPosix(path.join(fifoDir, 'ok.md'))])
+      } finally {
+        fs.rmSync(fifoDir, { force: true, recursive: true })
+      }
+    })
+
     // A subdirectory with execute permission removed makes `stat` on
     // anything inside it fail with EACCES during traversal — a real,
     // portable, deterministic way to trigger the SAME class of failure
@@ -136,7 +213,6 @@ describe('DocsFsLive()', () => {
     // prove wouldn't actually occur) or on a platform where `chmod` doesn't
     // enforce POSIX permission bits (Windows) — same guard style as this
     // repo's own existing tests would need for platform-conditional cases.
-    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
     const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
     it.skipIf(!supportsPosixPermissions)(
       'an unreadable (no-execute) subdirectory is silently excluded, not a crash',

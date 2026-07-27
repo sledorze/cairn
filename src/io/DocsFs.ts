@@ -125,38 +125,37 @@ export const DocsFsLive = Layer.effect(
           entries,
           (entry) => {
             const abs = path.join(dir, entry.name)
-            const handle = (isDirectory: boolean): Effect.Effect<readonly string[], PlatformError> => {
-              if (isDirectory) {
-                // Pruned BEFORE recursing — the actual OOM fix (issue
-                // #63): a matching directory (e.g. a real `node_modules`)
-                // is never `readDirectory`'d/`stat`'d at all, not merely
-                // excluded from the final list after being fully walked.
-                if (isPrunedDir(abs, ignore)) {
-                  return Effect.succeed<readonly string[]>([])
-                }
-                return walk(abs, false, ignore)
-              }
-              // Matches the pre-existing contract exactly: only regular
-              // files are collected. Anything else (a device, socket, or
-              // other non-regular entry `fs.stat` can report) is silently
-              // excluded, same as before.
-              return Effect.succeed([])
-            }
+            // Pruned BEFORE recursing — the actual OOM fix (issue #63): a
+            // matching directory (e.g. a real `node_modules`) is never
+            // `readDirectory`'d/`stat`'d at all, not merely excluded from
+            // the final list after being fully walked.
+            const recurseIntoDir = (): Effect.Effect<readonly string[], PlatformError> =>
+              isPrunedDir(abs, ignore) ? Effect.succeed<readonly string[]>([]) : walk(abs, false, ignore)
             if (entry.isDirectory()) {
-              return handle(true)
+              return recurseIntoDir()
             }
             if (entry.isFile()) {
               return Effect.succeed([abs])
             }
             if (!entry.isSymbolicLink()) {
+              // Matches the pre-existing contract exactly: only regular
+              // files (and, below, symlinks resolving to one) are
+              // collected. Anything else (a device, socket, or other
+              // non-regular entry) is silently excluded, same as before.
               return Effect.succeed<readonly string[]>([])
             }
             // A symlink's OWN Dirent type never tells us what it points at
             // (or whether the target even exists) — the one case that still
             // needs a real, link-following `stat`, exactly as every entry
-            // used to before this optimization.
+            // used to before this optimization. Resolved the same way a
+            // non-symlink entry is: a directory recurses (and can still be
+            // pruned), a file is collected, anything else is excluded —
+            // deliberately NOT collapsed into "not a directory therefore
+            // excluded," which would silently drop every symlink-to-file.
             return fs.stat(abs).pipe(
-              Effect.flatMap((info) => handle(info.type === 'Directory')),
+              Effect.flatMap((info) =>
+                info.type === 'Directory' ? recurseIntoDir() : Effect.succeed(info.type === 'File' ? [abs] : []),
+              ),
               // `fs.stat`'s failure is a typed `PlatformError` (ENOENT on a
               // broken symlink, EACCES, ENAMETOOLONG, ...), not a defect —
               // `Effect.catch` (v4's `catchAll`) is the right combinator
