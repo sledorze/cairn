@@ -53,6 +53,19 @@ export interface GitFsService {
    * separate follow-up, not silently glossed over.
    */
   readonly listIgnoredDirs: (base: string) => Effect.Effect<readonly string[], GitUnavailableError>
+  /**
+   * Every LINKED worktree directory of the repo at `base` (`git worktree
+   * list --porcelain`), excluding the primary worktree (`base` itself).
+   * A linked worktree — e.g. `.claude/worktrees/<name>`, created by an
+   * agent to work on a branch in isolation — nests a full second copy of
+   * the repo's own doc tree inside the primary one. Walking it doubles
+   * every summary/link finding, and if it has its own real `node_modules`
+   * checked out, reintroduces the exact issue #63 OOM shape one directory
+   * deeper. Returns absolute, POSIX-normalised, trailing-slash-free
+   * directory paths, matching `listIgnoredDirs`'s contract exactly so both
+   * feed the same `ignore`-pruning path in `DocsFs.listFiles`.
+   */
+  readonly listWorktreeDirs: (base: string) => Effect.Effect<readonly string[], GitUnavailableError>
 }
 
 export class GitFs extends Context.Service<GitFs, GitFsService>()('GitFs') {}
@@ -107,6 +120,30 @@ const runLsFilesIgnoredDirs = (base: string): Effect.Effect<string, GitUnavailab
       }),
   })
 
+const runWorktreeList = (base: string): Effect.Effect<string, GitUnavailableError> =>
+  Effect.tryPromise({
+    catch: (cause) =>
+      new GitUnavailableError({
+        base,
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+    try: () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          'git',
+          ['-C', base, 'worktree', 'list', '--porcelain'],
+          { maxBuffer: 64 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
+              return
+            }
+            resolve(stdout)
+          },
+        )
+      }),
+  })
+
 /** Live implementation: shells out to the real `git` binary. */
 export const GitFsLive = Layer.succeed(GitFs, {
   listIgnoredDirs: (base) =>
@@ -125,6 +162,19 @@ export const GitFsLive = Layer.succeed(GitFs, {
         return new Set(paths.map((rel) => toAbsPosix(base, rel)))
       }),
     ),
+  listWorktreeDirs: (base) =>
+    runWorktreeList(base).pipe(
+      Effect.map((stdout) => {
+        // `--porcelain` emits one `worktree <path>` line per worktree, the
+        // primary worktree always first — every other block is a linked
+        // worktree, the only ones this method reports.
+        const paths = stdout
+          .split('\n')
+          .filter((line) => line.startsWith('worktree '))
+          .map((line) => line.slice('worktree '.length).trim())
+        return paths.slice(1).map((p) => toAbsPosix(base, p))
+      }),
+    ),
 })
 
 /** In-memory GitFs layer for tests — `tracked`/`ignoredDirs` are the
@@ -136,9 +186,12 @@ export const GitFsLive = Layer.succeed(GitFs, {
 export const makeTestGitFs = (
   tracked: ReadonlySet<string> | GitUnavailableError,
   ignoredDirs: readonly string[] | GitUnavailableError = [],
+  worktreeDirs: readonly string[] | GitUnavailableError = [],
 ): Layer.Layer<GitFs> =>
   Layer.succeed(GitFs, {
     listIgnoredDirs: () =>
       ignoredDirs instanceof GitUnavailableError ? Effect.fail(ignoredDirs) : Effect.succeed(ignoredDirs),
     listTrackedFiles: () => (tracked instanceof GitUnavailableError ? Effect.fail(tracked) : Effect.succeed(tracked)),
+    listWorktreeDirs: () =>
+      worktreeDirs instanceof GitUnavailableError ? Effect.fail(worktreeDirs) : Effect.succeed(worktreeDirs),
   })

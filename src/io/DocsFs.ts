@@ -2,6 +2,9 @@
 // so programs stay testable. `DocsFsLive` binds it to the real Node platform
 // (via @effect/platform-node); `makeTestDocsFs` provides an in-memory layer.
 
+import type { Dirent } from 'node:fs'
+import * as NodeFsPromises from 'node:fs/promises'
+
 import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
@@ -100,30 +103,60 @@ export const DocsFsLive = Layer.effect(
       ignore: readonly string[],
     ): Effect.Effect<readonly string[], PlatformError> =>
       Effect.gen(function* () {
-        const readDir = fs.readDirectory(dir)
-        const names = yield* atRoot ? readDir : readDir.pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
+        // `withFileTypes: true` gets file-vs-directory type from the SAME
+        // `readdir` syscall that already lists the directory's entries —
+        // Node's `Dirent` carries it for free (populated from `d_type` on
+        // platforms that support it, or a cheap internal `lstat` otherwise,
+        // either way one call, not two). The previous version called
+        // `fs.stat` on every single entry just to answer "file or
+        // directory," a second syscall per entry that this makes
+        // unnecessary for the common case. Only a `Dirent.isSymbolicLink()`
+        // entry still needs an explicit (link-following) `stat` below, to
+        // resolve what it actually points at — Dirent only reports the
+        // entry's OWN type, never a symlink's target.
+        const readDir = Effect.tryPromise({
+          catch: (cause) => cause as PlatformError,
+          try: () => NodeFsPromises.readdir(dir, { withFileTypes: true }),
+        })
+        const entries = yield* atRoot
+          ? readDir
+          : readDir.pipe(Effect.catch(() => Effect.succeed<readonly Dirent[]>([])))
         const nested = yield* Effect.forEach(
-          names,
-          (name) => {
-            const abs = path.join(dir, name)
-            return fs.stat(abs).pipe(
-              Effect.flatMap((info) => {
-                if (info.type === 'Directory') {
-                  // Pruned BEFORE recursing — the actual OOM fix (issue
-                  // #63): a matching directory (e.g. a real `node_modules`)
-                  // is never `readDirectory`'d/`stat`'d at all, not merely
-                  // excluded from the final list after being fully walked.
-                  if (isPrunedDir(abs, ignore)) {
-                    return Effect.succeed<readonly string[]>([])
-                  }
-                  return walk(abs, false, ignore)
+          entries,
+          (entry) => {
+            const abs = path.join(dir, entry.name)
+            const handle = (isDirectory: boolean): Effect.Effect<readonly string[], PlatformError> => {
+              if (isDirectory) {
+                // Pruned BEFORE recursing — the actual OOM fix (issue
+                // #63): a matching directory (e.g. a real `node_modules`)
+                // is never `readDirectory`'d/`stat`'d at all, not merely
+                // excluded from the final list after being fully walked.
+                if (isPrunedDir(abs, ignore)) {
+                  return Effect.succeed<readonly string[]>([])
                 }
-                // Matches the pre-existing contract exactly: only regular
-                // files are collected. Anything else (a device, socket, or
-                // other non-regular entry `fs.stat` can report) is silently
-                // excluded, same as before.
-                return Effect.succeed(info.type === 'File' ? [abs] : [])
-              }),
+                return walk(abs, false, ignore)
+              }
+              // Matches the pre-existing contract exactly: only regular
+              // files are collected. Anything else (a device, socket, or
+              // other non-regular entry `fs.stat` can report) is silently
+              // excluded, same as before.
+              return Effect.succeed([])
+            }
+            if (entry.isDirectory()) {
+              return handle(true)
+            }
+            if (entry.isFile()) {
+              return Effect.succeed([abs])
+            }
+            if (!entry.isSymbolicLink()) {
+              return Effect.succeed<readonly string[]>([])
+            }
+            // A symlink's OWN Dirent type never tells us what it points at
+            // (or whether the target even exists) — the one case that still
+            // needs a real, link-following `stat`, exactly as every entry
+            // used to before this optimization.
+            return fs.stat(abs).pipe(
+              Effect.flatMap((info) => handle(info.type === 'Directory')),
               // `fs.stat`'s failure is a typed `PlatformError` (ENOENT on a
               // broken symlink, EACCES, ENAMETOOLONG, ...), not a defect —
               // `Effect.catch` (v4's `catchAll`) is the right combinator

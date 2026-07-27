@@ -198,7 +198,21 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     const gitFs = yield* GitFs
     return yield* gitFs.listIgnoredDirs(cwd)
   }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
-  const effectiveIgnore = [...config.ignore, ...gitIgnoredDirs.map((dir) => `${dir}/**`)]
+
+  // Same always-on, gracefully-degrading treatment as `gitIgnoredDirs`
+  // above — a linked worktree (e.g. `.claude/worktrees/<name>`) nests a
+  // full second copy of the repo's own doc tree and must never be walked,
+  // whether or not the caller configured anything for it.
+  const gitWorktreeDirs = yield* Effect.gen(function* () {
+    const gitFs = yield* GitFs
+    return yield* gitFs.listWorktreeDirs(cwd)
+  }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
+
+  const effectiveIgnore = [
+    ...config.ignore,
+    ...gitIgnoredDirs.map((dir) => `${dir}/**`),
+    ...gitWorktreeDirs.map((dir) => `${dir}/**`),
+  ]
 
   const summaryArgs = {
     base: cwd,

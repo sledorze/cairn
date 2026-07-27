@@ -32,6 +32,14 @@ const runIgnoredDirs = (base: string): Promise<readonly string[]> =>
     }).pipe(Effect.provide(GitFsLive)),
   )
 
+const runWorktreeDirs = (base: string): Promise<readonly string[]> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      return yield* gitFs.listWorktreeDirs(base)
+    }).pipe(Effect.provide(GitFsLive)),
+  )
+
 const git = (cwd: string, ...args: readonly string[]): void => {
   execFileSync('git', args, { cwd, stdio: 'pipe' })
 }
@@ -154,6 +162,74 @@ describe('GitFsLive().listIgnoredDirs()', () => {
           Effect.gen(function* () {
             const gitFs = yield* GitFs
             return yield* gitFs.listIgnoredDirs(nonRepo)
+          }),
+        ).pipe(Effect.provide(GitFsLive)),
+      )
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    } finally {
+      fs.rmSync(nonRepo, { force: true, recursive: true })
+    }
+  })
+})
+
+// A linked worktree (e.g. `.claude/worktrees/<name>`) checks out a full copy
+// of the repo's own doc tree at a different commit/branch, nested inside the
+// primary worktree. Walking it doubles every summary/link finding (and, if
+// it itself has a real `node_modules`, reintroduces the exact issue #63 OOM
+// shape) — so it needs pruning the same way an ignored directory does, real,
+// against the real `git` binary.
+describe('GitFsLive().listWorktreeDirs()', () => {
+  let wtRoot = ''
+  let linkedPath = ''
+
+  beforeAll(() => {
+    wtRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-worktree-'))
+    git(wtRoot, 'init', '-q')
+    git(wtRoot, 'config', 'user.email', 'test@example.com')
+    git(wtRoot, 'config', 'user.name', 'Test')
+    fs.mkdirSync(path.join(wtRoot, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(wtRoot, 'docs', 'guide.md'), '# guide')
+    git(wtRoot, 'add', 'docs')
+    git(wtRoot, 'commit', '-q', '-m', 'initial')
+
+    linkedPath = path.join(wtRoot, '.claude', 'worktrees', 'some-branch')
+    fs.mkdirSync(path.dirname(linkedPath), { recursive: true })
+    git(wtRoot, 'worktree', 'add', '-q', '-b', 'some-branch', linkedPath)
+  })
+
+  afterAll(() => {
+    if (wtRoot) {
+      // `git worktree remove` first so git's own metadata doesn't leak past
+      // the temp-dir cleanup; tolerate failure since `rmSync` below is the
+      // real backstop.
+      try {
+        git(wtRoot, 'worktree', 'remove', '--force', linkedPath)
+      } catch {
+        // best-effort
+      }
+      fs.rmSync(wtRoot, { force: true, recursive: true })
+    }
+  })
+
+  it('reports the linked worktree directory, absolute POSIX, no trailing slash', async () => {
+    const dirs = await runWorktreeDirs(wtRoot)
+    expect(dirs).toContain(toPosix(linkedPath))
+    expect(dirs.some((d) => d.endsWith('/'))).toBeFalsy()
+  })
+
+  it('does not report the primary worktree itself', async () => {
+    const dirs = await runWorktreeDirs(wtRoot)
+    expect(dirs).not.toContain(toPosix(wtRoot))
+  })
+
+  it('fails with a named GitUnavailableError when `base` is not a git repository', async () => {
+    const nonRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'not-a-repo-worktree-'))
+    try {
+      const error = await Effect.runPromise(
+        Effect.flip(
+          Effect.gen(function* () {
+            const gitFs = yield* GitFs
+            return yield* gitFs.listWorktreeDirs(nonRepo)
           }),
         ).pipe(Effect.provide(GitFsLive)),
       )
