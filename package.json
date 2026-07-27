@@ -59,18 +59,28 @@
     "typecheck": "tsc --noEmit",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check"
   },
-  "dependencies": {
-    "@effect/platform-node": "4.0.0-beta.100",
-    "effect": "4.0.0-beta.100",
+  "peerDependencies": {
+    "effect": "^4.0.0-beta.100",
     "github-slugger": "^2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "effect": {
+      "optional": true
+    },
+    "github-slugger": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
+    "@effect/platform-node": "4.0.0-beta.100",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
     "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",
+    "effect": "4.0.0-beta.100",
     "esbuild": "^0.28.1",
+    "github-slugger": "^2.0.0",
     "lefthook": "^2.1.0",
     "oxlint": "1.74.0",
     "prettier": "^3.8.1",
