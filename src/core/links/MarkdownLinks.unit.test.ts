@@ -120,7 +120,14 @@ describe('extractLinks()', () => {
     const start = performance.now()
     extractLinks(adversarial)
     const elapsedMs = performance.now() - start
-    expect(elapsedMs).toBeLessThan(1000)
+    // A GENEROUS bound, not a tight perf assertion — the point is catching a
+    // regression back to quadratic (which would blow well past this on the
+    // SAME input: the pre-fix regex took ~2.4s on a mere 80 000-char version
+    // of this adversarial string locally, and quadratic scaling would put
+    // this 160 000-char one at ~4x that). 5s leaves ample headroom for a
+    // slower/shared CI runner (a real, not hypothetical, source of flakiness
+    // — this exact assertion flaked once at ~1.05s against a 1s threshold).
+    expect(elapsedMs).toBeLessThan(5000)
   })
 })
 
