@@ -35,6 +35,11 @@ before and after a clone. Commit `.cairn/` alongside your docs; it isn't gitigno
 pnpm add -D @sledorze/cairn
 ```
 
+The `cairn` CLI is fully bundled and needs nothing else. The programmatic API
+(`import { ... } from '@sledorze/cairn'`) additionally needs `effect` and
+`github-slugger`, declared as optional peer dependencies — install them yourself if you
+use that entrypoint: `pnpm add effect github-slugger`.
+
 ## Quick start
 
 ```sh
