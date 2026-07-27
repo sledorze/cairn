@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -7,6 +6,7 @@ import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { toPosix } from '../core/paths.ts'
+import { runGit as git } from '../testSupport/testGit.ts'
 import { GitFs, GitFsLive, GitUnavailableError } from './Git.ts'
 
 // Exercises the REAL `git` binary (GitFsLive) against a real repository —
@@ -39,10 +39,6 @@ const runWorktreeDirs = (base: string): Promise<readonly string[]> =>
       return yield* gitFs.listWorktreeDirs(base)
     }).pipe(Effect.provide(GitFsLive)),
   )
-
-const git = (cwd: string, ...args: readonly string[]): void => {
-  execFileSync('git', args, { cwd, stdio: 'pipe' })
-}
 
 beforeAll(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-'))
