@@ -63,7 +63,14 @@ export interface GitFsService {
    * thing from `base`; naively dropping "whichever entry comes first"
    * instead of filtering by equality to `base` leaves `base` itself in a
    * caller's ignore list when `base` isn't the primary — confirmed as a
-   * real bug via dogfooding a multi-worktree dev setup).
+   * real bug via dogfooding a multi-worktree dev setup) — AND excluding
+   * every worktree that is an ANCESTOR of `base` on disk, not just equal to
+   * it: a linked worktree nested inside another worktree's own directory
+   * (e.g. `<primary>/.claude/worktrees/<name>`) means the ancestor's
+   * reported path is a PREFIX of `base`'s, so a caller turning it into
+   * `${ancestor}/**` would also match every file under `base` — the same
+   * "0 files, all clean" failure as the equality case, via a different
+   * path shape (a real, reported bug: confirmed with just 2 worktrees).
    * A linked worktree — e.g. `.claude/worktrees/<name>`, created by an
    * agent to work on a branch in isolation — nests a full second copy of
    * the repo's own doc tree inside the primary one. Walking it doubles
@@ -194,13 +201,31 @@ export const GitFsLive = Layer.effect(
             // still leak through under its resolved name, reproducing the
             // exact same bug for symlinked paths specifically (confirmed
             // empirically, its own regression test below).
+            //
+            // A second, distinct shape of the same bug (real bug report,
+            // reproduced with just 2 worktrees): a linked worktree can ALSO
+            // be nested INSIDE another worktree's own directory — e.g.
+            // `<primary>/.claude/worktrees/<name>`, exactly what an
+            // agentic dev workflow creates — rather than living as a
+            // sibling under some shared parent. If `base` is such a nested
+            // worktree, the primary worktree (or any other worktree that
+            // is an ANCESTOR of `base`, not just equal to it) must ALSO be
+            // excluded here: `cli.ts` turns every reported dir into
+            // `${dir}/**`, and an ancestor's `${ancestor}/**` pattern
+            // matches every file under `base` too, since `base`'s own real
+            // path literally starts with the ancestor's — pruning the scan
+            // root by a different route than the exact-equality case
+            // above, but with the identical "0 files, all clean" result.
             const baseReal = toPosix(realpathOrSelf(base))
             const paths = stdout
               .split('\n')
               .filter((line) => line.startsWith('worktree '))
               .map((line) => line.slice('worktree '.length).trim())
               .map((p) => toAbsPosix(base, p))
-            return paths.filter((p) => toPosix(realpathOrSelf(p)) !== baseReal)
+            return paths.filter((p) => {
+              const pReal = toPosix(realpathOrSelf(p))
+              return pReal !== baseReal && !baseReal.startsWith(`${pReal}/`)
+            })
           }),
         ),
     })
