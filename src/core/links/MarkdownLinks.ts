@@ -80,8 +80,22 @@ export interface CheckContentArgs {
   readonly inRoots?: (absPath: string) => boolean
 }
 
-const LINK_RE = /!?\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+// Destination alternation: CommonMark lets a destination be wrapped in
+// `<...>` specifically so it can contain characters — most commonly `)` —
+// that would otherwise be ambiguous with the link's own closing paren (e.g.
+// `[t](<https://example.com/path_(with_parens)/more>)`, a real, valid,
+// not-uncommon shape for Wikipedia/LibreTexts-style URLs). The bare-form
+// alternative (`[^)\s]+`, tried only when the destination does NOT start
+// with `<`) stops at the first unescaped `)` or whitespace, same as before —
+// that heuristic is correct for the unwrapped form and deliberately
+// untouched; it must never run against a `<...>`-delimited destination,
+// which reads verbatim up to its own matching `>` first.
+const LINK_RE = /!?\[([^\]]*)\]\((?:<((?:[^<>\\\n]|\\.)*)>|([^)\s]+))(?:\s+"[^"]*")?\)/g
 const INLINE_CODE_RE = /`[^`\n]*`/g
+
+/** A `LINK_RE` match's destination is in capture group 2 (angle-bracket form)
+ * or group 3 (bare form) depending on which alternative matched — never both. */
+const linkTarget = (match: RegExpMatchArray): string => match[2] ?? match[3] ?? ''
 
 /**
  * Blank out fenced (``` / ~~~, via `maskFencedCode`) and inline (`code`)
@@ -98,7 +112,7 @@ const LINK_DEF_RE = /^[ \t]*\[([^\]]+)\]:[ \t]*<?([^>\s]+)>?/gm
 export const extractLinks = (content: string): MarkdownLink[] => {
   const links: MarkdownLink[] = []
   for (const match of content.matchAll(LINK_RE)) {
-    links.push({ target: match[2] ?? '', text: match[1] ?? '' })
+    links.push({ target: linkTarget(match), text: match[1] ?? '' })
   }
   return links
 }
@@ -134,7 +148,7 @@ const extractLinksPreservingText = (original: string, masked: string): MarkdownL
   for (const match of masked.matchAll(LINK_RE)) {
     const textStart = captureGroupStart(match)
     const textLength = match[1]?.length ?? 0
-    links.push({ target: match[2] ?? '', text: original.slice(textStart, textStart + textLength) })
+    links.push({ target: linkTarget(match), text: original.slice(textStart, textStart + textLength) })
   }
   return links
 }
