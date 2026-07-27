@@ -1,0 +1,45 @@
+name: Probe unprivileged userns support
+
+# Manual-only diagnostic: does this repo's actual GitHub-hosted runner allow
+# unprivileged user-namespace creation (the prerequisite for bubblewrap/unshare-based
+# sandboxing, per issue #69)? Answers with real evidence instead of continued
+# research/guessing. Not wired into `push`/`pull_request` — this is a one-shot probe,
+# not a permanent CI gate; delete this workflow once #69 is resolved either way.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kernel / userns sysctls
+        run: |
+          uname -a
+          echo "---"
+          cat /proc/sys/kernel/unprivileged_userns_clone 2>&1 || echo "(no such sysctl on this kernel — not the gating mechanism here)"
+          echo "---"
+          cat /proc/sys/user/max_user_namespaces 2>&1 || echo "(no such sysctl)"
+          echo "---"
+          echo "AppArmor userns restriction:"
+          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>&1 || echo "(no such sysctl)"
+
+      - name: Capabilities and seccomp status of this runner process
+        run: |
+          grep -E "^(CapEff|Seccomp)" /proc/self/status
+
+      - name: Real functional test — unshare --user (the actual thing that matters)
+        run: |
+          echo "=== unshare --user echo ok ==="
+          unshare --user echo ok && echo "RESULT: unshare --user WORKS" || echo "RESULT: unshare --user FAILS (exit $?)"
+          echo "=== unshare --user --map-root-user id ==="
+          unshare --user --map-root-user id && echo "RESULT: map-root-user WORKS" || echo "RESULT: map-root-user FAILS (exit $?)"
+          echo "=== unshare --user --pid --mount-proc echo ok ==="
+          unshare --user --pid --mount-proc echo ok && echo "RESULT: full namespace WORKS" || echo "RESULT: full namespace FAILS (exit $?)"
+
+      - name: Real functional test — bubblewrap (install then actually run it)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          bwrap --version
+          echo "=== bwrap --ro-bind / / --tmpfs /tmp --unshare-all -- echo ok ==="
+          bwrap --ro-bind / / --tmpfs /tmp --unshare-all -- echo ok && echo "RESULT: bwrap WORKS" || echo "RESULT: bwrap FAILS (exit $?)"
