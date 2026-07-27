@@ -87,11 +87,12 @@ const toPlanArgs = (
 
 const readMarkdown = (
   roots: readonly string[],
+  ignore: readonly string[],
   trackedFiles?: ReadonlySet<string>,
 ): Effect.Effect<Map<string, string>, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const all = yield* dfs.listFiles(roots)
+    const all = yield* dfs.listFiles(roots, ignore)
     const files = new Map<string, string>()
     for (const file of all) {
       // Issue #48: an untracked doc is invisible to a fresh CI checkout, so a
@@ -296,7 +297,7 @@ const explainPlan = (
 
 export const checkSummaries = (args: CheckSummariesArgs): Effect.Effect<SummaryPlan, never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots, args.trackedFiles)
+    const files = yield* readMarkdown(args.roots, args.ignore ?? [], args.trackedFiles)
     const stamps = yield* readStamps(layoutFor(args.base))
     return planSummaries(toPlanArgs(files, args, stamps))
   })
@@ -307,7 +308,7 @@ export const explainSummaries = (
   options: SummaryReportOptions = {},
 ): Effect.Effect<string[], never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots, args.trackedFiles)
+    const files = yield* readMarkdown(args.roots, args.ignore ?? [], args.trackedFiles)
     const stamps = yield* readStamps(layoutFor(args.base))
     const plan = planSummaries(toPlanArgs(files, args, stamps))
     return explainPlan(plan, files, options)
@@ -385,7 +386,7 @@ const stampFiles = (files: Map<string, string>, args: CheckSummariesArgs): Effec
 
 export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampResult, never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots, args.trackedFiles)
+    const files = yield* readMarkdown(args.roots, args.ignore ?? [], args.trackedFiles)
     return yield* stampFiles(files, args)
   })
 
@@ -397,7 +398,7 @@ export const stampSummaries = (args: CheckSummariesArgs): Effect.Effect<StampRes
  */
 export const migrateStamps = (args: CheckSummariesArgs): Effect.Effect<MigrateResult, never, DocsFs> =>
   Effect.gen(function* () {
-    const files = yield* readMarkdown(args.roots, args.trackedFiles)
+    const files = yield* readMarkdown(args.roots, args.ignore ?? [], args.trackedFiles)
     return yield* stampFiles(files, args)
   })
 
@@ -408,7 +409,7 @@ export const pruneOrphans = (args: CheckSummariesArgs): Effect.Effect<number, ne
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = layoutFor(args.base)
-    const files = yield* readMarkdown(args.roots, args.trackedFiles)
+    const files = yield* readMarkdown(args.roots, args.ignore ?? [], args.trackedFiles)
     const stamps = yield* readStamps(layout)
     const plan = planSummaries(toPlanArgs(files, args, stamps))
     for (const orphan of plan.orphans) {

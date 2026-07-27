@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -127,6 +128,82 @@ describe('DocsFsLive()', () => {
       }
     })
 
+    // `Dirent.isSymbolicLink()` only reports that the entry IS a symlink,
+    // never what it points at — a working symlink needs a real,
+    // link-following `stat` to resolve its target, exactly like every
+    // entry used to need before switching to `withFileTypes: true`. A
+    // symlink resolving to a regular FILE is the case an earlier draft of
+    // this optimization silently dropped (conflated with "not a
+    // directory, therefore excluded") — this pins the fix.
+    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+    const supportsSymlinks = process.platform !== 'win32' && !isRoot
+    it.skipIf(!supportsSymlinks)('a symlink resolving to a real file is included, not silently dropped', async () => {
+      const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-file-'))
+      try {
+        fs.writeFileSync(path.join(linkDir, 'target.md'), '# target')
+        fs.symlinkSync(path.join(linkDir, 'target.md'), path.join(linkDir, 'link.md'))
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([linkDir])
+          }),
+        )
+        expect([...files].toSorted()).toEqual(
+          [toPosix(path.join(linkDir, 'target.md')), toPosix(path.join(linkDir, 'link.md'))].toSorted(),
+        )
+      } finally {
+        fs.rmSync(linkDir, { force: true, recursive: true })
+      }
+    })
+
+    it.skipIf(!supportsSymlinks)('a symlink resolving to a real directory is recursed into', async () => {
+      const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-dir-'))
+      try {
+        fs.mkdirSync(path.join(linkDir, 'real'))
+        fs.writeFileSync(path.join(linkDir, 'real', 'inner.md'), '# inner')
+        fs.symlinkSync(path.join(linkDir, 'real'), path.join(linkDir, 'linked'), 'dir')
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([linkDir])
+          }),
+        )
+        expect(files).toContainEqual(toPosix(path.join(linkDir, 'linked', 'inner.md')))
+      } finally {
+        fs.rmSync(linkDir, { force: true, recursive: true })
+      }
+    })
+
+    // A named pipe (FIFO) is neither a regular file nor a directory —
+    // `Dirent.isFile()`/`isDirectory()` are both false for it, same as any
+    // other non-regular entry (a socket, a device). Excluded silently, same
+    // as before this optimization; real, not simulated, since a FIFO can't
+    // be represented in `makeTestDocsFs`'s plain path->content map either.
+    let supportsMkfifo = process.platform !== 'win32'
+    if (supportsMkfifo) {
+      try {
+        execFileSync('mkfifo', ['--version'], { stdio: 'ignore' })
+      } catch {
+        supportsMkfifo = false
+      }
+    }
+    it.skipIf(!supportsMkfifo)('a named pipe (FIFO) entry is silently excluded, not a crash', async () => {
+      const fifoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-fifo-'))
+      try {
+        fs.writeFileSync(path.join(fifoDir, 'ok.md'), '# ok')
+        execFileSync('mkfifo', [path.join(fifoDir, 'pipe.md')])
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([fifoDir])
+          }),
+        )
+        expect(files).toEqual([toPosix(path.join(fifoDir, 'ok.md'))])
+      } finally {
+        fs.rmSync(fifoDir, { force: true, recursive: true })
+      }
+    })
+
     // A subdirectory with execute permission removed makes `stat` on
     // anything inside it fail with EACCES during traversal — a real,
     // portable, deterministic way to trigger the SAME class of failure
@@ -136,7 +213,6 @@ describe('DocsFsLive()', () => {
     // prove wouldn't actually occur) or on a platform where `chmod` doesn't
     // enforce POSIX permission bits (Windows) — same guard style as this
     // repo's own existing tests would need for platform-conditional cases.
-    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
     const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
     it.skipIf(!supportsPosixPermissions)(
       'an unreadable (no-execute) subdirectory is silently excluded, not a crash',
@@ -201,5 +277,137 @@ describe('DocsFsLive()', () => {
         }
       },
     )
+  })
+
+  // Issue #63: `roots: ["."]`-style scans OOM-crashed on a real `node_modules`
+  // because `walk()` fully materialized (readDirectory + stat, recursively)
+  // every ignored directory before `ignore` was ever consulted downstream.
+  describe('`ignore` prunes matching directories DURING the walk, not after (issue #63)', () => {
+    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+    const supportsSymlinks = process.platform !== 'win32' && !isRoot
+
+    // A self-referential symlink inside the ignored directory: if pruning
+    // ever failed and `walk` entered it, this does NOT infinite-loop (worth
+    // recording precisely, since an earlier draft of this comment claimed it
+    // would) — measured directly by temporarily disabling the prune check:
+    // it terminates in milliseconds via a real `ENAMETOOLONG` once the
+    // symlinked path grows past the OS limit, caught by this file's own
+    // existing crash-resilience fix (the `Effect.catch` on a nested
+    // `readDirectory` failure). So this test's real signal is the plain
+    // assertion below (`pkg.md` — and `node_modules` at all — never appear),
+    // same as the simpler "bare directory name" test just after it; the
+    // symlink only adds coverage that a pathological entry INSIDE a pruned
+    // directory can't produce a partial or malformed result either, since
+    // it's never looked at.
+    it.skipIf(!supportsSymlinks)(
+      'never descends into a pruned directory, even one containing a self-referential symlink',
+      async () => {
+        const pruneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-prune-'))
+        try {
+          fs.writeFileSync(path.join(pruneRoot, 'kept.md'), '# kept')
+          const ignoredDir = path.join(pruneRoot, 'node_modules')
+          fs.mkdirSync(ignoredDir)
+          fs.writeFileSync(path.join(ignoredDir, 'pkg.md'), '# should never be seen')
+          fs.symlinkSync(ignoredDir, path.join(ignoredDir, 'self-loop'), 'dir')
+
+          const files = await run(
+            Effect.gen(function* () {
+              const dfs = yield* DocsFs
+              return yield* dfs.listFiles([pruneRoot], ['**/node_modules/**'])
+            }),
+          )
+
+          expect(files).toContainEqual(toPosix(path.join(pruneRoot, 'kept.md')))
+          expect(files.some((f) => f.includes('node_modules'))).toBeFalsy()
+        } finally {
+          fs.rmSync(pruneRoot, { force: true, recursive: true })
+        }
+      },
+    )
+
+    // The actual reported bug (issue #63): a genuinely large ignored subtree
+    // — real `node_modules` scale, not a toy fixture — must not cost
+    // anything proportional to its size. Nested (not flat) so a
+    // non-recursive `readdir` call couldn't accidentally "cheat" this test.
+    it('a large, deeply-nested ignored subtree costs ~nothing — proves the OOM fix at real scale, not just a small unit case', async () => {
+      const pruneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-prune-scale-'))
+      try {
+        fs.writeFileSync(path.join(pruneRoot, 'kept.md'), '# kept')
+        const nodeModules = path.join(pruneRoot, 'node_modules')
+        fs.mkdirSync(nodeModules)
+        const PACKAGES = 200
+        const FILES_PER_PACKAGE = 20
+        for (let i = 0; i < PACKAGES; i += 1) {
+          const pkgDir = path.join(nodeModules, `pkg-${i}`)
+          fs.mkdirSync(pkgDir)
+          for (let j = 0; j < FILES_PER_PACKAGE; j += 1) {
+            fs.writeFileSync(path.join(pkgDir, `file-${j}.js`), '// noop')
+          }
+        }
+        // 200 * 20 = 4000 files across 200 subdirectories — real walking
+        // (readdir + stat per entry) of this tree takes tens of ms at
+        // minimum; a `node_modules` at real-world scale (tens of thousands
+        // of files) would take seconds to minutes and hold every path in
+        // memory simultaneously, which is exactly the OOM issue #63 reports.
+
+        const start = performance.now()
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([pruneRoot], ['**/node_modules/**'])
+          }),
+        )
+        const elapsedMs = performance.now() - start
+
+        expect(files).toEqual([toPosix(path.join(pruneRoot, 'kept.md'))])
+        // Generous bound (real pruning should take low single-digit ms);
+        // this is loose enough to never flake on a slow CI runner while
+        // still being impossible to hit if the 4000-file tree were walked.
+        expect(elapsedMs).toBeLessThan(500)
+      } finally {
+        fs.rmSync(pruneRoot, { force: true, recursive: true })
+      }
+    })
+
+    it('prunes a bare (non-glob) directory name the same way', async () => {
+      const pruneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-prune-bare-'))
+      try {
+        fs.writeFileSync(path.join(pruneRoot, 'kept.md'), '# kept')
+        const ignoredDir = path.join(pruneRoot, 'vendor')
+        fs.mkdirSync(ignoredDir)
+        fs.writeFileSync(path.join(ignoredDir, 'inner.md'), '# should never be seen')
+
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([pruneRoot], [toPosix(ignoredDir)])
+          }),
+        )
+
+        expect(files).toContainEqual(toPosix(path.join(pruneRoot, 'kept.md')))
+        expect(files.some((f) => f.includes('vendor'))).toBeFalsy()
+      } finally {
+        fs.rmSync(pruneRoot, { force: true, recursive: true })
+      }
+    })
+
+    it('an unmatched ignore pattern leaves the tree fully scanned, same as before', async () => {
+      const pruneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-prune-noop-'))
+      try {
+        fs.mkdirSync(path.join(pruneRoot, 'kept'))
+        fs.writeFileSync(path.join(pruneRoot, 'kept', 'a.md'), '# a')
+
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([pruneRoot], ['**/nothing-matches-this/**'])
+          }),
+        )
+
+        expect(files).toContainEqual(toPosix(path.join(pruneRoot, 'kept', 'a.md')))
+      } finally {
+        fs.rmSync(pruneRoot, { force: true, recursive: true })
+      }
+    })
   })
 })

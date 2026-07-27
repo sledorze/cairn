@@ -189,9 +189,34 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
       )
     : undefined
 
+  // Issue #63: unlike `onlyGitTracked` above, this is an always-on default
+  // safety net, not an opt-in guarantee — so it degrades gracefully
+  // (falls back to `config.ignore` alone) rather than hard-failing when
+  // git is unavailable or `cwd` isn't a repository, both ordinary,
+  // expected situations for a tool that also works outside git entirely.
+  const gitIgnoredDirs = yield* Effect.gen(function* () {
+    const gitFs = yield* GitFs
+    return yield* gitFs.listIgnoredDirs(cwd)
+  }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
+
+  // Same always-on, gracefully-degrading treatment as `gitIgnoredDirs`
+  // above — a linked worktree (e.g. `.claude/worktrees/<name>`) nests a
+  // full second copy of the repo's own doc tree and must never be walked,
+  // whether or not the caller configured anything for it.
+  const gitWorktreeDirs = yield* Effect.gen(function* () {
+    const gitFs = yield* GitFs
+    return yield* gitFs.listWorktreeDirs(cwd)
+  }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
+
+  const effectiveIgnore = [
+    ...config.ignore,
+    ...gitIgnoredDirs.map((dir) => `${dir}/**`),
+    ...gitWorktreeDirs.map((dir) => `${dir}/**`),
+  ]
+
   const summaryArgs = {
     base: cwd,
-    ignore: config.ignore,
+    ignore: effectiveIgnore,
     naming: config.naming,
     requireDirSummaries: config.requireDirSummaries,
     roots: absRoots,
@@ -216,7 +241,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     const links = yield* checkLinks({
       base: cwd,
       fix: parsed.fix,
-      ignore: config.ignore,
+      ignore: effectiveIgnore,
       roots: absRoots,
       ...(trackedFiles === undefined ? {} : { trackedFiles }),
     })
@@ -292,7 +317,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   if (parsed.refs) {
     const refsArgs = {
       base: cwd,
-      ignore: config.ignore,
+      ignore: effectiveIgnore,
       roots: absRoots,
       ...(trackedFiles === undefined ? {} : { trackedFiles }),
     }
@@ -314,7 +339,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   if (parsed.prose) {
     const result = yield* checkProseRefs({
       base: cwd,
-      ignore: config.ignore,
+      ignore: effectiveIgnore,
       roots: absRoots,
       ...(trackedFiles === undefined ? {} : { trackedFiles }),
     })

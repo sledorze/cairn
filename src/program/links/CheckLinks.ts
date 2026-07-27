@@ -383,12 +383,22 @@ export const checkLinks = ({
 }: CheckLinksArgs): Effect.Effect<LinkCheckResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    // The existence universe stays complete (so links to ignored files still
-    // resolve); `ignore` only removes files from the set we scan as sources.
+    // `ignore` still only removes FILE-shaped matches from the set we scan
+    // as sources — a link pointing AT an individually-ignored file still
+    // resolves. Issue #63 changed one thing: `ignore` is now also passed to
+    // `listFiles` itself, so a DIRECTORY-shaped match (the default
+    // `"**/node_modules/**"` included) is pruned during the walk rather
+    // than fully materialized and filtered afterward — the actual OOM fix.
+    // Named side effect, not silently absorbed: a link pointing INTO a
+    // pruned directory (e.g. `../node_modules/x/README.md`) now reports
+    // broken instead of resolving, whereas before, only the source-scan set
+    // excluded it. Considered acceptable — a doc legitimately linking into
+    // an ignored directory is a vanishingly rare case next to "the tool
+    // doesn't OOM-crash on an ordinary repo."
     // Issue #48: `trackedFiles`, when provided, narrows BOTH the existence
     // universe and the source-scan set — an untracked file is invisible to a
     // fresh CI checkout on both sides of a link.
-    const listedFiles = yield* dfs.listFiles(roots)
+    const listedFiles = yield* dfs.listFiles(roots, ignore)
     const allFiles = trackedFiles === undefined ? listedFiles : listedFiles.filter((file) => trackedFiles.has(file))
     const index = buildBasenameIndex(allFiles)
     const known = withAncestors(allFiles)

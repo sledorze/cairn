@@ -34,6 +34,38 @@ export interface GitFsService {
    * `isWithinBase`).
    */
   readonly listTrackedFiles: (base: string) => Effect.Effect<ReadonlySet<string>, GitUnavailableError>
+  /**
+   * Every WHOLLY-gitignored directory under `base`, as `git` itself sees it
+   * — `git ls-files --others --ignored --exclude-standard --directory`,
+   * which reports a fully-ignored directory as ONE collapsed entry rather
+   * than descending into it (so this command is itself cheap even against a
+   * huge ignored `node_modules` — git never walks in either). Issue #63:
+   * used to prune `DocsFs.listFiles`'s walk before it ever recurses into a
+   * gitignored directory, independent of whether `onlyGitTracked` is on —
+   * this is an always-on default, not an opt-in guarantee, so unlike
+   * `listTrackedFiles` its caller is expected to fall back to "no
+   * gitignore-based pruning" rather than hard-fail when git is unavailable.
+   * Returns absolute, POSIX-normalised, trailing-slash-free directory
+   * paths. A standalone gitignored FILE (not inside an ignored directory)
+   * is deliberately NOT reported here — this method is scoped to
+   * DIRECTORY-level pruning only, matching the granularity
+   * `DocsFs.listFiles`'s `ignore` parameter already prunes at; a real,
+   * separate follow-up, not silently glossed over.
+   */
+  readonly listIgnoredDirs: (base: string) => Effect.Effect<readonly string[], GitUnavailableError>
+  /**
+   * Every LINKED worktree directory of the repo at `base` (`git worktree
+   * list --porcelain`), excluding the primary worktree (`base` itself).
+   * A linked worktree — e.g. `.claude/worktrees/<name>`, created by an
+   * agent to work on a branch in isolation — nests a full second copy of
+   * the repo's own doc tree inside the primary one. Walking it doubles
+   * every summary/link finding, and if it has its own real `node_modules`
+   * checked out, reintroduces the exact issue #63 OOM shape one directory
+   * deeper. Returns absolute, POSIX-normalised, trailing-slash-free
+   * directory paths, matching `listIgnoredDirs`'s contract exactly so both
+   * feed the same `ignore`-pruning path in `DocsFs.listFiles`.
+   */
+  readonly listWorktreeDirs: (base: string) => Effect.Effect<readonly string[], GitUnavailableError>
 }
 
 export class GitFs extends Context.Service<GitFs, GitFsService>()('GitFs') {}
@@ -64,8 +96,65 @@ const runLsFiles = (base: string): Effect.Effect<string, GitUnavailableError> =>
 const toAbsPosix = (base: string, relOrAbs: string): string =>
   toPosix(nodePath.isAbsolute(relOrAbs) ? relOrAbs : nodePath.join(base, relOrAbs))
 
+const runLsFilesIgnoredDirs = (base: string): Effect.Effect<string, GitUnavailableError> =>
+  Effect.tryPromise({
+    catch: (cause) =>
+      new GitUnavailableError({
+        base,
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+    try: () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          'git',
+          ['-C', base, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+          { maxBuffer: 64 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
+              return
+            }
+            resolve(stdout)
+          },
+        )
+      }),
+  })
+
+const runWorktreeList = (base: string): Effect.Effect<string, GitUnavailableError> =>
+  Effect.tryPromise({
+    catch: (cause) =>
+      new GitUnavailableError({
+        base,
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+    try: () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          'git',
+          ['-C', base, 'worktree', 'list', '--porcelain'],
+          { maxBuffer: 64 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
+              return
+            }
+            resolve(stdout)
+          },
+        )
+      }),
+  })
+
 /** Live implementation: shells out to the real `git` binary. */
 export const GitFsLive = Layer.succeed(GitFs, {
+  listIgnoredDirs: (base) =>
+    runLsFilesIgnoredDirs(base).pipe(
+      Effect.map((stdout) =>
+        stdout
+          .split('\0')
+          .filter((entry) => entry.endsWith('/'))
+          .map((rel) => toAbsPosix(base, rel.slice(0, -1))),
+      ),
+    ),
   listTrackedFiles: (base) =>
     runLsFiles(base).pipe(
       Effect.map((stdout) => {
@@ -73,10 +162,36 @@ export const GitFsLive = Layer.succeed(GitFs, {
         return new Set(paths.map((rel) => toAbsPosix(base, rel)))
       }),
     ),
+  listWorktreeDirs: (base) =>
+    runWorktreeList(base).pipe(
+      Effect.map((stdout) => {
+        // `--porcelain` emits one `worktree <path>` line per worktree, the
+        // primary worktree always first — every other block is a linked
+        // worktree, the only ones this method reports.
+        const paths = stdout
+          .split('\n')
+          .filter((line) => line.startsWith('worktree '))
+          .map((line) => line.slice('worktree '.length).trim())
+        return paths.slice(1).map((p) => toAbsPosix(base, p))
+      }),
+    ),
 })
 
-/** In-memory GitFs layer for tests — `tracked` is the already-absolute-POSIX set to report. */
-export const makeTestGitFs = (tracked: ReadonlySet<string> | GitUnavailableError): Layer.Layer<GitFs> =>
+/** In-memory GitFs layer for tests — `tracked`/`ignoredDirs` are the
+ * already-absolute-POSIX values to report; each independently accepts a
+ * `GitUnavailableError` since a real caller can have git available for one
+ * call and not the other (e.g. a corrupt index affects `ls-files` output
+ * generally, but the two commands are still independent failure surfaces
+ * worth testing separately). */
+export const makeTestGitFs = (
+  tracked: ReadonlySet<string> | GitUnavailableError,
+  ignoredDirs: readonly string[] | GitUnavailableError = [],
+  worktreeDirs: readonly string[] | GitUnavailableError = [],
+): Layer.Layer<GitFs> =>
   Layer.succeed(GitFs, {
+    listIgnoredDirs: () =>
+      ignoredDirs instanceof GitUnavailableError ? Effect.fail(ignoredDirs) : Effect.succeed(ignoredDirs),
     listTrackedFiles: () => (tracked instanceof GitUnavailableError ? Effect.fail(tracked) : Effect.succeed(tracked)),
+    listWorktreeDirs: () =>
+      worktreeDirs instanceof GitUnavailableError ? Effect.fail(worktreeDirs) : Effect.succeed(worktreeDirs),
   })
