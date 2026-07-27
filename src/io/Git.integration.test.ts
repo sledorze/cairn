@@ -400,11 +400,17 @@ it.layer(GitFsTestLive)('GitFsLive().listWorktreeDirs()', (layerIt) => {
   // exactly the case that broke — `base` itself leaked into the result, and callers
   // (`cli.ts`) add every reported dir to `ignore` as `${dir}/**`, so `base` itself
   // silently became fully excluded from its own scan (a false "0 files, all clean").
-  layerIt.effect('reports the PRIMARY worktree, and never `base` itself, when `base` is the linked worktree', () =>
+  //
+  // `linkedPath` here (`<wtRoot>/.claude/worktrees/some-branch`) is ALSO the fixture
+  // for the second, later-discovered shape of this same bug: `wtRoot` isn't merely
+  // "a different worktree than `base`," it's an ANCESTOR of `base` on disk. Reporting
+  // it here would make `cli.ts`'s `${wtRoot}/**` ignore pattern match every file under
+  // `base` too — so it must be excluded from the result, exactly like `base` itself.
+  layerIt.effect('reports neither `base` nor its ancestor worktree, when `base` is a worktree nested inside it', () =>
     Effect.gen(function* () {
       const gitFs = yield* GitFs
       const dirs = yield* gitFs.listWorktreeDirs(linkedPath)
-      expect(dirs).toContain(toPosix(wtRoot))
+      expect(dirs).not.toContain(toPosix(wtRoot))
       expect(dirs).not.toContain(toPosix(linkedPath))
     }),
   )
@@ -418,16 +424,38 @@ it.layer(GitFsTestLive)('GitFsLive().listWorktreeDirs()', (layerIt) => {
   // name, reproducing the exact bug above in symlink form. `os.tmpdir()` isn't
   // guaranteed to be a symlink on every platform this suite runs on, so this test
   // creates one explicitly rather than relying on the host's `/tmp` layout.
-  layerIt.effect('reports the primary worktree correctly even when `base` is reached through a symlink', () =>
+  //
+  // `viaSymlink` resolves to `linkedPath`, itself nested inside `wtRoot` — so, same as
+  // the test above, `wtRoot` must be excluded as `base`'s ancestor, not merely as "a
+  // different worktree."
+  layerIt.effect('excludes the ancestor worktree correctly even when `base` is reached through a symlink', () =>
     Effect.gen(function* () {
       const parentDir = yield* acquireTempDir('gitfs-worktree-symlink-parent-')
       const viaSymlink = path.join(parentDir, 'via-symlink')
       yield* Effect.sync(() => fs.symlinkSync(linkedPath, viaSymlink, 'dir'))
       const gitFs = yield* GitFs
       const dirs = yield* gitFs.listWorktreeDirs(viaSymlink)
-      expect(dirs).toContain(toPosix(wtRoot))
+      expect(dirs).not.toContain(toPosix(wtRoot))
       expect(dirs).not.toContain(toPosix(linkedPath))
       expect(dirs).not.toContain(toPosix(viaSymlink))
+    }),
+  )
+
+  // Confirms the ancestor exclusion above doesn't over-exclude: two SIBLING linked
+  // worktrees (neither an ancestor of the other, just both nested inside `wtRoot`)
+  // must still see each other when `listWorktreeDirs` is called from either one's
+  // perspective — only an actual ancestor of `base` gets filtered.
+  layerIt.effect('still reports a sibling worktree that is neither an ancestor nor a descendant of `base`', () =>
+    Effect.gen(function* () {
+      const siblingPath = path.join(wtRoot, '.claude', 'worktrees', 'sibling-branch')
+      git(wtRoot, 'worktree', 'add', '-q', '-b', 'sibling-branch', siblingPath)
+      try {
+        const gitFs = yield* GitFs
+        const dirs = yield* gitFs.listWorktreeDirs(linkedPath)
+        expect(dirs).toContain(toPosix(siblingPath))
+      } finally {
+        git(wtRoot, 'worktree', 'remove', '--force', siblingPath)
+      }
     }),
   )
 
