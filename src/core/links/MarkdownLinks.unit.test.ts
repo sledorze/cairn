@@ -91,6 +91,22 @@ describe('extractLinks()', () => {
   it('still stops a BARE (non-angle) destination at its first unescaped paren', () => {
     expect(extractLinks('[t](./path_(with_parens).md)')).toEqual([{ target: './path_(with_parens', text: 't' }])
   })
+
+  // Pins the `\s+` (one-or-more) title separator: a single-space mutant
+  // (`\s`) fails to match at all when more than one whitespace char
+  // separates the destination from its title — the whole link would be
+  // silently dropped (not merely mis-parsed), for both destination forms.
+  it('tolerates more than one whitespace char before a title, bare or angle-bracket form', () => {
+    expect(extractLinks('[t](./a.md  "title")')).toEqual([{ target: './a.md', text: 't' }])
+    expect(extractLinks('[t](<https://x.com/y>  "title")')).toEqual([{ target: 'https://x.com/y', text: 't' }])
+  })
+
+  // An empty angle-bracket destination (`<>`) captures group 2 as `''`
+  // (defined), never `undefined` — pins `linkTarget`'s structural claim that
+  // the angle form's capture is never absent, only possibly empty.
+  it('handles an empty angle-bracket destination as an empty-string target, not a crash', () => {
+    expect(extractLinks('[t](<>)')).toEqual([{ target: '', text: 't' }])
+  })
 })
 
 describe('isCheckableTarget()', () => {

@@ -94,8 +94,14 @@ const LINK_RE = /!?\[([^\]]*)\]\((?:<((?:[^<>\\\n]|\\.)*)>|([^)\s]+))(?:\s+"[^"]
 const INLINE_CODE_RE = /`[^`\n]*`/g
 
 /** A `LINK_RE` match's destination is in capture group 2 (angle-bracket form)
- * or group 3 (bare form) depending on which alternative matched — never both. */
-const linkTarget = (match: RegExpMatchArray): string => match[2] ?? match[3] ?? ''
+ * or group 3 (bare form) depending on which alternative matched — never both,
+ * and never NEITHER: the angle form requires `<`...`>` (an empty destination,
+ * `<>`, still captures `''`, not `undefined`) and the bare form requires
+ * `[^)\s]+` (one-or-more, so it can never capture an empty string). Whichever
+ * alternative participates in a successful overall match always leaves a
+ * defined string in one of the two groups — a structural guarantee of the
+ * regex, not a runtime possibility a fallback needs to defend against. */
+const linkTarget = (match: RegExpMatchArray): string => (match[2] ?? match[3]) as string
 
 /**
  * Blank out fenced (``` / ~~~, via `maskFencedCode`) and inline (`code`)
