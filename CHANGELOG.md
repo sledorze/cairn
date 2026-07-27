@@ -1,5 +1,38 @@
 # @sledorze/cairn
 
+## 0.5.0
+
+### Minor Changes
+
+- f002b95: Fixes a real OOM crash (issue #63): pointing `roots` at or near a repository root (e.g. `roots: ["."]`) used to fully walk and `stat` every file under any ignored directory — including a real `node_modules` — before `ignore` was ever consulted, since filtering only ever happened after the whole tree was already materialized. `ignore` (and the default `"**/node_modules/**"` pattern) now prunes a matching directory during the walk itself, never descending into it at all.
+
+  Also new: cairn now consults `.gitignore` automatically (via `git ls-files --others --ignored --exclude-standard --directory`) to prune gitignored directories the same way, with zero configuration — a gitignored `build/`, `dist/`, or similarly-named directory that doesn't happen to match a configured `ignore` glob is pruned too. This is an always-on default, independent of `onlyGitTracked`; unlike `onlyGitTracked`, it degrades gracefully (falls back to `ignore`-only pruning) rather than failing when `git` is unavailable or the directory isn't a git repository, since it's a safety net, not an opt-in guarantee.
+
+  One named, deliberate scope decision: for `cairn check --links-only`, a link pointing _into_ a pruned directory (previously resolvable, since `ignore` only affected the source-scan set, not the existence universe) now reports broken instead. Considered an acceptable trade — a doc legitimately linking into an ignored directory is a vanishingly rare case next to the tool no longer OOM-crashing on an ordinary repository.
+
+- f002b95: Follow-up to the issue #63 walk fix. Two changes:
+
+  - **Linked git worktrees (e.g. `.claude/worktrees/<name>`) are now pruned automatically**, the same way a gitignored directory already is — via `git worktree list --porcelain`, zero configuration required. A linked worktree nests a full second copy of the repo's own doc tree inside the primary one; walking it used to double every summary/link finding, and if it had its own real `node_modules` checked out, could reintroduce the exact issue #63 OOM shape one directory deeper. Like the existing gitignore-based pruning, this is an always-on default that degrades gracefully (falls back to no worktree pruning) when git is unavailable, rather than failing.
+  - **The walk itself is faster.** Determining file-vs-directory for each entry used to cost a separate `fs.stat` call per entry on top of the `readdir` that already listed them. It now reads that type directly off the `Dirent` `readdir` already returns (`withFileTypes: true`), at no cost to crash-resilience — a broken symlink still needs (and gets) a link-following `stat` to resolve, and is still excluded rather than crashing the scan. Measured on a synthetic 16,400-entry fixture: median wall time dropped from ~143ms to ~27ms (~5×).
+
+- 4eab988: `effect`, `@effect/platform-node`, and `github-slugger` are no longer regular `dependencies` — the published `cairn` CLI (`dist/cli.js`) is fully bundled by esbuild and never needed them resolvable from a consumer's `node_modules` at runtime, so every install of cairn was pulling all three in for nothing.
+
+  The concrete harm: `@effect/platform-node@4.0.0-beta.100` declares a _required_ (non-optional) peer dependency on `ioredis@^5.7.0`. Package managers with auto-install-peers behavior (e.g. pnpm) were therefore installing a real `ioredis` into every consumer's dependency graph purely to satisfy that peer — even though cairn never touches Redis. That `ioredis` could then become peer-satisfying for an unrelated package elsewhere in a consumer's tree, silently flipping which build variant that unrelated package resolved to. Removing the runtime dependency removes `ioredis` (and any other transitive peer surface from that chain) from ever reaching consumers.
+
+  `effect` and `github-slugger` are still needed by cairn's unbundled programmatic library export (`import { ... } from '@sledorze/cairn'`) — they're now declared as **optional** `peerDependencies` instead. This is a behavior change worth flagging if you use that entrypoint: your own `package.json` must now declare `effect` and `github-slugger` directly (`pnpm add effect github-slugger`) — they will no longer show up for free via cairn. If you only use the `cairn` CLI, this changes nothing for you: nothing extra installs, and nothing extra is required.
+
+### Patch Changes
+
+- fb1a499: Fixes a real correctness gap: `cairn check` (and the underlying `GitFsLive` used for `onlyGitTracked`, gitignore-based pruning, and linked-worktree pruning) could silently consult the _wrong_ git repository when run from inside a git hook of a linked `git worktree` checkout. Git exports `GIT_DIR` into hook subprocesses in that case, and `GIT_DIR` silently overrides `-C <base>` — confirmed empirically, not assumed. Every `git` invocation in `src/io/Git.ts` now scrubs the canonical set of repository-pinning environment variables (`git rev-parse --local-env-vars`) before shelling out, so `-C base` is always authoritative regardless of the calling environment.
+
+  If you wire `cairn check` into a pre-commit or pre-push hook (as this repo's own README recommends) and work from a linked worktree, this changes which repository's tracked/ignored/worktree state your hook actually consults — previously it may have silently been the wrong one.
+
+  Also hardens the same code path against a second, independent failure mode: `GitFsLive` now sets `GIT_CEILING_DIRECTORIES` (git's own repository-discovery boundary) alongside the env scrub, so a `base` without its own `.git` can no longer silently resolve to an ancestor repository instead of failing.
+
+  **A third, unrelated bug found while dogfooding this fix, also fixed here:** `listWorktreeDirs` excluded "whichever worktree `git worktree list` reports first" instead of excluding `base` itself — those are the same thing only when `base` is the primary worktree. Running `cairn check` from a **linked** worktree (not the primary) left `base` itself in the reported worktree list; `cli.ts` adds every reported worktree to its `ignore` list as `${dir}/**`, so this silently excluded the entire scan root — a false "0 files, all clean" instead of an error. If you run `cairn` from a linked git worktree, this is a real behavior change: it now actually scans your files, where before it silently scanned nothing.
+
+  Fixed alongside it: the same exclusion now also resolves symlinks before comparing (`git worktree list` reports its own realpath-resolved form regardless of the literal path a worktree was reached through — confirmed empirically), so a `base` reached through a symlinked path (e.g. macOS's `/tmp` resolving to `/private/tmp`) can't reintroduce the identical bug in symlink form. Also hardened against a worktree directory deleted without `git worktree remove` first (an ordinary mistake) — a stale `prunable` entry with a path that no longer exists on disk no longer crashes the scan.
+
 ## 0.4.0
 
 ### Minor Changes
