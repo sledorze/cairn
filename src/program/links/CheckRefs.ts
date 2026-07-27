@@ -108,7 +108,7 @@ const listMdFiles = (
 ): Effect.Effect<readonly string[], never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots)
+    const allFiles = yield* dfs.listFiles(roots, ignore)
     return allFiles.filter(
       (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
     )

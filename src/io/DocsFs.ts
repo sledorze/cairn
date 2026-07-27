@@ -5,6 +5,7 @@
 import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
+import { matchesAny } from '../core/glob.ts'
 import { toPosix } from '../core/paths.ts'
 
 export interface FileStat {
@@ -15,7 +16,20 @@ export interface FileStat {
 export interface DocsFsService {
   readonly deleteFile: (abs: string) => Effect.Effect<void>
   readonly exists: (abs: string) => Effect.Effect<boolean>
-  readonly listFiles: (roots: readonly string[]) => Effect.Effect<readonly string[]>
+  /**
+   * `ignore` (issue #63): glob patterns matched against a discovered
+   * DIRECTORY's own absolute POSIX path (both bare, e.g. `node_modules`
+   * matching a literal `"node_modules"` entry, and with a trailing `/` so a
+   * `"**\/node_modules/**"`-style pattern — this repo's own default `ignore`
+   * — matches too) PRUNE that directory before it's ever recursed into, not
+   * just filtered out of the returned list afterward. This is the actual
+   * fix for the OOM: a root containing a real `node_modules` used to be
+   * fully walked and `stat`'d, multi-GB tree and all, before `ignore` was
+   * ever consulted downstream in the checkers. A file-shaped ignore pattern
+   * (no directory it matches) still only removes that one file from the
+   * result, same as before — only DIRECTORY pruning is new.
+   */
+  readonly listFiles: (roots: readonly string[], ignore?: readonly string[]) => Effect.Effect<readonly string[]>
   readonly readFile: (abs: string) => Effect.Effect<string>
   readonly stat: (abs: string) => Effect.Effect<FileStat>
   readonly writeFile: (abs: string, content: string) => Effect.Effect<void>
@@ -70,7 +84,21 @@ export const DocsFsLive = Layer.effect(
     // for a genuinely inaccessible root) — annotating this `never`-error
     // would silently re-swallow the exact failure this fix exists to
     // surface, right back to the bug found via adversarial review.
-    const walk = (dir: string, atRoot: boolean): Effect.Effect<readonly string[], PlatformError> =>
+    // A directory is pruned when its own absolute POSIX path matches an
+    // `ignore` glob, tested two ways: bare (a literal pattern like
+    // `"node_modules"`) and with a trailing `/` appended (so a `"**/x/**"`
+    // pattern — the shape `ignore`'s own default, `"**/node_modules/**"`,
+    // already uses — matches the directory itself, not just its contents).
+    const isPrunedDir = (abs: string, ignore: readonly string[]): boolean => {
+      const p = toPosix(abs)
+      return matchesAny(p, ignore) || matchesAny(`${p}/`, ignore)
+    }
+
+    const walk = (
+      dir: string,
+      atRoot: boolean,
+      ignore: readonly string[],
+    ): Effect.Effect<readonly string[], PlatformError> =>
       Effect.gen(function* () {
         const readDir = fs.readDirectory(dir)
         const names = yield* atRoot ? readDir : readDir.pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
@@ -81,7 +109,14 @@ export const DocsFsLive = Layer.effect(
             return fs.stat(abs).pipe(
               Effect.flatMap((info) => {
                 if (info.type === 'Directory') {
-                  return walk(abs, false)
+                  // Pruned BEFORE recursing — the actual OOM fix (issue
+                  // #63): a matching directory (e.g. a real `node_modules`)
+                  // is never `readDirectory`'d/`stat`'d at all, not merely
+                  // excluded from the final list after being fully walked.
+                  if (isPrunedDir(abs, ignore)) {
+                    return Effect.succeed<readonly string[]>([])
+                  }
+                  return walk(abs, false, ignore)
                 }
                 // Matches the pre-existing contract exactly: only regular
                 // files are collected. Anything else (a device, socket, or
@@ -107,7 +142,7 @@ export const DocsFsLive = Layer.effect(
         return nested.flat()
       })
 
-    const listFiles = (roots: readonly string[]): Effect.Effect<readonly string[]> =>
+    const listFiles = (roots: readonly string[], ignore: readonly string[] = []): Effect.Effect<readonly string[]> =>
       Effect.gen(function* () {
         const out: string[] = []
         for (const root of roots) {
@@ -115,7 +150,7 @@ export const DocsFsLive = Layer.effect(
           if (!present) {
             continue
           }
-          for (const abs of yield* walk(root, true)) {
+          for (const abs of yield* walk(root, true, ignore)) {
             // Normalise to POSIX so the pure planners see `/` paths on every OS.
             out.push(toPosix(abs))
           }
@@ -183,8 +218,26 @@ export const makeTestDocsFs = (files: Record<string, TestFile>): Layer.Layer<Doc
   const service: DocsFsService = {
     deleteFile: (abs) => Effect.sync(() => void store.delete(abs)),
     exists: (abs) => Effect.sync(() => store.has(abs) || dirsOf().has(abs)),
-    listFiles: (roots) =>
-      Effect.sync(() => [...store.keys()].filter((p) => roots.some((r) => p.startsWith(`${r}/`) || p === r))),
+    // Emulates real directory pruning (issue #63) over the flat in-memory
+    // store: a file is excluded when ANY ancestor directory of its path
+    // matches `ignore` (bare or trailing-slash), same check `isPrunedDir`
+    // makes in the real walk — not just when the file's own path matches.
+    listFiles: (roots, ignore = []) =>
+      Effect.sync(() =>
+        [...store.keys()].filter((p) => {
+          if (!roots.some((r) => p.startsWith(`${r}/`) || p === r)) {
+            return false
+          }
+          const segments = p.split('/')
+          for (let i = 1; i < segments.length; i += 1) {
+            const ancestor = segments.slice(0, i).join('/')
+            if (matchesAny(ancestor, ignore) || matchesAny(`${ancestor}/`, ignore)) {
+              return false
+            }
+          }
+          return true
+        }),
+      ),
     readFile: (abs) =>
       Effect.sync(() => {
         const f = store.get(abs)

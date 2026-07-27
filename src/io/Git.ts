@@ -34,6 +34,25 @@ export interface GitFsService {
    * `isWithinBase`).
    */
   readonly listTrackedFiles: (base: string) => Effect.Effect<ReadonlySet<string>, GitUnavailableError>
+  /**
+   * Every WHOLLY-gitignored directory under `base`, as `git` itself sees it
+   * — `git ls-files --others --ignored --exclude-standard --directory`,
+   * which reports a fully-ignored directory as ONE collapsed entry rather
+   * than descending into it (so this command is itself cheap even against a
+   * huge ignored `node_modules` — git never walks in either). Issue #63:
+   * used to prune `DocsFs.listFiles`'s walk before it ever recurses into a
+   * gitignored directory, independent of whether `onlyGitTracked` is on —
+   * this is an always-on default, not an opt-in guarantee, so unlike
+   * `listTrackedFiles` its caller is expected to fall back to "no
+   * gitignore-based pruning" rather than hard-fail when git is unavailable.
+   * Returns absolute, POSIX-normalised, trailing-slash-free directory
+   * paths. A standalone gitignored FILE (not inside an ignored directory)
+   * is deliberately NOT reported here — this method is scoped to
+   * DIRECTORY-level pruning only, matching the granularity
+   * `DocsFs.listFiles`'s `ignore` parameter already prunes at; a real,
+   * separate follow-up, not silently glossed over.
+   */
+  readonly listIgnoredDirs: (base: string) => Effect.Effect<readonly string[], GitUnavailableError>
 }
 
 export class GitFs extends Context.Service<GitFs, GitFsService>()('GitFs') {}
@@ -64,8 +83,41 @@ const runLsFiles = (base: string): Effect.Effect<string, GitUnavailableError> =>
 const toAbsPosix = (base: string, relOrAbs: string): string =>
   toPosix(nodePath.isAbsolute(relOrAbs) ? relOrAbs : nodePath.join(base, relOrAbs))
 
+const runLsFilesIgnoredDirs = (base: string): Effect.Effect<string, GitUnavailableError> =>
+  Effect.tryPromise({
+    catch: (cause) =>
+      new GitUnavailableError({
+        base,
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+    try: () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          'git',
+          ['-C', base, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+          { maxBuffer: 64 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
+              return
+            }
+            resolve(stdout)
+          },
+        )
+      }),
+  })
+
 /** Live implementation: shells out to the real `git` binary. */
 export const GitFsLive = Layer.succeed(GitFs, {
+  listIgnoredDirs: (base) =>
+    runLsFilesIgnoredDirs(base).pipe(
+      Effect.map((stdout) =>
+        stdout
+          .split('\0')
+          .filter((entry) => entry.endsWith('/'))
+          .map((rel) => toAbsPosix(base, rel.slice(0, -1))),
+      ),
+    ),
   listTrackedFiles: (base) =>
     runLsFiles(base).pipe(
       Effect.map((stdout) => {
@@ -75,8 +127,18 @@ export const GitFsLive = Layer.succeed(GitFs, {
     ),
 })
 
-/** In-memory GitFs layer for tests — `tracked` is the already-absolute-POSIX set to report. */
-export const makeTestGitFs = (tracked: ReadonlySet<string> | GitUnavailableError): Layer.Layer<GitFs> =>
+/** In-memory GitFs layer for tests — `tracked`/`ignoredDirs` are the
+ * already-absolute-POSIX values to report; each independently accepts a
+ * `GitUnavailableError` since a real caller can have git available for one
+ * call and not the other (e.g. a corrupt index affects `ls-files` output
+ * generally, but the two commands are still independent failure surfaces
+ * worth testing separately). */
+export const makeTestGitFs = (
+  tracked: ReadonlySet<string> | GitUnavailableError,
+  ignoredDirs: readonly string[] | GitUnavailableError = [],
+): Layer.Layer<GitFs> =>
   Layer.succeed(GitFs, {
+    listIgnoredDirs: () =>
+      ignoredDirs instanceof GitUnavailableError ? Effect.fail(ignoredDirs) : Effect.succeed(ignoredDirs),
     listTrackedFiles: () => (tracked instanceof GitUnavailableError ? Effect.fail(tracked) : Effect.succeed(tracked)),
   })

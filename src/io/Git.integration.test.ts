@@ -24,6 +24,14 @@ const run = (base: string): Promise<ReadonlySet<string>> =>
     }).pipe(Effect.provide(GitFsLive)),
   )
 
+const runIgnoredDirs = (base: string): Promise<readonly string[]> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      return yield* gitFs.listIgnoredDirs(base)
+    }).pipe(Effect.provide(GitFsLive)),
+  )
+
 const git = (cwd: string, ...args: readonly string[]): void => {
   execFileSync('git', args, { cwd, stdio: 'pipe' })
 }
@@ -86,6 +94,70 @@ describe('GitFsLive()', () => {
       )
       expect(error).toBeInstanceOf(GitUnavailableError)
       expect(error.base).toBe(nonRepo)
+    } finally {
+      fs.rmSync(nonRepo, { force: true, recursive: true })
+    }
+  })
+})
+
+// Issue #63: `listIgnoredDirs` is what lets `cairn` prune a real gitignored
+// `node_modules` before ever walking into it, without requiring the user to
+// hand-configure `ignore: ["**/node_modules/**"]` — real, against the real
+// `git` binary, matching this file's own established discipline.
+describe('GitFsLive().listIgnoredDirs()', () => {
+  let ignoreRoot = ''
+
+  beforeAll(() => {
+    ignoreRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-ignored-'))
+    git(ignoreRoot, 'init', '-q')
+    git(ignoreRoot, 'config', 'user.email', 'test@example.com')
+    git(ignoreRoot, 'config', 'user.name', 'Test')
+    fs.writeFileSync(path.join(ignoreRoot, '.gitignore'), 'node_modules/\ndist/\n')
+    fs.mkdirSync(path.join(ignoreRoot, 'node_modules', 'some-pkg'), { recursive: true })
+    fs.writeFileSync(path.join(ignoreRoot, 'node_modules', 'some-pkg', 'index.js'), '// noop')
+    fs.mkdirSync(path.join(ignoreRoot, 'dist'), { recursive: true })
+    fs.writeFileSync(path.join(ignoreRoot, 'dist', 'out.js'), '// noop')
+    fs.mkdirSync(path.join(ignoreRoot, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(ignoreRoot, 'docs', 'guide.md'), '# guide')
+    git(ignoreRoot, 'add', '.gitignore', 'docs')
+    git(ignoreRoot, 'commit', '-q', '-m', 'initial')
+  })
+
+  afterAll(() => {
+    if (ignoreRoot) {
+      fs.rmSync(ignoreRoot, { force: true, recursive: true })
+    }
+  })
+
+  it('reports every real gitignored directory as one collapsed entry, absolute POSIX, no trailing slash', async () => {
+    const dirs = await runIgnoredDirs(ignoreRoot)
+    expect(dirs).toContain(toPosix(path.join(ignoreRoot, 'node_modules')))
+    expect(dirs).toContain(toPosix(path.join(ignoreRoot, 'dist')))
+    expect(dirs.some((d) => d.endsWith('/'))).toBeFalsy()
+  })
+
+  it('does not report a real, tracked, non-ignored directory', async () => {
+    const dirs = await runIgnoredDirs(ignoreRoot)
+    expect(dirs).not.toContain(toPosix(path.join(ignoreRoot, 'docs')))
+  })
+
+  it('never descends into the ignored directory itself — a file inside it is reported only as part of the collapsed directory entry, not individually', async () => {
+    const dirs = await runIgnoredDirs(ignoreRoot)
+    expect(dirs.some((d) => d.includes('some-pkg') || d.includes('index.js'))).toBeFalsy()
+  })
+
+  it('fails with a named GitUnavailableError when `base` is not a git repository', async () => {
+    const nonRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'not-a-repo-ignored-'))
+    try {
+      const error = await Effect.runPromise(
+        Effect.flip(
+          Effect.gen(function* () {
+            const gitFs = yield* GitFs
+            return yield* gitFs.listIgnoredDirs(nonRepo)
+          }),
+        ).pipe(Effect.provide(GitFsLive)),
+      )
+      expect(error).toBeInstanceOf(GitUnavailableError)
     } finally {
       fs.rmSync(nonRepo, { force: true, recursive: true })
     }
