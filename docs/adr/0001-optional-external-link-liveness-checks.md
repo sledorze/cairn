@@ -79,6 +79,12 @@ check` into a network-bound, flaky operation by default, for every existing
 - The liveness sidecar is new _stored state_, not just a cache — `--prune`
   needs to know about orphaned liveness records the same way it already
   prunes orphaned summary sidecars.
-- `interval`/`intervalWhenStalled` are duration strings (`"7d"`, `"1d"`), not
-  numeric hours — matches how a human actually reads config, and avoids the
-  earlier `intervalHours`-shaped design this ADR superseded during review.
+- `interval` is a cron expression and `intervalWhenStalled` is a duration
+  string (`"1d"`) — two different config shapes for two different jobs, not
+  numeric hours for either. Both are human-readable as written, and both
+  avoid the earlier `intervalHours`-shaped (numeric) design this ADR
+  superseded during review; `interval` itself was further revised from an
+  initial duration-string design (`"7d"`) to a cron expression specifically
+  so a fleet of URLs checked together converges onto shared runs (see
+  Decision) — a config-shape change worth calling out here since it's easy
+  to assume both fields share one shape when they don't.
