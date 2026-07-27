@@ -107,6 +107,21 @@ describe('extractLinks()', () => {
   it('handles an empty angle-bracket destination as an empty-string target, not a crash', () => {
     expect(extractLinks('[t](<>)')).toEqual([{ target: '', text: 't' }])
   })
+
+  // CodeQL flagged LINK_RE as js/polynomial-redos — a real, pre-existing
+  // quadratic blowup (confirmed empirically, not just by the analyzer:
+  // unbounded, ~4x time per 2x input), triggered by content with many `[`-
+  // like sequences but no closing `]` — plausible in real, messy or
+  // adversarial Markdown, not a toy case. Every unbounded quantifier in
+  // LINK_RE is now capped at a generous 2000 chars; same style/threshold as
+  // `stripAnchor()`'s own ReDoS regression test below.
+  it('stays fast scanning content with many unclosed brackets (no closing `]` anywhere)', () => {
+    const adversarial = '\\['.repeat(80_000)
+    const start = performance.now()
+    extractLinks(adversarial)
+    const elapsedMs = performance.now() - start
+    expect(elapsedMs).toBeLessThan(1000)
+  })
 })
 
 describe('isCheckableTarget()', () => {
