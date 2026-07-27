@@ -13,33 +13,15 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Kernel / userns sysctls
-        run: |
-          uname -a
-          echo "---"
-          cat /proc/sys/kernel/unprivileged_userns_clone 2>&1 || echo "(no such sysctl on this kernel — not the gating mechanism here)"
-          echo "---"
-          cat /proc/sys/user/max_user_namespaces 2>&1 || echo "(no such sysctl)"
-          echo "---"
-          echo "AppArmor userns restriction:"
-          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>&1 || echo "(no such sysctl)"
-
-      - name: Capabilities and seccomp status of this runner process
-        run: |
-          grep -E "^(CapEff|Seccomp)" /proc/self/status
-
-      - name: Real functional test — unshare --user (the actual thing that matters)
-        run: |
-          echo "=== unshare --user echo ok ==="
-          unshare --user echo ok && echo "RESULT: unshare --user WORKS" || echo "RESULT: unshare --user FAILS (exit $?)"
-          echo "=== unshare --user --map-root-user id ==="
-          unshare --user --map-root-user id && echo "RESULT: map-root-user WORKS" || echo "RESULT: map-root-user FAILS (exit $?)"
-          echo "=== unshare --user --pid --mount-proc echo ok ==="
-          unshare --user --pid --mount-proc echo ok && echo "RESULT: full namespace WORKS" || echo "RESULT: full namespace FAILS (exit $?)"
-
-      - name: Real functional test — bubblewrap (install then actually run it)
+      - name: Real functional test — bubblewrap WITHOUT network namespace (our use case needs no network isolation)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
           bwrap --version
-          echo "=== bwrap --ro-bind / / --tmpfs /tmp --unshare-all -- echo ok ==="
-          bwrap --ro-bind / / --tmpfs /tmp --unshare-all -- echo ok && echo "RESULT: bwrap WORKS" || echo "RESULT: bwrap FAILS (exit $?)"
+          echo "=== bwrap --ro-bind / / --tmpfs /tmp --unshare-user --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup -- echo ok (no --unshare-net) ==="
+          bwrap --ro-bind / / --tmpfs /tmp --unshare-user --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup -- echo ok \
+            && echo "RESULT: bwrap (no net unshare) WORKS" \
+            || echo "RESULT: bwrap (no net unshare) FAILS (exit $?)"
+          echo "=== does the sandbox actually isolate a private /tmp? ==="
+          echo host-file > /tmp/host-only-marker.txt
+          bwrap --ro-bind / / --tmpfs /tmp --unshare-user --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup -- \
+            sh -c 'test -f /tmp/host-only-marker.txt && echo "LEAK: sandbox sees the host file" || echo "ISOLATED: sandbox cannot see the host file"'
