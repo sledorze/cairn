@@ -9,6 +9,13 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# Clears GIT_DIR/GIT_INDEX_FILE/etc (git's own canonical idiom, `git help githooks`)
+# so the `git worktree add`/`remove` below can never be silently redirected onto a
+# repo other than this one — this script runs from lefthook's pre-push hook, which
+# itself leaks GIT_DIR into its children whenever the checkout is a linked worktree
+# (see src/io/gitEnv.ts for the full incident writeup).
+unset $(git rev-parse --local-env-vars) 2>/dev/null || true
+
 # Also src/cli.ts and package.json (a `typescript`/`esbuild` devDependency bump, or a
 # direct cli.ts edit, is exactly what the CLI-startup synthetic benchmark below exists
 # to catch — confirmed by testing: without these two, a real injected startup

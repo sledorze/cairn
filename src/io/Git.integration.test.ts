@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { Effect } from 'effect'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { toPosix } from '../core/paths.ts'
 import { runGit as git } from '../testSupport/testGit.ts'
@@ -164,6 +164,98 @@ describe('GitFsLive().listIgnoredDirs()', () => {
       expect(error).toBeInstanceOf(GitUnavailableError)
     } finally {
       fs.rmSync(nonRepo, { force: true, recursive: true })
+    }
+  })
+})
+
+// Regression coverage for the incident this repo hit for real: when the checkout is a
+// linked `git worktree`, git exports GIT_DIR (and, during pre-commit, GIT_INDEX_FILE)
+// into hook subprocesses. `cairn`'s own lefthook.yml runs `pnpm check` — i.e. GitFsLive
+// — from inside such a hook, so an unscrubbed `-C base` is a real, user-facing bug: it
+// silently overrides `-C`, not just a test-hygiene concern. See src/io/gitEnv.ts.
+describe('GitFsLive() is isolated from a leaked GIT_DIR / GIT_INDEX_FILE (regression)', () => {
+  let decoyRoot = ''
+  let decoyMarker = ''
+
+  beforeAll(() => {
+    // A second, independent real repo whose file list is provably different from
+    // `root`'s (declared above) — if a leaked GIT_DIR ever wins over `-C`, these
+    // tests will observe THIS repo's marker file instead of the real target's.
+    decoyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-decoy-'))
+    git(decoyRoot, 'init', '-q')
+    git(decoyRoot, 'config', 'user.email', 'decoy@example.com')
+    git(decoyRoot, 'config', 'user.name', 'Decoy')
+    fs.writeFileSync(path.join(decoyRoot, 'decoy-only-file.md'), '# decoy')
+    git(decoyRoot, 'add', 'decoy-only-file.md')
+    git(decoyRoot, 'commit', '-q', '-m', 'decoy initial')
+    decoyMarker = toPosix(path.join(decoyRoot, 'decoy-only-file.md'))
+  })
+
+  afterEach(() => {
+    delete process.env.GIT_DIR
+    delete process.env.GIT_INDEX_FILE
+  })
+
+  afterAll(() => {
+    if (decoyRoot) {
+      fs.rmSync(decoyRoot, { force: true, recursive: true })
+    }
+  })
+
+  it("listTrackedFiles(base) reports `base`'s own files, never the decoy's, when GIT_DIR points at the decoy", async () => {
+    process.env.GIT_DIR = path.join(decoyRoot, '.git')
+    const tracked = await run(root)
+    const committedAbs = toPosix(path.join(root, 'docs', 'committed.md'))
+    expect(tracked.has(decoyMarker)).toBeFalsy()
+    expect(tracked.has(committedAbs)).toBeTruthy()
+  })
+
+  it('still fails with GitUnavailableError for a real non-repo `base`, even with GIT_DIR pointing at a real decoy repo', async () => {
+    const nonRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'not-a-repo-leaked-'))
+    process.env.GIT_DIR = path.join(decoyRoot, '.git')
+    try {
+      const error = await Effect.runPromise(
+        Effect.flip(
+          Effect.gen(function* () {
+            const gitFs = yield* GitFs
+            return yield* gitFs.listTrackedFiles(nonRepo)
+          }),
+        ).pipe(Effect.provide(GitFsLive)),
+      )
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    } finally {
+      fs.rmSync(nonRepo, { force: true, recursive: true })
+    }
+  })
+
+  it('runGit() fixture helper commits land in the target temp repo, never the decoy, even with GIT_DIR and an absolute GIT_INDEX_FILE leaked', async () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-fixture-target-'))
+    try {
+      git(target, 'init', '-q')
+      git(target, 'config', 'user.email', 'test@example.com')
+      git(target, 'config', 'user.name', 'Test')
+
+      process.env.GIT_DIR = path.join(decoyRoot, '.git')
+      process.env.GIT_INDEX_FILE = path.join(decoyRoot, '.git', 'index')
+
+      fs.writeFileSync(path.join(target, 'fixture-file.md'), '# fixture')
+      git(target, 'add', 'fixture-file.md')
+      git(target, 'commit', '-q', '-m', 'fixture commit')
+
+      delete process.env.GIT_DIR
+      delete process.env.GIT_INDEX_FILE
+
+      const fixtureFileAbs = toPosix(path.join(target, 'fixture-file.md'))
+
+      const targetTracked = await run(target)
+      expect(targetTracked.has(fixtureFileAbs)).toBeTruthy()
+
+      const decoyTracked = await run(decoyRoot)
+      expect(decoyTracked.has(fixtureFileAbs)).toBeFalsy()
+      const decoyFiles = [...decoyTracked]
+      expect(decoyFiles).toEqual([decoyMarker])
+    } finally {
+      fs.rmSync(target, { force: true, recursive: true })
     }
   })
 })

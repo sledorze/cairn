@@ -10,6 +10,7 @@ import * as nodePath from 'node:path'
 import { Context, Data, Effect, Layer } from 'effect'
 
 import { toPosix } from '../core/paths.ts'
+import { scrubbedGitEnv } from './gitEnv.ts'
 
 /**
  * `onlyGitTracked` has exactly one named failure mode, deliberately: a hard
@@ -83,13 +84,18 @@ const runLsFiles = (base: string): Effect.Effect<string, GitUnavailableError> =>
       }),
     try: () =>
       new Promise<string>((resolve, reject) => {
-        execFile('git', ['-C', base, 'ls-files', '-z'], { maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
-          if (error) {
-            reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
-            return
-          }
-          resolve(stdout)
-        })
+        execFile(
+          'git',
+          ['-C', base, 'ls-files', '-z'],
+          { env: scrubbedGitEnv(), maxBuffer: 64 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
+              return
+            }
+            resolve(stdout)
+          },
+        )
       }),
   })
 
@@ -108,7 +114,7 @@ const runLsFilesIgnoredDirs = (base: string): Effect.Effect<string, GitUnavailab
         execFile(
           'git',
           ['-C', base, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
-          { maxBuffer: 64 * 1024 * 1024 },
+          { env: scrubbedGitEnv(), maxBuffer: 64 * 1024 * 1024 },
           (error, stdout, stderr) => {
             if (error) {
               reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
@@ -132,7 +138,7 @@ const runWorktreeList = (base: string): Effect.Effect<string, GitUnavailableErro
         execFile(
           'git',
           ['-C', base, 'worktree', 'list', '--porcelain'],
-          { maxBuffer: 64 * 1024 * 1024 },
+          { env: scrubbedGitEnv(), maxBuffer: 64 * 1024 * 1024 },
           (error, stdout, stderr) => {
             if (error) {
               reject(new Error(stderr.trim().length > 0 ? stderr.trim() : error.message))
