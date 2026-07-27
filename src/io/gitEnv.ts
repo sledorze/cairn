@@ -39,26 +39,23 @@ const FALLBACK_LOCAL_ENV_VARS = [
   'GIT_COMMON_DIR',
 ] as const
 
-let cachedLocalEnvVarNames: readonly string[] | undefined
-
-/** The set of GIT_* variable names that point at a specific repository/worktree/index
- * — memoized, since `git rev-parse --local-env-vars` needs no repository and can't
- * itself be poisoned by a leaked GIT_DIR. */
+/** The set of GIT_* variable names that point at a specific repository/worktree/index.
+ * Not memoized: `cairn` is a short-lived CLI process that calls this at most a
+ * handful of times per run, so the extra `git rev-parse` calls are negligible — and
+ * skipping memoization keeps this independently testable (real PATH/binary swaps)
+ * without a module-cache-reset workaround. */
 export const localEnvVarNames = (): readonly string[] => {
-  if (cachedLocalEnvVarNames === undefined) {
-    try {
-      const stdout = execFileSync('git', ['rev-parse', '--local-env-vars'], { stdio: ['ignore', 'pipe', 'ignore'] })
-      const names = stdout
-        .toString()
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0)
-      cachedLocalEnvVarNames = names.length > 0 ? names : FALLBACK_LOCAL_ENV_VARS
-    } catch {
-      cachedLocalEnvVarNames = FALLBACK_LOCAL_ENV_VARS
-    }
+  try {
+    const stdout = execFileSync('git', ['rev-parse', '--local-env-vars'], { stdio: ['ignore', 'pipe', 'ignore'] })
+    const names = stdout
+      .toString()
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    return names.length > 0 ? names : FALLBACK_LOCAL_ENV_VARS
+  } catch {
+    return FALLBACK_LOCAL_ENV_VARS
   }
-  return cachedLocalEnvVarNames
 }
 
 /** `process.env` with every repository-pinning GIT_* variable removed — safe to pass
