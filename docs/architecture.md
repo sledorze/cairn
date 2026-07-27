@@ -95,10 +95,24 @@ summary links to every child") — is one-directional and real, not a cycle.
      platform; `makeTestDocsFs` provides an in-memory layer so the programs
      are tested without touching disk.
    - [`Git.ts`](../src/io/Git.ts) — `onlyGitTracked` (issue #48)'s one real
-     capability: `GitFsLive.listTrackedFiles` shells out to the real `git`
-     binary (`ls-files`, the index — tracked + staged); `GitUnavailableError`
-     is its one named failure mode (never a silent fallback). `makeTestGitFs`
-     mirrors `DocsFs.ts`'s in-memory-double convention.
+     capability, plus issue #63's gitignore-aware/worktree-aware directory
+     pruning: `GitFsLive.listTrackedFiles`/`listIgnoredDirs`/`listWorktreeDirs`
+     shell out to the real `git` binary (`ls-files`, `worktree list`) via
+     `effect`'s own `ChildProcess`/`ChildProcessSpawner`
+     (`effect/unstable/process`), not raw `node:child_process` — a typed
+     `PlatformError`/exit-code contract instead of hand-wiring a `Promise`
+     around a callback. `GitUnavailableError` is its one named failure mode
+     (never a silent fallback). Every invocation scrubs the canonical
+     repository-pinning env vars and sets `GIT_CEILING_DIRECTORIES`
+     (`io/gitEnv.ts`) so a hook subprocess in a linked worktree, or a `base`
+     without its own `.git`, can never silently resolve to the wrong
+     repository (issue: a real incident on this repo's own working tree —
+     see `gitEnv.ts`'s own header comment for the full writeup). Like
+     `DocsFsLive`, `GitFsLive` requires the Node platform's live
+     `ChildProcessSpawner` (provided once by the caller via
+     `NodeServices.layer`, e.g. in `cli.ts`) rather than baking it in — never
+     a zero-dependency layer. `makeTestGitFs` mirrors `DocsFs.ts`'s
+     in-memory-double convention.
 
 3. **[`program/`](../src/program/) — Effect programs that orchestrate IO around the pure core.**
    - **[`summaries/`](../src/program/summaries/)**

@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
@@ -10,6 +9,7 @@ import { GitFs, GitFsLive } from '../../io/Git.ts'
 import { DocsFsLive } from '../../io/DocsFs.ts'
 import type { TempProject } from '../../testSupport/tempProject.ts'
 import { makeTempProject } from '../../testSupport/tempProject.ts'
+import { runGit as git } from '../../testSupport/testGit.ts'
 import { checkSummaries, summaryExitCode } from './CheckSummaries.ts'
 
 // Real dogfood of issue #48's own motivating example: a real git repo (real
@@ -20,10 +20,6 @@ import { checkSummaries, summaryExitCode } from './CheckSummaries.ts'
 // state.
 
 const big = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n')
-
-const git = (cwd: string, ...args: readonly string[]): void => {
-  execFileSync('git', args, { cwd, stdio: 'pipe' })
-}
 
 const projects: TempProject[] = []
 const project = (prefix: string, files: Record<string, string> = {}): TempProject => {
@@ -63,7 +59,9 @@ describe('checkSummaries() + GitFsLive against a real git repository', () => {
       const gitFs = yield* GitFs
       return yield* gitFs.listTrackedFiles(p.root)
     })
-    const trackedFiles = await Effect.runPromise(loadTracked.pipe(Effect.provide(GitFsLive)))
+    const trackedFiles = await Effect.runPromise(
+      loadTracked.pipe(Effect.provide(GitFsLive), Effect.provide(NodeServices.layer)),
+    )
 
     const withTrackingArgs = {
       base: p.root,

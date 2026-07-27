@@ -27,9 +27,15 @@ pre-commit:
       stage_fixed: true
 
     # Docs: no dead links + every big file has a fresh, stamped summary
+    #
+    # `unset $(git rev-parse --local-env-vars)`: a linked git worktree gets GIT_DIR
+    # (and, during this hook, GIT_INDEX_FILE) exported into hook subprocesses — see
+    # src/io/gitEnv.ts. `pnpm check` itself already scrubs its own git calls, so this
+    # is belt-and-braces against any spawner that doesn't (this hook line, a future
+    # command added here); it does nothing for CI or a direct `pnpm check`.
     docs:
       glob: '*.md'
-      run: pnpm check
+      run: unset $(git rev-parse --local-env-vars); pnpm check
 
 # Check-only mirror (no auto-fix). Usage: lefthook run ci
 ci:
@@ -48,12 +54,20 @@ ci:
       run: pnpm check
 
 # The quality gate before code leaves your machine.
+#
+# Every command below is prefixed with `unset $(git rev-parse --local-env-vars)`: a
+# linked git worktree gets GIT_DIR exported into pre-push hook subprocesses (see
+# src/io/gitEnv.ts) — and `checks` is exactly the command that runs the integration
+# tests whose real `git init`/`commit` fixture setup this incident corrupted. `pnpm
+# test`/`pnpm check` scrub their own git calls already; this is belt-and-braces
+# against any spawner (here or added later) that doesn't. Does nothing for CI or a
+# direct `pnpm test` outside this hook.
 pre-push:
   piped: true
   commands:
     checks:
       priority: 1
-      run: pnpm typecheck && pnpm test && pnpm build
+      run: unset $(git rev-parse --local-env-vars); pnpm typecheck && pnpm test && pnpm build
     # Coverage ratchet, local-only (not run in CI — see ci.yml, which calls
     # plain `pnpm test`): fails only if coverage regresses below the
     # thresholds committed in vitest.config.ts; autoUpdate means those
@@ -61,10 +75,10 @@ pre-push:
     # bumping to stay meaningful.
     coverage:
       priority: 2
-      run: pnpm coverage
+      run: unset $(git rev-parse --local-env-vars); pnpm coverage
     docs:
       priority: 3
-      run: pnpm check
+      run: unset $(git rev-parse --local-env-vars); pnpm check
     # Perf regression gate: only runs when a hot-path file changed (see
     # scripts/bench-guard.sh), comparing the push's base ref against HEAD in a
     # scratch worktree on this machine — a same-runner, back-to-back comparison

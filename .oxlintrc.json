@@ -90,5 +90,24 @@
     "vitest": {
       "typecheck": false
     }
-  }
+  },
+  "overrides": [
+    {
+      // oxlint's vitest plugin pattern-matches literal `describe(...)`/`it(...)` calls;
+      // it doesn't recognize `@effect/vitest`'s `it.layer(...)(name, (layerIt) => ...)`
+      // as a new describe-like scope, so every `beforeAll`/`afterAll` inside a section
+      // reads as a duplicate at the (perceived) single top-level file scope, and every
+      // `expect` inside `layerIt.effect(...)` reads as standalone (not recognized as a
+      // test-wrapper call at all). Both are real rules for a plain `describe`/`it` file;
+      // here it's the lint tool not modeling this library's API, not an actual mistake:
+      // each `it.layer(...)` block in that file has its own `beforeAll`/`afterAll` pair,
+      // manually verified to be scoped correctly (each fixture is created once per block
+      // and disposed in that same block's `afterAll`, not shared across blocks).
+      "files": ["src/io/Git.integration.test.ts"],
+      "rules": {
+        "vitest/no-duplicate-hooks": "off",
+        "vitest/no-standalone-expect": "off"
+      }
+    }
+  ]
 }
