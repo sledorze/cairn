@@ -28,8 +28,8 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 88.18,
-        functions: 98.51,
+        branches: 88.43,
+        functions: 98.52,
         lines: 98.73,
         statements: 98.56,
       },

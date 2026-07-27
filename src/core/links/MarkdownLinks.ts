@@ -80,8 +80,53 @@ export interface CheckContentArgs {
   readonly inRoots?: (absPath: string) => boolean
 }
 
-const LINK_RE = /!?\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+// Destination alternation: CommonMark lets a destination be wrapped in
+// `<...>` specifically so it can contain characters — most commonly `)` —
+// that would otherwise be ambiguous with the link's own closing paren (e.g.
+// `[t](<https://example.com/path_(with_parens)/more>)`, a real, valid,
+// not-uncommon shape for Wikipedia/LibreTexts-style URLs). The bare-form
+// alternative (`[^)\s]{1,2000}`, tried only when the destination does NOT
+// start with `<`) stops at the first unescaped `)` or whitespace, same as
+// before — that heuristic is correct for the unwrapped form and
+// deliberately untouched; it must never run against a `<...>`-delimited
+// destination, which reads verbatim up to its own matching `>` first.
+//
+// The angle-bracket content is a SINGLE negated character class
+// (`[^<>\n]{0,2000}`), not an alternation of overlapping classes (e.g.
+// `(?:[^<>\\\n]|\\.)*` for `\>`-escape support) — CommonMark's own escape
+// support inside `<...>` isn't something the bug this fixes (angle-wrapped
+// URLs with parens) ever needed, and an alternation shape here would add
+// back exactly the ambiguity the bound below exists to eliminate.
+//
+// Every unbounded `*`/`+` in this regex is capped at a generous-but-finite
+// length (link text and destinations are realistically well under 2000
+// chars — beyond that, a bounded miss is an acceptable trade-off, not a
+// silent truncation of anything a real doc would contain). This is a REAL
+// fix, not a defensive guess: CodeQL's `js/polynomial-redos` flagged this
+// exact regex — including its PRE-EXISTING, unbounded text/bare-destination
+// groups, present before this file's angle-bracket support was ever added —
+// and it was verified empirically, not just by the analyzer's say-so: fed
+// `"\\[".repeat(n)` (many escaped-looking opens, no closing `]` anywhere),
+// the unbounded form scaled quadratically (~4x time per 2x input, confirmed
+// at n up to 40 000), while every bounded quantifier below make it linear
+// (confirmed same input scaling 2x time per 2x input, up to n = 160 000).
+// The quadratic blowup is structural, not a `<...>`-alternation artifact —
+// `matchAll` retries the whole pattern at every start position in an
+// unclosed-bracket string, and each retry costs O(remaining length)
+// regardless of backtracking; only a length cap turns each retry's cost
+// into a constant, restoring overall linear behaviour.
+const LINK_RE = /!?\[([^\]]{0,2000})\]\((?:<([^<>\n]{0,2000})>|([^)\s]{1,2000}))(?:\s+"[^"]{0,2000}")?\)/g
 const INLINE_CODE_RE = /`[^`\n]*`/g
+
+/** A `LINK_RE` match's destination is in capture group 2 (angle-bracket form)
+ * or group 3 (bare form) depending on which alternative matched — never both,
+ * and never NEITHER: the angle form requires `<`...`>` (an empty destination,
+ * `<>`, still captures `''`, not `undefined`) and the bare form requires
+ * `[^)\s]+` (one-or-more, so it can never capture an empty string). Whichever
+ * alternative participates in a successful overall match always leaves a
+ * defined string in one of the two groups — a structural guarantee of the
+ * regex, not a runtime possibility a fallback needs to defend against. */
+const linkTarget = (match: RegExpMatchArray): string => (match[2] ?? match[3]) as string
 
 /**
  * Blank out fenced (``` / ~~~, via `maskFencedCode`) and inline (`code`)
@@ -98,7 +143,7 @@ const LINK_DEF_RE = /^[ \t]*\[([^\]]+)\]:[ \t]*<?([^>\s]+)>?/gm
 export const extractLinks = (content: string): MarkdownLink[] => {
   const links: MarkdownLink[] = []
   for (const match of content.matchAll(LINK_RE)) {
-    links.push({ target: match[2] ?? '', text: match[1] ?? '' })
+    links.push({ target: linkTarget(match), text: match[1] ?? '' })
   }
   return links
 }
@@ -134,7 +179,7 @@ const extractLinksPreservingText = (original: string, masked: string): MarkdownL
   for (const match of masked.matchAll(LINK_RE)) {
     const textStart = captureGroupStart(match)
     const textLength = match[1]?.length ?? 0
-    links.push({ target: match[2] ?? '', text: original.slice(textStart, textStart + textLength) })
+    links.push({ target: linkTarget(match), text: original.slice(textStart, textStart + textLength) })
   }
   return links
 }

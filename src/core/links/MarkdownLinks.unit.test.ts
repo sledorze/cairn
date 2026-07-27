@@ -51,6 +51,77 @@ describe('extractLinks()', () => {
       { target: './PROGRESS.md', text: '`PROGRESS.md`' },
     ])
   })
+
+  // Real, reported bug: a `<...>`-wrapped destination is CommonMark's own
+  // way to let a URL contain a literal `)` without it being confused for the
+  // link's own closing paren (a real, not-uncommon shape — Wikipedia/
+  // LibreTexts-style URLs). The bare-form heuristic (stop at the first
+  // unescaped `)`) must never run against this delimited form — it needs to
+  // read verbatim to the matching `>` first.
+  it('reads an angle-bracket-wrapped destination verbatim, parens and all', () => {
+    expect(extractLinks('[A Link](<https://example.com/path_(with_parens)/more>)')).toEqual([
+      { target: 'https://example.com/path_(with_parens)/more', text: 'A Link' },
+    ])
+  })
+
+  it('still supports a title after an angle-bracket-wrapped destination', () => {
+    expect(extractLinks('[t](<https://example.com/x_(y)/z> "a title")')).toEqual([
+      { target: 'https://example.com/x_(y)/z', text: 't' },
+    ])
+  })
+
+  // Broader than the reported symptom: the OLD regex captured the `<`/`>`
+  // delimiters AS PART OF the target (`<https://example.com/simple>`), so
+  // even a wrapped destination with NO internal parens at all had a target
+  // starting with `<` rather than `https:` — breaking `isCheckableTarget`'s
+  // scheme detection and false-flagging ANY angle-wrapped external URL as a
+  // dead local path, not just ones containing `)`. The fix strips the
+  // delimiters, not just fixes paren-truncation.
+  it('strips the angle-bracket delimiters themselves, not just fixes paren-truncation', () => {
+    expect(extractLinks('[t](<https://example.com/simple>)')).toEqual([
+      { target: 'https://example.com/simple', text: 't' },
+    ])
+  })
+
+  // Deliberately UNCHANGED: a BARE (non-angle) destination with an internal,
+  // unescaped `)` is genuinely ambiguous per CommonMark itself — `<...>` is
+  // the spec's own way to disambiguate it. This pins that the fix above is
+  // scoped to the angle-bracket form only, not a general paren-balancing
+  // change to the bare-form heuristic.
+  it('still stops a BARE (non-angle) destination at its first unescaped paren', () => {
+    expect(extractLinks('[t](./path_(with_parens).md)')).toEqual([{ target: './path_(with_parens', text: 't' }])
+  })
+
+  // Pins the `\s+` (one-or-more) title separator: a single-space mutant
+  // (`\s`) fails to match at all when more than one whitespace char
+  // separates the destination from its title — the whole link would be
+  // silently dropped (not merely mis-parsed), for both destination forms.
+  it('tolerates more than one whitespace char before a title, bare or angle-bracket form', () => {
+    expect(extractLinks('[t](./a.md  "title")')).toEqual([{ target: './a.md', text: 't' }])
+    expect(extractLinks('[t](<https://x.com/y>  "title")')).toEqual([{ target: 'https://x.com/y', text: 't' }])
+  })
+
+  // An empty angle-bracket destination (`<>`) captures group 2 as `''`
+  // (defined), never `undefined` — pins `linkTarget`'s structural claim that
+  // the angle form's capture is never absent, only possibly empty.
+  it('handles an empty angle-bracket destination as an empty-string target, not a crash', () => {
+    expect(extractLinks('[t](<>)')).toEqual([{ target: '', text: 't' }])
+  })
+
+  // CodeQL flagged LINK_RE as js/polynomial-redos — a real, pre-existing
+  // quadratic blowup (confirmed empirically, not just by the analyzer:
+  // unbounded, ~4x time per 2x input), triggered by content with many `[`-
+  // like sequences but no closing `]` — plausible in real, messy or
+  // adversarial Markdown, not a toy case. Every unbounded quantifier in
+  // LINK_RE is now capped at a generous 2000 chars; same style/threshold as
+  // `stripAnchor()`'s own ReDoS regression test below.
+  it('stays fast scanning content with many unclosed brackets (no closing `]` anywhere)', () => {
+    const adversarial = '\\['.repeat(80_000)
+    const start = performance.now()
+    extractLinks(adversarial)
+    const elapsedMs = performance.now() - start
+    expect(elapsedMs).toBeLessThan(1000)
+  })
 })
 
 describe('isCheckableTarget()', () => {
@@ -134,6 +205,18 @@ describe('checkContent()', () => {
     const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
     expect(result.broken.map((r) => r.target)).toEqual(['./missing.md'])
     expect(result.broken[0]?.reason).toBe('path')
+    expect(result.pending).toEqual([])
+  })
+
+  // End-to-end pin of the reported bug, at the level a real scan actually
+  // sees it: an angle-bracket-wrapped external URL (parens or not) must be
+  // recognized as external (`isCheckableTarget` false) and never appear in
+  // `broken` — before the fix, the leaked `<` made it look like an in-root
+  // relative path, and it was reported broken with a truncated target.
+  it('never flags an angle-bracket-wrapped external URL as broken, even with internal parens', () => {
+    const content = '[A Link](<https://example.com/path_(with_parens)/more>) [Simple](<https://example.com/simple>)'
+    const result = checkContent({ content, existsAbs, fileAbs: '/r/docs/a/file.md' })
+    expect(result.broken).toEqual([])
     expect(result.pending).toEqual([])
   })
 
