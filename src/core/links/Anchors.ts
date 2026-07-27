@@ -13,7 +13,16 @@ const SETEXT_RE = /^(=+|-+)[ \t]*$/
 const HTML_ANCHOR_RE = /<a\s+(?:[^>]*?\s)?(?:name|id)=["']([^"']+)["']/gi
 // Reduce an inline link/image inside a heading to its own text/alt — GitHub's
 // rendering pipeline resolves these before computing the anchor.
-const HEADING_LINK_RE = /!?\[([^\]]*)\]\([^)\s]+(?:\s+"[^"]*")?\)/g
+//
+// Quantifiers bounded at 2000 chars — same fix, same reason, as
+// `MarkdownLinks.ts`'s own `LINK_RE`: this is a structurally identical
+// pattern (`[^\]]*` text + `[^)\s]+` destination, no `^` anchor, applied via
+// `replaceAll` on real heading text), so it has the exact same quadratic
+// ReDoS shape (verified empirically: ~4x time per 2x input on many
+// unclosed-`[` content, matching `LINK_RE`'s own pre-fix measurements) —
+// found while auditing for siblings after CodeQL flagged `LINK_RE`, not by
+// CodeQL itself flagging this file.
+const HEADING_LINK_RE = /!?\[([^\]]{0,2000})\]\([^)\s]{1,2000}(?:\s+"[^"]{0,2000}")?\)/g
 
 const ENTITY_MAP: Record<string, string> = {
   amp: '&',
