@@ -90,7 +90,16 @@ export interface CheckContentArgs {
 // that heuristic is correct for the unwrapped form and deliberately
 // untouched; it must never run against a `<...>`-delimited destination,
 // which reads verbatim up to its own matching `>` first.
-const LINK_RE = /!?\[([^\]]*)\]\((?:<((?:[^<>\\\n]|\\.)*)>|([^)\s]+))(?:\s+"[^"]*")?\)/g
+//
+// The angle-bracket content is a SINGLE negated character class (`[^<>\n]*`),
+// not an alternation of overlapping classes (e.g. `(?:[^<>\\\n]|\\.)*` for
+// `\>`-escape support) — CodeQL flags that alternation shape as a polynomial-
+// ReDoS risk on library input, even though this particular pair is actually
+// disjoint per character (verified empirically: no slowdown on an adversarial
+// input). Simpler and provably linear beats arguing with the analyzer, and
+// CommonMark's own escape support inside `<...>` isn't something the bug this
+// fixes (issue: angle-wrapped URLs with parens) ever needed.
+const LINK_RE = /!?\[([^\]]*)\]\((?:<([^<>\n]*)>|([^)\s]+))(?:\s+"[^"]*")?\)/g
 const INLINE_CODE_RE = /`[^`\n]*`/g
 
 /** A `LINK_RE` match's destination is in capture group 2 (angle-bracket form)
