@@ -9,10 +9,12 @@ than designed up front:
   orphan _anything_).
 - **Coverage is direct-link-only, never transitive.** `feature → decision → spec` does not
   satisfy a direct `feature → spec` rule.
-- **Rules are deduped by `(name, from, to)`, not `(from, to)` alone.** A first fix deduped
-  by `(from, to)` only, which silently collapsed two rules meaning different things on the
-  same kind pair (e.g. `implements` vs `verified_by`) into one — a real regression caught by
-  adversarial review of the fix itself. The optional `name` field is the discriminant.
+- **Rules are deduped by `(name, from, to, via.by)` — this key has been wrong twice.**
+  First, deduping by `(from, to)` only collapsed two rules meaning different things on the
+  same kind pair (e.g. `implements` vs `verified_by`) into one; `name` became the
+  discriminant. Second, adding `via` (below) without adding it here reintroduced the exact
+  same bug for any two same-pair rules differing only in `via`. Every future discriminating
+  field must be added to this key too — it has no structural guard forcing that.
 - **A rule referencing an undeclared kind id (a typo) is a loud config-decode `Failure`.**
   An earlier version of this increment accepted this as a known gap (it would otherwise
   silently, deterministically report every `from`-kind doc as missing forever); closed by

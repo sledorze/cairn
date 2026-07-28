@@ -108,18 +108,27 @@ export const checkCoverage = ({
     const dfs = yield* DocsFs
     const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
 
-    // Deduped by (name, from, to) — found via adversarial review, in two
-    // rounds. Round 1: an accidentally (or programmatically) duplicated
-    // rule entry produced a duplicate `missing` report line for the exact
-    // same violation, pure noise. Round 2 (a real regression the first fix
+    // Deduped by every field that can distinguish two rules on the same
+    // kind pair — found via adversarial review, in three rounds so far.
+    // Round 1: an accidentally (or programmatically) duplicated rule entry
+    // produced a duplicate `missing` report line for the exact same
+    // violation, pure noise. Round 2 (a real regression the first fix
     // introduced): deduping by (from, to) ALONE silently collapsed two
     // rules sharing a kind pair but meaning DIFFERENT things — e.g. issue
     // #28's own `implements` vs `verified_by` between the same two kinds —
-    // into one, losing a genuine distinct obligation. `name` (optional)
-    // is the discriminant: two rules with the same (or no) name on the
-    // same pair still dedupe as one (nothing to tell them apart), but a
-    // named rule is never collapsed with a differently-named one.
-    const uniqueRules = [...new Map(rules.map((r) => [`${r.name ?? ''}\u0000${r.from}\u0000${r.to}`, r])).values()]
+    // into one, losing a genuine distinct obligation; `name` became the
+    // discriminant. Round 3 (the SAME bug reintroduced by the very fix
+    // meant to demonstrate evolvability): adding `via` without adding it
+    // here meant two same-pair rules differing only in `via` would
+    // silently collapse the moment a second `via.by` variant existed —
+    // dormant today (only `by: 'link'` is valid), a landmine for the next
+    // one. Every discriminating field of `CoverageRule` (`name`, `via.by`)
+    // MUST appear in this key — if a future field is added to
+    // `CoverageRule` to distinguish otherwise-identical rules, add it here
+    // too, or this exact class of silent data loss reappears a third time.
+    const uniqueRules = [
+      ...new Map(rules.map((r) => [`${r.name ?? ''}\u0000${r.from}\u0000${r.to}\u0000${r.via?.by ?? ''}`, r])).values(),
+    ]
 
     const allDocs = []
     for (const file of mdFiles) {

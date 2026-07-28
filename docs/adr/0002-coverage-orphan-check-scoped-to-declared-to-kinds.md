@@ -32,15 +32,21 @@ alone and would surprise a future reader:
 - The inbound graph (`DocGraph.buildDocGraph`) is built from **every** scanned doc, not just
   declared-kind ones — an ordinary prose doc linking to a decision still clears that
   decision's orphan status, even though only declared-kind docs are themselves reported on.
-- Rules are deduped by `(name, from, to)` before evaluation — a duplicated rule entry
-  (accidental or config-generated) must report a violation once, not once per duplicate.
-  `name` is an optional discriminant, not an afterthought: an earlier version of this fix
-  deduped by `(from, to)` alone, which silently collapsed two rules sharing a kind pair but
-  meaning DIFFERENT things — e.g. `implements` and `verified_by` between the same two
-  kinds (issue #28's own worked example) are distinct obligations, not the same rule
-  twice. Caught via adversarial review of the dedup fix itself, not the original TDD pass —
-  two UNNAMED rules on the same pair still dedupe as one (there's no way to tell them
-  apart without a name), but a named rule is never collapsed with a differently-named one.
+- Rules are deduped by `(name, from, to, via.by)` before evaluation — a duplicated rule
+  entry (accidental or config-generated) must report a violation once, not once per
+  duplicate. This key has been wrong twice already, both times caught by adversarially
+  re-reviewing the PREVIOUS fix rather than the original TDD pass: (1) deduping by
+  `(from, to)` alone silently collapsed two rules sharing a kind pair but meaning
+  DIFFERENT things — e.g. `implements` and `verified_by` between the same two kinds
+  (issue #28's own worked example) — into one, losing a genuine distinct obligation;
+  `name` became the discriminant. (2) Adding `via` (below) without adding it to this key
+  reintroduced the exact same bug class: two same-pair rules differing only in `via`
+  would silently collapse the moment a second `via.by` variant existed — dormant while
+  only one variant is valid, a landmine for the next one. **Every discriminating field
+  `CoverageRule` gains in the future must be added here too** — this key has no
+  structural guard forcing that; two rounds of silent regressions are the evidence it
+  needs one. Two rules that are IDENTICAL on every discriminating field still dedupe as
+  one (there's no way to tell them apart), but any real difference is preserved.
 - Config decode validates, cross-field, that every rule's `from`/`to` matches a kind id
   declared in the same `kinds` array — added after this ADR first shipped, closing a gap
   this ADR originally accepted as a documented limitation. A typo'd kind id used to pass

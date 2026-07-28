@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import type { CoverageRule } from '../../core/Config.ts'
 import { makeTestDocsFs } from '../../io/DocsFs.ts'
 import { checkCoverage, coverageExitCode, formatCoverageReport } from './CheckCoverage.ts'
 
@@ -275,6 +276,34 @@ describe('checkCoverage()', () => {
     expect(result.missing).toEqual([
       { path: '/r/features/f1.md', rule: { from: 'feature', name: 'cites', to: 'decision' } },
     ])
+  })
+
+  // Adversarial finding, re-running the exact "missing discriminant" review
+  // that already caught the (from, to)-only dedup regression once — this
+  // time against `via`, which is itself the extension point (see
+  // CoverageRequirement's own comment). `via.by` only has one legal value
+  // today, so this is unreachable through real config decode, but it's the
+  // same latent bug: the moment a second `via.by` variant exists, two rules
+  // on the same pair differing ONLY in `via` would silently collapse to
+  // one, exactly like the un-named implements/verified_by collision did —
+  // reproduced here via a same-shape cast, ahead of that variant landing,
+  // so the dedup key can't rot silently in the meantime.
+  it('never collapses two same-pair rules that differ only in `via` — the dedup key must track every discriminant, not just `name`', async () => {
+    const layer = makeTestDocsFs({
+      '/r/features/f1.md': { content: '# Feature, no links', mtimeMs: 1 },
+    })
+    // `via.by` only has one legal value in the real schema today — the cast
+    // simulates the second variant this design already leaves room for
+    // (see CoverageRequirementInputSchema's own comment), so the dedup key
+    // gets exercised against it before it exists for real.
+    const differingOnlyByVia: CoverageRule[] = [
+      { from: 'feature', to: 'decision', via: { by: 'link' } },
+      { from: 'feature', to: 'decision', via: { by: 'backlink' } } as unknown as CoverageRule,
+    ]
+    const result = await Effect.runPromise(
+      checkCoverage({ base: '/r', kinds: KINDS, roots: ['/r'], rules: differingOnlyByVia }).pipe(Effect.provide(layer)),
+    )
+    expect(result.missing).toHaveLength(2)
   })
 
   // Adversarial finding: a chain of rules (feature -> decision -> spec) —
