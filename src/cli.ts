@@ -255,13 +255,25 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   let linksResult: LinkCheckResult | null = null
   let summariesResult: SummaryPlan | null = null
 
-  if (absRoots.length === 0 && !parsed.json) {
-    yield* Console.log(
-      pick(locale, {
-        en: `⚠️  No documentation roots found (looked for: ${config.roots.join(', ')}).`,
-        fr: `⚠️  Aucune racine de documentation trouvée (cherché : ${config.roots.join(', ')}).`,
-      }),
-    )
+  // A config that resolves to checking literally nothing must fail loudly,
+  // not report green — found adversarially (goal: "refute the DX for end
+  // users (dev/ai) is great"): this used to be a warning-only line with no
+  // effect on `code`, so a totally misconfigured repo (or one where the
+  // scan just silently found nothing) passed CI by exit code alone, the one
+  // thing automation actually checks. `--json` still suppresses the
+  // human-readable line (matching every other warning's `--json` behavior),
+  // but `code` — and so `report.exitCode` below — reflects the failure
+  // either way.
+  if (absRoots.length === 0) {
+    code = Math.max(code, 1)
+    if (!parsed.json) {
+      yield* Console.log(
+        pick(locale, {
+          en: `⚠️  No documentation roots found (looked for: ${config.roots.join(', ')}).`,
+          fr: `⚠️  Aucune racine de documentation trouvée (cherché : ${config.roots.join(', ')}).`,
+        }),
+      )
+    }
   }
 
   // Shared by every plugin-driven check below — same base/roots/ignore/
@@ -390,8 +402,18 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
 
   if (parsed.json) {
     const report = buildJsonReport({ links: linksResult, summaries: summariesResult })
-    yield* Console.log(JSON.stringify(report, null, 2))
-    code = report.exitCode
+    // `Math.max`, not `report.exitCode` alone — `report.exitCode` is
+    // derived purely from links/summaries, so using it verbatim would
+    // silently discard any OTHER contribution to `code` (today: the
+    // zero-resolved-roots check above, the only such case reachable under
+    // `--json`, since refs/proseRefs/coverage are all already rejected
+    // upfront when `--json` is set). The printed JSON body's own
+    // `exitCode` field is corrected too, not just `process.exitCode` below
+    // — a consumer reading only the JSON body must see the same number the
+    // process actually exits with, not a stale one.
+    const exitCode = Math.max(code, report.exitCode)
+    yield* Console.log(JSON.stringify({ ...report, exitCode }, null, 2))
+    code = exitCode
   }
 
   if (code !== 0) {

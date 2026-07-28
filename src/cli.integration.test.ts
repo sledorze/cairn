@@ -110,6 +110,38 @@ describe('cli.ts (real subprocess) — --json incompatibility gate', () => {
   })
 })
 
+// DX finding (goal: "refute the DX for end users (dev/ai) is great"): a repo
+// where NO roots resolve at all — the default `docs/` doesn't exist, nothing
+// configured yet — used to print one warning line, then two green
+// checkmarks, and exit 0: indistinguishable from genuine success by exit
+// code alone (the one thing CI/automation actually checks). A tool whose
+// entire purpose is enforcing doc rigor should fail loudly on a config that
+// resolved to checking literally nothing, not report green.
+describe('cli.ts (real subprocess) — zero resolved roots fails loudly', () => {
+  it('exits 1 (not 0) when no configured root resolves to anything on disk', () => {
+    const p = project('cli-zero-roots')
+    const result = runCli(p.root, ['check'])
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('No documentation roots found')
+  })
+
+  it('exits 1 under --json too, even though the human-readable warning is suppressed there', () => {
+    const p = project('cli-zero-roots-json')
+    const result = runCli(p.root, ['check', '--json'])
+    expect(result.exitCode).toBe(1)
+    expect(JSON.parse(result.stdout).exitCode).toBe(1)
+  })
+
+  it('still exits 0 when at least one configured root resolves to real docs', () => {
+    const p = project('cli-nonzero-roots', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/index.md': '# Index\n\nShort.\n',
+    })
+    const result = runCli(p.root, ['check', '--summaries-only'])
+    expect(result.exitCode).toBe(0)
+  })
+})
+
 describe("cli.ts (real subprocess) — --refs --stamp co-occurs with summaries' own --stamp", () => {
   it('stamps BOTH refs and summaries from a single --refs --stamp invocation, summaries first', () => {
     const p = project('cli-refs-stamp', {
