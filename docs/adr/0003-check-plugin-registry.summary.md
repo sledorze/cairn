@@ -15,19 +15,31 @@ No shared doc-scan context, no `dependsOn`: instead, `resolveRuleEdges` was extr
 a pure core function (`src/core/structure/Coverage.ts`) so a future check can reuse
 coverage's resolution logic directly, without a registry-level dependency mechanism.
 `cli.ts`'s 4 call sites stay in their original order (not one unified loop) — console
-output order and exit-code aggregation are real behavior, verified byte-for-byte against
-the pre-refactor binary across every flag combination.
+output order and exit-code aggregation are real behavior, manually checked against the
+pre-refactor binary across every flag combination during development.
 
 Two follow-up adversarial passes (this session, after the PR was already open) each
 found and closed one more real gap, then flagged two more as documented, out-of-scope
-limitations rather than silently ignored: `coveragePlugin.run` used an unguarded cast
-that crashed with a raw TypeError if ever called with coverage disabled outside the real
-runner — replaced with an explicit, clearly-named failure. The ADR's "adding a fifth
-check is done" claim was narrowed: true only for checks that reject `--json` outright —
-`JsonReport.ts` and `Config.ts`'s own per-check schema wiring are both still exactly as
-manual as before. `checks.coverage` also still has no `false`/`null` a descendant config
-can write to re-disable it once an `extends` preset turns it on, unlike `links`/
-`summaries`'s own booleans — predates this PR, not fixed here.
+limitations rather than silently ignored:
+
+- Round 1: `coveragePlugin.run` used an unguarded cast that crashed with a raw TypeError
+  if ever called with coverage disabled outside the real runner — replaced with an
+  explicit, clearly-named failure. The ADR's "adding a fifth check is done" claim was
+  narrowed: true only for checks that reject `--json` outright — `JsonReport.ts` and
+  `Config.ts`'s own per-check schema wiring are both still exactly as manual as before.
+  `checks.coverage` also still has no `false`/`null` a descendant config can write to
+  re-disable it once an `extends` preset turns it on, unlike `links`/`summaries`'s own
+  booleans — predates this PR, not fixed here.
+- Round 2: two `refsPlugin.run()` tests were tautological — asserting `checked === 0`
+  against a fixture that was never stamped, provably true regardless of whether
+  roots/ignore/trackedFiles were wired correctly at all; rewritten to stamp first, then
+  check, and confirmed to actually fail when the wiring is deliberately broken. The
+  ADR's "verified byte-for-byte against the pre-refactor binary" claim was also
+  overstated — a manual, one-off terminal session, nothing checked in to reproduce it —
+  narrowed to "manually checked," and the two most fragile behaviors it covered (the
+  `--json` gate, the `--refs --stamp`/summaries-`--stamp` co-occurrence and ordering) are
+  now `src/cli.integration.test.ts`, a real-subprocess test — the first automated test
+  `cli.ts` has ever had.
 
 Found along the way, unrelated to this refactor: `checks.coverage`'s kind globs are
 matched against absolute paths, so the README's own relative-glob examples can never

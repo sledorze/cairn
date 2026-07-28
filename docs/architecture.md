@@ -178,7 +178,13 @@ summary links to every child") — is one-directional and real, not a cycle.
      `cairn` key and `extends` targets from disk, decodes each through
      `core/Config.ts`, and expands root globs to concrete directories. The
      disk IO is the only reason this isn't in `core/`.
-   - [`cli.ts`](../src/cli.ts) — argument parsing and the Node/Effect bootstrap.
+   - [`cli.ts`](../src/cli.ts) — argument parsing and the Node/Effect bootstrap. Excluded
+     from coverage measurement, historically dogfooded via real subprocess only —
+     `cli.integration.test.ts` (real-subprocess, spawns the actual CLI) locks in the two
+     most fragile behaviors the `checks/` registry (docs/adr/0003) touches directly (the
+     `--json` incompatibility gate, the `--refs --stamp`/summaries-`--stamp`
+     co-occurrence and ordering) as permanent regression checks, without attempting
+     exhaustive `cli.ts` coverage — that job still belongs to manual dogfooding.
    - [`init/`](../src/init/) — scaffold agent guidance from a single convention body.
 
 Deliberately outside this layering: [`testSupport/`](../src/testSupport/) is

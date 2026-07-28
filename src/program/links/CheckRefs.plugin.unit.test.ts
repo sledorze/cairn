@@ -39,32 +39,52 @@ test('refsPlugin.format() delegates to formatRefsReport()', () => {
   expect(refsPlugin.format(result, { locale: 'en' })).toEqual(formatRefsReport(result, { locale: 'en' }))
 })
 
+// Narrows `refsPlugin.stamp` from `((...) => ...) | undefined` without a `!`
+// non-null assertion (forbidden by this repo's lint config) — a plain
+// `if`-throw is the idiom this codebase already uses elsewhere for a
+// "structurally guaranteed, not statically provable" fact. Module-scoped so
+// both `describe('refsPlugin.run()')` (which stamps as setup) and
+// `describe('refsPlugin.stamp()')` (which tests it directly) can use it.
+const stamp = refsPlugin.stamp
+if (stamp === undefined) {
+  throw new Error('expected refsPlugin.stamp to be defined')
+}
+
+// Adversarial finding (round 2): the original version of these two tests
+// asserted `result.checked === 0` against a fixture with nothing EVER
+// stamped — `checkRefs` only counts a doc with a pre-existing stamped
+// sidecar record (see CheckRefs.ts's own `if (recorded === null) continue`),
+// so `checked` was provably 0 regardless of whether roots/ignore/
+// trackedFiles were wired correctly at all; a plugin descriptor that
+// dropped `roots` entirely or inverted the trackedFiles ternary would still
+// have passed. Fixed by actually stamping first (via `refsPlugin.stamp`,
+// already exercised by its own describe block below) so `.run()`'s result
+// reflects REAL processing, and by giving the trackedFiles test a second,
+// untracked stamped doc that would inflate `checked` if filtering broke.
 describe('refsPlugin.run()', () => {
-  it('reaches checkRefs with roots/ignore wired through, no trackedFiles', async () => {
-    const layer = makeTestDocsFs({ '/r/a.md': { content: '# A', mtimeMs: 1 } })
-    const result = await Effect.runPromise(
-      refsPlugin
-        .run({ base: '/r', cli: CLI, ignore: [], resolved: DEFAULT_CONFIG, roots: ['/r'] })
-        .pipe(Effect.provide(layer)),
-    )
-    expect(result.checked).toBe(0) // nothing ever stamped, so nothing to compare — real wiring, not a stub
+  it('reaches checkRefs with roots/ignore wired through — a real stamped, undrifted ref reports checked:1, stale:[]', async () => {
+    const layer = makeTestDocsFs({
+      '/r/a.md': { content: '# A\n\n[b](./b.md)', mtimeMs: 1 },
+      '/r/b.md': { content: '# B', mtimeMs: 1 },
+    })
+    const args = { base: '/r', cli: CLI, ignore: [], resolved: DEFAULT_CONFIG, roots: ['/r'] }
+    await Effect.runPromise(stamp(args).pipe(Effect.provide(layer)))
+    const result = await Effect.runPromise(refsPlugin.run(args).pipe(Effect.provide(layer)))
+    expect(result).toEqual({ checked: 1, stale: [] })
   })
 
-  it('reaches checkRefs with trackedFiles narrowing the scanned universe', async () => {
-    const layer = makeTestDocsFs({ '/r/a.md': { content: '# A', mtimeMs: 1 } })
+  it('reaches checkRefs with trackedFiles narrowing the scanned universe — an untracked-but-stamped doc is excluded from checked', async () => {
+    const layer = makeTestDocsFs({
+      '/r/a.md': { content: '# A\n\n[b](./b.md)', mtimeMs: 1 },
+      '/r/b.md': { content: '# B', mtimeMs: 1 },
+      '/r/untracked.md': { content: '# Untracked\n\n[b](./b.md)', mtimeMs: 1 },
+    })
+    const stampArgs = { base: '/r', cli: CLI, ignore: [], resolved: DEFAULT_CONFIG, roots: ['/r'] }
+    await Effect.runPromise(stamp(stampArgs).pipe(Effect.provide(layer)))
     const result = await Effect.runPromise(
-      refsPlugin
-        .run({
-          base: '/r',
-          cli: CLI,
-          ignore: [],
-          resolved: DEFAULT_CONFIG,
-          roots: ['/r'],
-          trackedFiles: new Set(['/r/a.md']),
-        })
-        .pipe(Effect.provide(layer)),
+      refsPlugin.run({ ...stampArgs, trackedFiles: new Set(['/r/a.md', '/r/b.md']) }).pipe(Effect.provide(layer)),
     )
-    expect(result.checked).toBe(0)
+    expect(result.checked).toBe(1) // only a.md — untracked.md's own stamped sidecar is excluded
   })
 })
 
@@ -76,15 +96,6 @@ describe('refsPlugin.stamp()', () => {
   const FIXTURE = {
     '/r/a.md': { content: '# A\n\n[b](./b.md)', mtimeMs: 1 },
     '/r/b.md': { content: '# B', mtimeMs: 1 },
-  }
-
-  // Narrows `refsPlugin.stamp` from `((...) => ...) | undefined` without a
-  // `!` non-null assertion (forbidden by this repo's lint config) — a plain
-  // `if`-throw is the idiom this codebase already uses elsewhere for a
-  // "structurally guaranteed, not statically provable" fact.
-  const stamp = refsPlugin.stamp
-  if (stamp === undefined) {
-    throw new Error('expected refsPlugin.stamp to be defined')
   }
 
   it('returns the exact pre-existing English stamp message, with the real stamped count', async () => {

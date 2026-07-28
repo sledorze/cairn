@@ -74,13 +74,34 @@ cli)`, `run(args)`, `format(result, opts)`, `exitCode(result)`, optional
   shared runner instead of hand-rolling isEnabled/format/exitCode inline — deliberately
   NOT collapsed into one iteration loop. Console output order and exit-code aggregation
   are real, observable CLI behavior; a single unified loop would risk silently reordering
-  them. Verified byte-for-byte against the pre-refactor binary (not just the test suite)
-  across every flag combination: plain check, `--links-only`, `--summaries-only`,
+  them. Manually checked at a terminal against the pre-refactor binary across every flag
+  combination during development: plain check, `--links-only`, `--summaries-only`,
   `--json` (compatible and all 3 rejecting cases), `--refs` (check and `--stamp`),
   `--prose-refs`, `--fix`, and the `--refs --stamp` + summaries `--stamp` co-occurrence.
+  An earlier draft of this ADR called this "verified byte-for-byte" — overstated for a
+  manual, one-off terminal session with nothing checked in to reproduce it. Found by
+  adversarial review; the two most fragile of those behaviors (the `--json`
+  incompatibility gate, and the `--refs --stamp`/summaries-`--stamp` co-occurrence and
+  its ordering) are now locked in as permanent, automated regression tests
+  (`src/cli.integration.test.ts`, real subprocess — the first automated test cli.ts has
+  ever had; see its own header for why `cli.ts` was otherwise exempt from this by
+  long-standing convention). The rest remain manual-dogfood-only, same as every other
+  `cli.ts` behavior in this repo.
 
 ## Considered Options
 
+- **A minimal fix: dedupe just the 3 `--json` guards into one function, leave the 4
+  hand-wired `cli.ts` dispatch blocks otherwise untouched.** Genuinely would have
+  removed most of the actual, cited duplication (~27 lines) with far less new surface
+  area than the full `CheckPlugin`/`runCheckPlugin` abstraction (~160 lines of
+  production code, ~525 of tests) — a real, fair "is this over-engineered for a 5-check
+  CLI" question an adversarial review raised. Not taken: this increment was explicitly
+  scoped, on request, as "a real plugin registry" rather than "extend the existing
+  per-field pattern" — the goal was proving out a real, reusable `CheckPlugin` shape
+  (uniform `isEnabled`/exit-code aggregation/optional `stamp`, not just json-guard
+  dedup) against 4 real, structurally different checks, informed by the earlier
+  cardinality/heading-scope/stale-link investigation, not solving today's minimal
+  duplication as cheaply as possible.
 - **The full `dependsOn`/generic-config-schema sketch**, as originally designed. Rejected
   after the adversarial critique — every one of its 5 findings pointed to the same
   lesson: build the registry the four REAL migrating checks need, not the one a
