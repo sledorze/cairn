@@ -57,7 +57,10 @@ Separation of concerns: pure decisions, IO at the edges.
     links/summaries participate; refs/proseRefs/coverage reject `--json` outright),
     `locale` (re-exports `Locale`; en default, fr mirror).
 - **Edge**: `config.ts` (disk IO: reads rc/`extends`/`package.json`, decodes via
-  `core/Config`, expands root globs), `cli.ts`, `init/`.
+  `core/Config`, expands root globs), `cli.ts` (excluded from coverage, historically
+  dogfooded via real subprocess only — `cli.integration.test.ts` now locks in its two
+  most fragile checks-registry behaviors as permanent, automated real-subprocess tests,
+  without attempting exhaustive coverage), `init/`.
 - **`testSupport/`** (test-only, excluded from the published build): real-temp-directory
   fixture helper shared by `*.integration.test.ts` files — not a runtime layer.
 - **Content hash, not mtime, tracked outside your docs**: git drops mtimes, so
