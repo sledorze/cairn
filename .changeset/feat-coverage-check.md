@@ -22,8 +22,10 @@ Declare doc kinds by path glob and a rule that every doc of one kind must link s
 Two file-level report classes, plus a config-level warning:
 
 - **missing coverage** — a `from`-kind doc with no outbound link to a `to`-kind doc.
-- **orphan** — a doc of a kind that's supposed to be referenced (a rule's `to` side) with zero inbound references from anywhere in the scanned corpus. `exempt` (globs) opts a doc out entirely, the same escape hatch Sphinx's `:orphan:` and MkDocs' `not_in_nav` needed to keep their equivalent checks tolerable.
+- **orphan** — a doc of a kind that's supposed to be referenced (a rule's `to` side) with zero inbound references from anywhere in the scanned corpus.
 - **unmatched kind** (⚠️, never fails the build) — a declared kind that matched zero scanned docs, most often because its glob falls outside `roots` (a kind's glob classifies docs cairn already scans, it never widens `roots` itself) or is simply mistyped. Without this, that mistake reads as `"✅ Coverage OK (0 doc(s) checked)"` — indistinguishable from a genuinely green repo.
+
+`exempt` (globs) opts a doc out of BOTH missing-coverage and orphan reporting entirely, not orphan status alone — the same escape hatch Sphinx's `:orphan:` and MkDocs' `not_in_nav` needed to keep their equivalent checks tolerable.
 
 A rule may carry an optional `name` (e.g. `"implements"` vs. `"verified_by"`) to distinguish two rules that share the same `from`/`to` kind pair but mean different things — two identically-named (or unnamed) rules on the same pair still dedupe as one. Every rule's `from`/`to` must reference a kind id declared in `kinds` — a typo there is now a loud config error at decode time, not a check that silently, permanently reports everything as missing. A rule may also carry an optional `via: { "by": "link" }`, naming how it's satisfied — the only implemented value today, and the implicit default when omitted, but a discriminated field (not hardcoded logic) so a future requirement type is a new value, not a breaking config change.
 

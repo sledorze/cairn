@@ -6,20 +6,28 @@
 // and Obsidian have all independently converged on, and it's conspicuously
 // absent from Markdown-specific lint tooling).
 //
-// Two report classes, both file-level (matches ../links/CheckLinks.ts's own
-// existing broken-link granularity — a violation is an ABSENCE, no line to
-// point at):
+// Three report classes, the first two file-level (matches ../links/
+// CheckLinks.ts's own existing broken-link granularity — a violation is an
+// ABSENCE, no line to point at), the third a non-fatal config warning:
 //   - missing coverage: a `from`-kind doc with no outbound ref to a
 //     `to`-kind doc, for some declared rule.
 //   - orphan: any declared-kind doc with zero inbound references from
-//     anywhere in the scanned corpus (an `exempt` glob opts a doc out —
-//     Sphinx's `:orphan:`/MkDocs' `not_in_nav` needed the same escape
-//     hatch to keep the check tolerable; cairn's is a config glob, not new
-//     markdown syntax, consistent with `ignore`'s existing shape).
+//     anywhere in the scanned corpus.
+//   - unmatchedKinds: a declared kind that matched zero scanned docs (see
+//     `CoverageResult`'s own doc comment) — never fails the build.
 //
-// Opt-in via `checks.coverage` (Config.ts) or `--coverage`, following the
-// `CheckRefs.ts`/`CheckProseRefs.ts` precedent — not part of the default
-// `checks.links`/`checks.summaries` gate.
+// An `exempt` glob opts a doc out of BOTH missing-coverage and orphan
+// reporting (not orphan alone) — Sphinx's `:orphan:`/MkDocs' `not_in_nav`
+// needed the same escape hatch to keep their own equivalent checks
+// tolerable; cairn's is a config glob, not new markdown syntax, consistent
+// with `ignore`'s existing shape.
+//
+// Opt-in via `checks.coverage`'s mere presence in config (Config.ts) — no
+// `--coverage` CLI flag exists or is planned: `kinds`/`rules` have no CLI
+// equivalent to express them with, so config presence is the whole opt-in
+// (see README's own explicit callout of this). Still follows the
+// `CheckRefs.ts`/`CheckProseRefs.ts` wiring precedent otherwise — its own
+// exit code, `Math.max`'d into the overall one — just without their CLI flag.
 
 import * as nodePath from 'node:path'
 

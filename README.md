@@ -191,9 +191,10 @@ point at) except the third, which is a warning about the config itself:
   success. Non-fatal because a kind can legitimately have zero docs yet (mid-rollout) — it's
   a hint to check your config, not a rule violation.
 
-`exempt` (globs) opts a doc out of orphan reporting entirely — the same escape hatch
-Sphinx's `:orphan:` marker and MkDocs' `not_in_nav` needed to keep their own equivalent
-checks tolerable in practice.
+`exempt` (globs) opts a doc out of both missing-coverage and orphan reporting entirely — not
+orphan status alone, so an intentionally unlinked template doc isn't flagged for lacking
+outbound links either. The same escape hatch Sphinx's `:orphan:` marker and MkDocs'
+`not_in_nav` needed to keep their own equivalent checks tolerable in practice.
 
 Two rules can share the same `kinds` pair but mean different things — e.g. a spec both
 `implements` a decision and is `verified_by` one. Give each an optional `name` to keep them
