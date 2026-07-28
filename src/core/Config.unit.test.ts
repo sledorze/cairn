@@ -52,7 +52,10 @@ describe('decodeConfig()', () => {
     const raw = {
       checks: {
         coverage: {
-          kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+          kinds: [
+            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
           rules: [{ from: 'feature', to: 'decision' }],
         },
       },
@@ -68,7 +71,13 @@ describe('decodeConfig()', () => {
   it('decodes a rule’s optional `name` — the discriminant for two rules sharing a kind pair', () => {
     const raw = {
       checks: {
-        coverage: { kinds: [], rules: [{ from: 'spec', name: 'implements', to: 'decision' }] },
+        coverage: {
+          kinds: [
+            { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'spec', name: 'implements', to: 'decision' }],
+        },
       },
     }
     expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
@@ -91,6 +100,52 @@ describe('decodeConfig()', () => {
         }),
       ),
     ).toBeTruthy()
+  })
+
+  // A rule referencing a kind id that's never declared is a config typo that would
+  // otherwise deterministically report every `from`-kind doc as missing coverage
+  // forever, since nothing can ever satisfy it — see docs/adr/0002. Caught loudly at
+  // decode time instead.
+  it('returns a Failure when a rule references a kind id not declared in `kinds`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+              rules: [{ from: 'feature', to: 'decisionn' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [{ id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } }],
+              rules: [{ from: 'featur', to: 'decision' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('accepts a rule whose `from`/`to` both match declared kind ids', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'feature', to: 'decision' }],
+        },
+      },
+    }
+    expect(Result.isSuccess(decodeConfig(raw))).toBeTruthy()
   })
 
   it('returns a Failure on a wrong-typed field instead of silently reverting to the default', () => {

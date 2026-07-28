@@ -41,6 +41,12 @@ alone and would surprise a future reader:
   twice. Caught via adversarial review of the dedup fix itself, not the original TDD pass —
   two UNNAMED rules on the same pair still dedupe as one (there's no way to tell them
   apart without a name), but a named rule is never collapsed with a differently-named one.
+- Config decode validates, cross-field, that every rule's `from`/`to` matches a kind id
+  declared in the same `kinds` array — added after this ADR first shipped, closing a gap
+  this ADR originally accepted as a documented limitation. A typo'd kind id used to pass
+  schema validation silently and then deterministically report every `from`-kind doc as
+  missing forever; it's now a `Failure` at `decodeConfig` time, naming the undeclared id
+  and its `rules[i].from`/`rules[i].to` position.
 
 ## Considered Options
 
@@ -53,14 +59,6 @@ alone and would surprise a future reader:
 
 ## Consequences
 
-- A rule referencing a kind id that's never declared (a config typo) doesn't fail loudly at
-  config-validation time — it silently, deterministically reports every `from`-kind doc as
-  missing coverage forever, since nothing can ever satisfy it. The error message does name
-  the literal (typo'd) kind id, so it's discoverable, just not caught up front. A future
-  increment could validate that every `rule.from`/`rule.to` matches a declared `kinds[].id`
-  at config-decode time — not built here, deliberately, to keep this increment's schema
-  surface small (see the design's other repeated theme: ship the minimal core, extend on
-  real demand).
 - Classification is path-glob only in this increment (`KindSelector`'s `by: 'path'`
   variant); `by: 'frontmatter'` is declared in the type (room to add without a breaking
   change) but not implemented — a team whose doc kinds aren't distinguishable by directory

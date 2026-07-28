@@ -196,6 +196,10 @@ with no name, or the same name, are treated as one:
 ]
 ```
 
+Every rule's `from`/`to` must name a kind id declared in `kinds` — config decode rejects a
+typo (e.g. `"decisionn"`) up front, rather than silently, permanently reporting every
+`from`-kind doc as missing coverage because nothing could ever satisfy it.
+
 Reuses the same link-extraction the checks above already do — **no new Markdown syntax to
 author**, just the links you'd write anyway. Current scope, deliberately: classification is
 path-glob only (no frontmatter-based kind selector yet), and coverage is checked by a

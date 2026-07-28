@@ -1,7 +1,7 @@
 # Coverage/orphan check: direct links only, orphan scoped to `to`-kinds — summary
 
-`checks.coverage`'s two non-obvious design points, both found via TDD/adversarial review
-rather than designed up front:
+`checks.coverage`'s non-obvious design points, all found via TDD/adversarial review rather
+than designed up front:
 
 - **Orphan status only applies to a kind that appears as some rule's `to` side.** A
   `from`-only kind (e.g. `feature`, which only initiates relations) is never orphan-checked
@@ -13,8 +13,10 @@ rather than designed up front:
   by `(from, to)` only, which silently collapsed two rules meaning different things on the
   same kind pair (e.g. `implements` vs `verified_by`) into one — a real regression caught by
   adversarial review of the fix itself. The optional `name` field is the discriminant.
+- **A rule referencing an undeclared kind id (a typo) is a loud config-decode `Failure`.**
+  An earlier version of this increment accepted this as a known gap (it would otherwise
+  silently, deterministically report every `from`-kind doc as missing forever); closed by
+  a cross-field schema check.
 
-Consequences accepted for this increment: a rule referencing an undeclared kind id (a typo)
-isn't validated up front — it deterministically reports every `from`-kind doc as missing,
-naming the typo'd id in the message but not catching it at config-decode time. Classification
-is path-glob only; `KindSelector`'s `by: 'frontmatter'` variant is declared but unimplemented.
+Consequences still accepted for this increment: classification is path-glob only;
+`KindSelector`'s `by: 'frontmatter'` variant is declared but unimplemented.

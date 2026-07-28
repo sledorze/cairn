@@ -66,6 +66,14 @@ const CoverageRuleInputSchema = Schema.Struct({
 // Presence of `checks.coverage` itself IS the opt-in — no separate `enabled`
 // flag: an empty `{kinds:[],rules:[]}` is legal but checks nothing, same
 // shape as `roots: []` already means "nothing to scan," not a schema error.
+//
+// Cross-field check: every rule's `from`/`to` must name a declared kind id.
+// Without this, a typo'd kind id (e.g. "decisionn") isn't a schema error —
+// it's a rule that can never be satisfied, silently reporting every
+// `from`-kind doc as missing coverage forever (see docs/adr/0002's
+// Consequences section, which originally documented this as an accepted
+// gap before it was closed here). Caught loudly at decode time instead of
+// discovered by a confused user reading an always-red report.
 const CoverageInputSchema = Schema.Struct({
   exempt: Schema.optionalKey(
     Schema.Array(Schema.String).annotate({
@@ -74,11 +82,29 @@ const CoverageInputSchema = Schema.Struct({
   ),
   kinds: Schema.Array(KindDefInputSchema),
   rules: Schema.Array(CoverageRuleInputSchema),
-}).annotate({
-  description:
-    'Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it.',
-  identifier: 'CairnCoverageConfig',
 })
+  .annotate({
+    description:
+      'Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it.',
+    identifier: 'CairnCoverageConfig',
+  })
+  .pipe(
+    Schema.check(
+      Schema.makeFilter((coverage) => {
+        const declaredIds = new Set(coverage.kinds.map((k) => k.id))
+        const issues: Schema.FilterIssue[] = []
+        coverage.rules.forEach((rule, i) => {
+          if (!declaredIds.has(rule.from)) {
+            issues.push({ issue: `references undeclared kind "${rule.from}"`, path: ['rules', i, 'from'] })
+          }
+          if (!declaredIds.has(rule.to)) {
+            issues.push({ issue: `references undeclared kind "${rule.to}"`, path: ['rules', i, 'to'] })
+          }
+        })
+        return issues
+      }),
+    ),
+  )
 
 const ChecksInputSchema = Schema.Struct({
   coverage: Schema.optionalKey(CoverageInputSchema),
