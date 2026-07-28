@@ -124,6 +124,14 @@ describe('extractHeadingsWithPosition()', () => {
   it('returns an empty array for a document with no headings', () => {
     expect(extractHeadingsWithPosition('just some prose.')).toEqual([])
   })
+
+  // Pre-existing decodeEntities() branches (hex/decimal numeric entities)
+  // this function's slug computation also exercises, but nothing in this
+  // suite previously covered — only the named-entity form (`&amp;`) did.
+  it('decodes numeric and hex HTML entities the same way extractAnchors() does', () => {
+    expect(extractHeadingsWithPosition('# A&#65;B')[0]?.slug).toBe('aab')
+    expect(extractHeadingsWithPosition('# A&#x41;B')[0]?.slug).toBe('aab')
+  })
 })
 
 describe('normalizeAnchor()', () => {

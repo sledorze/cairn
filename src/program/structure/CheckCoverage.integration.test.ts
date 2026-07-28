@@ -1,3 +1,4 @@
+import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -63,5 +64,30 @@ describe('checkCoverage() against the real filesystem (DocsFsLive)', () => {
     expect(result.orphans).toEqual([
       { kinds: ['decision'], path: path.join(p.root, 'decisions/d1.md').split(path.sep).join('/') },
     ])
+  })
+
+  // A file that LISTS fine but can't be READ (permission denied) must not
+  // crash the whole run — same discipline as every sibling check
+  // (CheckLinks.ts, CheckRefs.ts). `makeTestDocsFs`'s in-memory map can't
+  // represent an unreadable-but-listed file, so this needs the real
+  // filesystem. Skipped when running as root (bypasses permission bits
+  // entirely) or on Windows (`chmod` doesn't enforce POSIX bits there).
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+  it.skipIf(!supportsPosixPermissions)('skips an unreadable doc instead of crashing the whole scan', async () => {
+    const p = project('checkcoverage-real-unreadable', {
+      'decisions/d1.md': '# Decision',
+      'features/f1.md': '# Feature\n\n[why](../decisions/d1.md)',
+    })
+    const lockedFile = path.join(p.root, 'features/locked.md')
+    fs.writeFileSync(lockedFile, '# Locked, never readable')
+    fs.chmodSync(lockedFile, 0o000)
+    try {
+      const result = await run(checkCoverage({ base: p.root, kinds: KINDS, roots: [p.root], rules: RULES }))
+      expect(result.checked).toBe(2) // locked.md silently excluded, not crashed on
+      expect(result.missing).toEqual([])
+    } finally {
+      fs.chmodSync(lockedFile, 0o644)
+    }
   })
 })

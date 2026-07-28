@@ -76,6 +76,12 @@ describe('extractDocMetadata()', () => {
     expect(meta.nodes).toEqual([])
   })
 
+  it('excludes a bare same-page anchor link — a position within THIS doc, not a reference to another one', () => {
+    const content = '# Heading\n\nsee [above](#heading)'
+    const meta = extractDocMetadata({ content, kinds: [], path: 'docs/x.md' })
+    expect(meta.nodes).toEqual([{ level: 1, line: 1, slug: 'heading', tag: 'heading', text: 'Heading' }])
+  })
+
   // A heading whose own text contains an inline link is BOTH a heading (for
   // slugging) and a real outbound reference (the link genuinely points
   // somewhere) — both facts are true, so both node kinds are emitted, on

@@ -88,7 +88,12 @@ export const offsetToLine = (starts: readonly number[], offset: number): number 
   let hi = starts.length - 1
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2)
-    if ((starts[mid] ?? 0) <= offset) {
+    // `mid` is always a valid index of `starts` by this loop's own
+    // invariant (0 <= lo <= mid <= hi <= starts.length - 1, and
+    // `lineStarts` always returns at least `[0]`, never empty) — never a
+    // runtime possibility a fallback needs to defend against, same
+    // reasoning as `MarkdownLinks.ts`'s own `linkTarget` helper.
+    if ((starts[mid] as number) <= offset) {
       lo = mid
     } else {
       hi = mid - 1

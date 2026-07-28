@@ -99,6 +99,14 @@ export const checkCoverage = ({
     const dfs = yield* DocsFs
     const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
 
+    // Deduped by (from, to) — found via adversarial review: an accidentally
+    // (or programmatically) duplicated rule entry used to produce a
+    // duplicate `missing` report line for the exact same violation, pure
+    // noise for a reader. A genuine duplicate rule carries no extra
+    // information over a single one, so it's collapsed here, once, rather
+    // than every downstream consumer needing to know rules can repeat.
+    const uniqueRules = [...new Map(rules.map((r) => [`${r.from}\u0000${r.to}`, r])).values()]
+
     const allDocs = []
     for (const file of mdFiles) {
       // Same discipline as every sibling check: a file that lists fine but
@@ -130,7 +138,7 @@ export const checkCoverage = ({
         continue
       }
       const fromDir = path.dirname(doc.path)
-      for (const rule of rules) {
+      for (const rule of uniqueRules) {
         if (!doc.kinds.includes(rule.from)) {
           continue
         }
@@ -154,7 +162,7 @@ export const checkCoverage = ({
     // `from`-only kind (e.g. "feature," which only initiates relations)
     // would otherwise be flagged just for existing, which isn't what
     // "orphan" means in any of the tools/standards this check is modeled on.
-    const orphanCandidateKinds = new Set(rules.map((r) => r.to))
+    const orphanCandidateKinds = new Set(uniqueRules.map((r) => r.to))
     const orphans: OrphanDoc[] = []
     for (const doc of docs) {
       if (matchesAny(doc.path, exempt)) {
