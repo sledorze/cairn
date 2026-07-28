@@ -44,6 +44,19 @@ const KindDefInputSchema = Schema.Struct({
 
 const CoverageRuleInputSchema = Schema.Struct({
   from: Schema.String,
+  // Optional discriminant, not just documentation: two rules sharing the
+  // same (from, to) pair but different meanings (e.g. issue #28's own
+  // `implements` vs `verified_by` between the same two kinds) are DISTINCT
+  // obligations, not the same rule twice — `name` is what tells them apart
+  // for deduplication (../program/structure/CheckCoverage.ts) and in report
+  // output. Two rules on the same pair with no name (or the same name)
+  // still dedupe as one — there'd be no way to tell them apart otherwise.
+  name: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        'Distinguishes this rule from another sharing the same from/to pair (e.g. "implements" vs "verified_by"). Two rules on the same pair with no name, or the same name, are treated as one.',
+    }),
+  ),
   to: Schema.String,
 }).annotate({
   description: 'Every doc of kind `from` must link somewhere to a doc of kind `to`.',
@@ -164,6 +177,9 @@ export type CairnConfigInput = Schema.Schema.Type<typeof CairnConfigSchema>
 
 export interface CoverageRule {
   readonly from: string
+  /** Distinguishes this rule from another sharing the same `from`/`to` pair
+   * but a different meaning — see `CoverageRuleInputSchema`'s own comment. */
+  readonly name?: string
   readonly to: string
 }
 

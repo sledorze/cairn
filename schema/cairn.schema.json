@@ -16,7 +16,14 @@
     },
     "CairnCoverageRule": {
       "type": "object",
-      "properties": { "from": { "type": "string" }, "to": { "type": "string" } },
+      "properties": {
+        "from": { "type": "string" },
+        "name": {
+          "type": "string",
+          "description": "Distinguishes this rule from another sharing the same from/to pair (e.g. \"implements\" vs \"verified_by\"). Two rules on the same pair with no name, or the same name, are treated as one."
+        },
+        "to": { "type": "string" }
+      },
       "required": ["from", "to"],
       "additionalProperties": false,
       "description": "Every doc of kind `from` must link somewhere to a doc of kind `to`."

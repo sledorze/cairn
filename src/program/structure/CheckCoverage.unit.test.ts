@@ -223,6 +223,60 @@ describe('checkCoverage()', () => {
     ])
   })
 
+  // Real gap found via adversarial review: my own (from, to)-only dedup fix
+  // (see the test above) silently collapsed two rules sharing a kind pair
+  // but meaning DIFFERENT things — e.g. issue #28's own worked example,
+  // "spec implements decision" and "spec verified_by decision," are
+  // distinct obligations, not the same rule twice. `name` (optional)
+  // discriminates them; two UNNAMED rules on the same pair still dedupe
+  // (that case has no way to express "these are different"), but a NAMED
+  // rule is never collapsed with anything but an identically-named one.
+  it('treats two rules on the SAME kind pair but with DIFFERENT names as distinct obligations, both reported', async () => {
+    const layer = makeTestDocsFs({
+      '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },
+      '/r/specs/s1.md': { content: '# Spec, no links at all', mtimeMs: 1 },
+    })
+    const kinds = [
+      { id: 'spec', select: { by: 'path' as const, glob: '/r/specs/**' } },
+      { id: 'decision', select: { by: 'path' as const, glob: '/r/decisions/**' } },
+    ]
+    const result = await Effect.runPromise(
+      checkCoverage({
+        base: '/r',
+        kinds,
+        roots: ['/r'],
+        rules: [
+          { from: 'spec', name: 'implements', to: 'decision' },
+          { from: 'spec', name: 'verified_by', to: 'decision' },
+        ],
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(result.missing).toEqual([
+      { path: '/r/specs/s1.md', rule: { from: 'spec', name: 'implements', to: 'decision' } },
+      { path: '/r/specs/s1.md', rule: { from: 'spec', name: 'verified_by', to: 'decision' } },
+    ])
+  })
+
+  it('still dedupes two IDENTICALLY (or both un-)named rules on the same kind pair', async () => {
+    const layer = makeTestDocsFs({
+      '/r/features/f1.md': { content: '# Feature, no links', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkCoverage({
+        base: '/r',
+        kinds: KINDS,
+        roots: ['/r'],
+        rules: [
+          { from: 'feature', name: 'cites', to: 'decision' },
+          { from: 'feature', name: 'cites', to: 'decision' },
+        ],
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(result.missing).toEqual([
+      { path: '/r/features/f1.md', rule: { from: 'feature', name: 'cites', to: 'decision' } },
+    ])
+  })
+
   // Adversarial finding: a chain of rules (feature -> decision -> spec) —
   // 'decision' is BOTH a rule.to (orphan-checkable) AND a rule.from (must
   // itself satisfy its own outbound rule). No special-casing needed; this
@@ -326,6 +380,28 @@ describe('formatCoverageReport()', () => {
       '❌ 1 orphan doc(s) — no inbound reference from anywhere in the corpus:',
       '  /r/decisions/d1.md (decision)',
     ])
+  })
+
+  it('includes the rule name, quoted, when the missing rule has one', () => {
+    const lines = formatCoverageReport({
+      checked: 1,
+      missing: [{ path: '/r/specs/s1.md', rule: { from: 'spec', name: 'implements', to: 'decision' } }],
+      orphans: [],
+    })
+    expect(lines).toEqual([
+      '❌ 1 doc(s) missing required coverage:',
+      '  /r/specs/s1.md',
+      '    ✗ no link ("implements") to a "decision"-kind doc (required by kind "spec")',
+    ])
+  })
+
+  it('omits the name suffix entirely when the missing rule has none, not an empty pair of parens', () => {
+    const lines = formatCoverageReport({
+      checked: 1,
+      missing: [{ path: '/r/specs/s1.md', rule: { from: 'spec', to: 'decision' } }],
+      orphans: [],
+    })
+    expect(lines).toContain('    ✗ no link to a "decision"-kind doc (required by kind "spec")')
   })
 
   it('joins multiple kinds with ", " on an orphan finding — distinguishes from a bare concatenation', () => {

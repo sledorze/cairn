@@ -99,13 +99,18 @@ export const checkCoverage = ({
     const dfs = yield* DocsFs
     const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
 
-    // Deduped by (from, to) — found via adversarial review: an accidentally
-    // (or programmatically) duplicated rule entry used to produce a
-    // duplicate `missing` report line for the exact same violation, pure
-    // noise for a reader. A genuine duplicate rule carries no extra
-    // information over a single one, so it's collapsed here, once, rather
-    // than every downstream consumer needing to know rules can repeat.
-    const uniqueRules = [...new Map(rules.map((r) => [`${r.from}\u0000${r.to}`, r])).values()]
+    // Deduped by (name, from, to) — found via adversarial review, in two
+    // rounds. Round 1: an accidentally (or programmatically) duplicated
+    // rule entry produced a duplicate `missing` report line for the exact
+    // same violation, pure noise. Round 2 (a real regression the first fix
+    // introduced): deduping by (from, to) ALONE silently collapsed two
+    // rules sharing a kind pair but meaning DIFFERENT things — e.g. issue
+    // #28's own `implements` vs `verified_by` between the same two kinds —
+    // into one, losing a genuine distinct obligation. `name` (optional)
+    // is the discriminant: two rules with the same (or no) name on the
+    // same pair still dedupe as one (nothing to tell them apart), but a
+    // named rule is never collapsed with a differently-named one.
+    const uniqueRules = [...new Map(rules.map((r) => [`${r.name ?? ''}\u0000${r.from}\u0000${r.to}`, r])).values()]
 
     const allDocs = []
     for (const file of mdFiles) {
@@ -204,11 +209,15 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       }),
     )
     for (const { path: p, rule } of result.missing) {
+      // The rule's `name`, when set, disambiguates which obligation this is
+      // — two rules can share a (from, to) pair (see CoverageRule's own
+      // comment) and would otherwise be indistinguishable in the report.
+      const named = rule.name === undefined ? '' : ` ("${rule.name}")`
       lines.push(
         `  ${p}`,
         pick(locale, {
-          en: `    ✗ no link to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
-          fr: `    ✗ aucun lien vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
+          en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
+          fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
         }),
       )
     }

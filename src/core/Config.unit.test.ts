@@ -65,6 +65,15 @@ describe('decodeConfig()', () => {
     expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
   })
 
+  it('decodes a rule’s optional `name` — the discriminant for two rules sharing a kind pair', () => {
+    const raw = {
+      checks: {
+        coverage: { kinds: [], rules: [{ from: 'spec', name: 'implements', to: 'decision' }] },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
   it('returns a Failure on an unknown key inside `checks.coverage` or a kind selector', () => {
     expect(Result.isFailure(decodeConfig({ checks: { coverage: { kinds: [], rulez: [] } } }))).toBeTruthy()
     expect(
