@@ -183,8 +183,15 @@ summary links to every child") — is one-directional and real, not a cycle.
      `cli.integration.test.ts` (real-subprocess, spawns the actual CLI) locks in the two
      most fragile behaviors the `checks/` registry (docs/adr/0003) touches directly (the
      `--json` incompatibility gate, the `--refs --stamp`/summaries-`--stamp`
-     co-occurrence and ordering) as permanent regression checks, without attempting
-     exhaustive `cli.ts` coverage — that job still belongs to manual dogfooding.
+     co-occurrence and ordering) as permanent regression checks. It also self-enforces a
+     narrower but real completeness guarantee: every flag `--help` documents must be
+     exercised by name somewhere in that file, or its own test fails — closing the exact
+     "a flag reaches cli.ts but nothing proves the wiring, ever" gap that let `--fix`,
+     `--prune`, `--explain`, `--migrate-stamps`, `--links-only`, `--config`, `--threshold`,
+     `--locale`, `--root`, and `init`'s `--agent` go untested at the CLI level despite most
+     having solid program-level coverage. Exhaustive coverage of every flag COMBINATION and
+     edge case still belongs to manual dogfooding — this only guarantees each flag has at
+     least one real, behavior-asserting exercise.
    - [`init/`](../src/init/) — scaffold agent guidance from a single convention body.
 
 Deliberately outside this layering: [`testSupport/`](../src/testSupport/) is

@@ -7,14 +7,25 @@
 // converted into a permanent regression check — exactly the "a bug you
 // found by hand and fixed, with no test added, is a bug that can silently
 // come back" gap this repo's own docs-summaries.md convention warns about
-// for a different case. This file doesn't attempt exhaustive coverage of
-// cli.ts (that's still real subprocess dogfooding's job) — it locks in the
-// two most fragile, most likely-to-silently-regress behaviors the
-// check-plugin-registry refactor (docs/adr/0003) touches directly: the
-// `--json` incompatibility gate and its ordering (all 3 plugins that
-// declare one), and the `--refs --stamp` + summaries `--stamp`
-// co-occurrence (two independent stamp operations that must both fire from
-// a single flag, in a fixed order).
+// for a different case. Two describe blocks are the deepest, most
+// fragile-by-design behaviors the check-plugin-registry refactor
+// (docs/adr/0003) touches directly: the `--json` incompatibility gate and
+// its ordering (all 3 plugins that declare one), and the `--refs --stamp` +
+// summaries `--stamp` co-occurrence (two independent stamp operations that
+// must both fire from a single flag, in a fixed order).
+//
+// This file does NOT attempt exhaustive coverage of every flag
+// COMBINATION or edge case — that's still real subprocess dogfooding's
+// job. What it does guarantee, self-enforced by its own "every documented
+// flag is exercised by name" test: every flag `--help` documents has AT
+// LEAST ONE real-subprocess test proving its argv-to-behavior wiring
+// actually works, not just that the function it calls has a test
+// somewhere else. A flag added to cli.ts with no matching test here now
+// fails CI instead of silently joining the same gap (found the hard way:
+// audited this file against `--help`'s own flag list and found 10 flags,
+// including `--fix` and `--migrate-stamps` — both with solid
+// program-level test coverage — that had never once been exercised
+// through the actual CLI).
 //
 // Runs `node_modules/.bin/tsx` directly, not `npx tsx` — `npx` adds its own
 // resolve-and-delegate step on top of `tsx`'s already-real transpile cost;

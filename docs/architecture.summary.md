@@ -60,7 +60,8 @@ Separation of concerns: pure decisions, IO at the edges.
   `core/Config`, expands root globs), `cli.ts` (excluded from coverage, historically
   dogfooded via real subprocess only — `cli.integration.test.ts` now locks in its two
   most fragile checks-registry behaviors as permanent, automated real-subprocess tests,
-  without attempting exhaustive coverage), `init/`.
+  plus a self-enforced completeness guard that every documented flag is exercised by
+  name; exhaustive flag-COMBINATION coverage still isn't attempted), `init/`.
 - **`testSupport/`** (test-only, excluded from the published build): real-temp-directory
   fixture helper shared by `*.integration.test.ts` files — not a runtime layer.
 - **Content hash, not mtime, tracked outside your docs**: git drops mtimes, so
