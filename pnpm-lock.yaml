@@ -15,8 +15,8 @@ importers:
         specifier: 4.0.0-beta.100
         version: 4.0.0-beta.100(effect@4.0.0-beta.102)(ioredis@5.11.1)
       '@effect/vitest':
-        specifier: 4.0.0-beta.100
-        version: 4.0.0-beta.100(effect@4.0.0-beta.102)(vitest@4.1.10)
+        specifier: 4.0.0-beta.102
+        version: 4.0.0-beta.102(effect@4.0.0-beta.102)(vitest@4.1.10)
       '@stryker-mutator/core':
         specifier: 9.6.1
         version: 9.6.1(@types/node@26.1.2)
@@ -288,10 +288,10 @@ packages:
       effect: ^4.0.0-beta.100
       ioredis: ^5.7.0
 
-  '@effect/vitest@4.0.0-beta.100':
-    resolution: {integrity: sha512-WoxrzPuxc+4QXb+7D1j8PwaBb9zVxHM2yw0sDz7fXij1Sx7X7T6LkYJ7m2xzWbfskIXxIdXVA+NnDSF8qAOGsw==}
+  '@effect/vitest@4.0.0-beta.102':
+    resolution: {integrity: sha512-4dipFAYG6imOzrY3zy3BgzCJkbb9xESyzUef0WSx8bsK0/SpITqbJpdwKeOyDWLZ+rimjua8IbTFMAde865pIQ==}
     peerDependencies:
-      effect: ^4.0.0-beta.100
+      effect: ^4.0.0-beta.102
       vitest: ^3.0.0 || ^4.0.0
 
   '@emnapi/core@1.11.1':
@@ -2576,7 +2576,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/vitest@4.0.0-beta.100(effect@4.0.0-beta.102)(vitest@4.1.10)':
+  '@effect/vitest@4.0.0-beta.102(effect@4.0.0-beta.102)(vitest@4.1.10)':
     dependencies:
       effect: 4.0.0-beta.102
       vitest: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(vite@8.1.4(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.23.1)(yaml@2.9.0))
