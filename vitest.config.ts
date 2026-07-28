@@ -29,9 +29,9 @@ export default defineConfig({
       thresholds: {
         autoUpdate: true,
         branches: 89.18,
-        functions: 98.69,
-        lines: 99.02,
-        statements: 98.87,
+        functions: 98.7,
+        lines: 99.03,
+        statements: 98.88,
       },
     },
     include: ['src/**/*.test.ts'],

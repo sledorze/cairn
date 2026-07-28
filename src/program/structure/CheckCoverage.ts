@@ -29,19 +29,16 @@
 // `CheckRefs.ts`/`CheckProseRefs.ts` wiring precedent otherwise — its own
 // exit code, `Math.max`'d into the overall one — just without their CLI flag.
 
-import * as nodePath from 'node:path'
-
 import { Effect } from 'effect'
 
 import type { CoverageRule, KindDef } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
+import { resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
 import { DocsFs } from '../../io/DocsFs.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
-
-const path = nodePath.posix
 
 export interface CheckCoverageArgs {
   readonly base: string
@@ -161,30 +158,16 @@ export const checkCoverage = ({
     // an unclassified doc (kinds: []) has nothing this check can say about
     // it, same as a doc `ignore`'d out of every other check.
     const docs = allDocs.filter((d) => d.kinds.length > 0)
-    const docsByPath = new Map(docs.map((d) => [d.path, d]))
 
-    const missing: MissingCoverage[] = []
-    for (const doc of docs) {
-      if (matchesAny(doc.path, exempt)) {
-        continue
-      }
-      const fromDir = path.dirname(doc.path)
-      for (const rule of uniqueRules) {
-        if (!doc.kinds.includes(rule.from)) {
-          continue
-        }
-        const satisfied = doc.nodes.some((node) => {
-          if (node.tag !== 'ref') {
-            return false
-          }
-          const targetDoc = docsByPath.get(path.resolve(fromDir, node.target))
-          return targetDoc !== undefined && targetDoc.kinds.includes(rule.to)
-        })
-        if (!satisfied) {
-          missing.push({ path: doc.path, rule })
-        }
-      }
-    }
+    // Resolution itself (kind matching, path resolution, `exempt`) lives in
+    // ../../core/structure/Coverage.ts's `resolveRuleEdges` — pulled out so
+    // a future consumer (e.g. a stale-coverage-link freshness check) reuses
+    // the exact same logic instead of re-deriving it as a second, divergent
+    // copy. `missing` here is just "which edges had zero satisfying refs."
+    const edges = resolveRuleEdges({ docs, exempt, rules: uniqueRules })
+    const missing: MissingCoverage[] = edges
+      .filter((e) => e.satisfiedBy.length === 0)
+      .map((e) => ({ path: e.doc, rule: e.rule }))
 
     // Orphan status only applies to a kind that's actually SUPPOSED to be
     // referenced — a rule's `to` side (matches the real-world "orphan
