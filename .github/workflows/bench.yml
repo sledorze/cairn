@@ -19,8 +19,30 @@ name: Bench
 # ("bench") to be added to the repo's branch protection required status checks
 # (currently only "build-test" is required). That's a separate, explicit repo-settings
 # change, not bundled into this workflow file.
+#
+# Manual-only (workflow_dispatch), not `on: pull_request` — explicit request: this
+# job builds+benches TWO full checkouts (base and head) on every PR, which costs real
+# GitHub Actions runner minutes for a check the local pre-push hook
+# (scripts/bench-guard.sh, same comparison logic) already runs for free on the
+# contributor's own machine before every push. Run this manually (Actions tab ->
+# "Bench" -> "Run workflow") when you specifically want CI's independent
+# confirmation, e.g. before merging a PR whose author skipped the local hook — pass
+# the PR's head branch/SHA as `head_ref`; `base_ref` defaults to `main`. Explicit
+# inputs, not `github.event.pull_request.*`: that context is only populated on a
+# real `pull_request` event, empty on `workflow_dispatch` — using it here unchanged
+# would have shipped a manual trigger that fails the instant anyone actually ran it.
 on:
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        default: main
+        description: 'Base ref to compare against (branch, tag, or SHA)'
+        required: false
+        type: string
+      head_ref:
+        description: "Head ref to bench (branch, tag, or SHA) — typically a PR's head branch"
+        required: true
+        type: string
 
 jobs:
   bench:
@@ -29,12 +51,12 @@ jobs:
       - name: Checkout base ref
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ inputs.base_ref }}
           path: base
       - name: Checkout head ref
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ inputs.head_ref }}
           path: head
       # Explicit version, not autodetected from a root package.json's `packageManager`
       # field: base/ and head/ are checked out into subdirectories (needed so both
@@ -62,18 +84,22 @@ jobs:
       # (see that script) is what actually judges whether an empty/partial comparison
       # is acceptable — this step just has to not crash the job outright either way.
       #
-      # Also builds each ref and times the ACTUAL dist/cli.js (scripts/bench-cli-startup.ts,
-      # appended into the same report) — src/core/*.bench.ts alone only exercises
-      # source-level functions via vitest's own esbuild transform, never the real
-      # tsc + esbuild-bundle build toolchain, so a regression introduced there (e.g. a
-      # `typescript` or `esbuild` devDependency bump) would otherwise be invisible to
-      # this gate. Confirmed directly: `bench` reported clean on a TypeScript major-
-      # version-bump PR despite never invoking tsc.
+      # Also builds each ref and times the ACTUAL dist/cli.js — scripts/bench-cli-startup.ts
+      # (process/module-loading startup only) and scripts/bench-cli-check.ts (a real
+      # `check` run against a realistic fixture, the one thing that actually exercises
+      # the CheckPlugin registry dispatch — see that script's own header for why none
+      # of src/core/*.bench.ts or CheckSummaries.bench.ts do), both appended into the
+      # same report — src/core/*.bench.ts alone only exercises source-level functions
+      # via vitest's own esbuild transform, never the real tsc + esbuild-bundle build
+      # toolchain, so a regression introduced there (e.g. a `typescript` or `esbuild`
+      # devDependency bump) would otherwise be invisible to this gate. Confirmed
+      # directly: `bench` reported clean on a TypeScript major-version-bump PR despite
+      # never invoking tsc.
       #
-      # base/ won't have bench-cli-startup.ts yet in the PR that introduces it (same
+      # base/ won't have these scripts yet in the PR that introduces each (same
       # bootstrapping situation as the *.bench.ts files) — both timings use head's copy
-      # of the script (already the pattern for the final assert step below), invoked
-      # from each ref's own directory so dist/cli.js resolves to that ref's own build.
+      # (already the pattern for the final assert step below), invoked from each ref's
+      # own directory so dist/cli.js resolves to that ref's own build.
       - name: Bench base ref
         working-directory: base
         run: |
@@ -82,6 +108,7 @@ jobs:
           test -f "$RUNNER_TEMP/before.json" || { echo "vitest bench produced no report for the base ref"; exit 1; }
           pnpm build
           pnpm exec tsx ../head/scripts/bench-cli-startup.ts "$RUNNER_TEMP/before.json"
+          pnpm exec tsx ../head/scripts/bench-cli-check.ts "$RUNNER_TEMP/before.json"
       - name: Bench head ref
         working-directory: head
         run: |
@@ -90,6 +117,7 @@ jobs:
           test -f "$RUNNER_TEMP/after.json" || { echo "vitest bench produced no report for the head ref"; exit 1; }
           pnpm build
           pnpm exec tsx scripts/bench-cli-startup.ts "$RUNNER_TEMP/after.json"
+          pnpm exec tsx scripts/bench-cli-check.ts "$RUNNER_TEMP/after.json"
       - name: Assert no regression
         working-directory: head
         run: pnpm exec tsx scripts/bench-assert.ts "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json"
