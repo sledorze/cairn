@@ -4,7 +4,7 @@ import { describe, expect, it, test } from 'vitest'
 import { DEFAULT_CONFIG } from '../../core/Config.ts'
 import { makeTestDocsFs } from '../../io/DocsFs.ts'
 import type { CheckCliFlags } from '../checks/CheckPlugin.ts'
-import { refsPlugin } from './CheckRefs.ts'
+import { formatRefsReport, refsPlugin } from './CheckRefs.ts'
 
 const CLI: CheckCliFlags = {
   fix: false,
@@ -32,6 +32,40 @@ test('refsPlugin.jsonUnsupportedMessage matches cli.ts’s exact prior message',
 
 test('refsPlugin.name is "refs"', () => {
   expect(refsPlugin.name).toBe('refs')
+})
+
+test('refsPlugin.format() delegates to formatRefsReport()', () => {
+  const result = { checked: 1, stale: [] }
+  expect(refsPlugin.format(result, { locale: 'en' })).toEqual(formatRefsReport(result, { locale: 'en' }))
+})
+
+describe('refsPlugin.run()', () => {
+  it('reaches checkRefs with roots/ignore wired through, no trackedFiles', async () => {
+    const layer = makeTestDocsFs({ '/r/a.md': { content: '# A', mtimeMs: 1 } })
+    const result = await Effect.runPromise(
+      refsPlugin
+        .run({ base: '/r', cli: CLI, ignore: [], resolved: DEFAULT_CONFIG, roots: ['/r'] })
+        .pipe(Effect.provide(layer)),
+    )
+    expect(result.checked).toBe(0) // nothing ever stamped, so nothing to compare — real wiring, not a stub
+  })
+
+  it('reaches checkRefs with trackedFiles narrowing the scanned universe', async () => {
+    const layer = makeTestDocsFs({ '/r/a.md': { content: '# A', mtimeMs: 1 } })
+    const result = await Effect.runPromise(
+      refsPlugin
+        .run({
+          base: '/r',
+          cli: CLI,
+          ignore: [],
+          resolved: DEFAULT_CONFIG,
+          roots: ['/r'],
+          trackedFiles: new Set(['/r/a.md']),
+        })
+        .pipe(Effect.provide(layer)),
+    )
+    expect(result.checked).toBe(0)
+  })
 })
 
 describe('refsPlugin.stamp()', () => {

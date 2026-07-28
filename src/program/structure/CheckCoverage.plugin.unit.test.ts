@@ -4,7 +4,7 @@ import { describe, expect, it, test } from 'vitest'
 import { DEFAULT_CONFIG } from '../../core/Config.ts'
 import { makeTestDocsFs } from '../../io/DocsFs.ts'
 import type { CheckCliFlags } from '../checks/CheckPlugin.ts'
-import { coveragePlugin } from './CheckCoverage.ts'
+import { coveragePlugin, formatCoverageReport } from './CheckCoverage.ts'
 
 const CLI: CheckCliFlags = {
   fix: false,
@@ -38,6 +38,11 @@ test('coveragePlugin.name is "coverage"', () => {
   expect(coveragePlugin.name).toBe('coverage')
 })
 
+test('coveragePlugin.format() delegates to formatCoverageReport()', () => {
+  const result = { checked: 1, missing: [], orphans: [], unmatchedKinds: [] }
+  expect(coveragePlugin.format(result, { locale: 'en' })).toEqual(formatCoverageReport(result, { locale: 'en' }))
+})
+
 test('coveragePlugin has no stamp capability', () => {
   expect(coveragePlugin.stamp).toBeUndefined()
 })
@@ -69,4 +74,28 @@ test('coveragePlugin.run() actually reaches checkCoverage with the resolved kind
     coveragePlugin.run({ base: '/r', cli: CLI, ignore: [], resolved, roots: ['/r'] }).pipe(Effect.provide(layer)),
   )
   expect(result.missing).toEqual([{ path: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' } }])
+})
+
+test('coveragePlugin.run() also reaches checkCoverage with trackedFiles narrowing the scanned universe', async () => {
+  const layer = makeTestDocsFs({
+    '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },
+    '/r/features/f1.md': { content: '# Feature, no links', mtimeMs: 1 },
+  })
+  const resolved = {
+    ...DEFAULT_CONFIG,
+    checks: {
+      ...DEFAULT_CONFIG.checks,
+      coverage: {
+        exempt: [],
+        kinds: [{ id: 'feature', select: { by: 'path' as const, glob: '/r/features/**' } }],
+        rules: [],
+      },
+    },
+  }
+  const result = await Effect.runPromise(
+    coveragePlugin
+      .run({ base: '/r', cli: CLI, ignore: [], resolved, roots: ['/r'], trackedFiles: new Set(['/r/features/f1.md']) })
+      .pipe(Effect.provide(layer)),
+  )
+  expect(result.checked).toBe(1)
 })
