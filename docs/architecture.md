@@ -68,6 +68,22 @@ summary links to every child") — is one-directional and real, not a cycle.
        `program/links/CheckProseRefs.ts` checking. Existence/security is
        deliberately NOT here (needs IO, and reuses `paths.ts`'s
        `isWithinBase` — the same boundary #39/#40 already established).
+   - **[`structure/`](../src/core/structure/)** — the doc-kind/coverage-graph
+     domain (`checks.coverage`, docs/adr/0002, docs/adr/0003).
+     - [`DocMetadata.ts`](../src/core/structure/DocMetadata.ts) — kind
+       classification by path glob (`KindSelector`) and one ordered sequence
+       of tagged `heading`/`ref` nodes per doc (`extractDocMetadata`),
+       reusing `links/Anchors.ts` and `links/MarkdownLinks.ts`'s own
+       position-aware extraction.
+     - [`DocGraph.ts`](../src/core/structure/DocGraph.ts) — the corpus-wide
+       inbound-reference graph (`buildDocGraph`), a `Bag` (never positionally
+       meaningful), for orphan detection.
+     - [`Coverage.ts`](../src/core/structure/Coverage.ts) — `resolveRuleEdges`:
+       pure rule-satisfaction resolution over already-classified docs,
+       extracted out of `program/structure/CheckCoverage.ts` so a future
+       consumer (e.g. a stale-coverage-link freshness check) reuses the exact
+       same kind-matching/path-resolution/`exempt` logic instead of
+       re-deriving it (docs/adr/0003's own rationale).
    - **Shared by both domains** (top-level `core/`, not inside either
      subdirectory — genuinely used by both, verified by import graph, not
      assumed): [`sidecar.ts`](../src/core/sidecar.ts) (the `.cairn/**` path
@@ -115,6 +131,15 @@ summary links to every child") — is one-directional and real, not a cycle.
      in-memory-double convention.
 
 3. **[`program/`](../src/program/) — Effect programs that orchestrate IO around the pure core.**
+   - **[`checks/`](../src/program/checks/)** — the `CheckPlugin` abstraction
+     (docs/adr/0003): `isEnabled`/`run`/`format`/`exitCode`, optional
+     `jsonUnsupportedMessage`/`stamp`, plus the generic
+     `runCheckPlugin`/`rejectedJsonMessage` runner `cli.ts` drives every
+     migrated check through. `links`/`refs`/`proseRefs`/`coverage` each
+     export a plugin descriptor from their own file (below); `summaries`
+     deliberately stays OUTSIDE this abstraction — see `CheckPlugin.ts`'s own
+     header for why (four CLI verbs — check/stamp/prune/migrate-stamps —
+     that don't fit `run`/`format`/`exitCode`).
    - **[`summaries/`](../src/program/summaries/)**
      - [`CheckSummaries.ts`](../src/program/summaries/CheckSummaries.ts) —
        compute the plan; read/write the `.cairn/**` sidecar tree; stamp
@@ -135,9 +160,16 @@ summary links to every child") — is one-directional and real, not a cycle.
        permanent second checker — a resolving citation is always silent;
        only a genuinely drifted one is reported, with the exact
        `[text](path)` syntax that would make it structurally checkable.
-   - **Shared by both**: [`JsonReport.ts`](../src/program/JsonReport.ts)
+   - **[`structure/`](../src/program/structure/)**
+     - [`CheckCoverage.ts`](../src/program/structure/CheckCoverage.ts) — the
+       first check built on `core/structure/`: opt-in (`checks.coverage`'s
+       mere presence, no CLI flag) missing-coverage/orphan/unmatched-kind
+       reporting over a declared doc-kind graph (docs/adr/0002).
+   - **Shared by more than one domain**: [`JsonReport.ts`](../src/program/JsonReport.ts)
      (combines a links/summaries run into the single
-     `{ summaries, links, exitCode }` shape `--json` prints),
+     `{ summaries, links, exitCode }` shape `--json` prints — only these two
+     checks participate; `refs`/`proseRefs`/`coverage` all reject `--json`
+     outright, via their plugin descriptor's `jsonUnsupportedMessage`),
      [`locale.ts`](../src/program/locale.ts) (report localisation, English
      default, French mirror).
 
