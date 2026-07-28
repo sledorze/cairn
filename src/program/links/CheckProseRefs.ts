@@ -24,6 +24,7 @@ import { extractProseRefs } from '../../core/links/ProseRefs.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { isWithinBase } from '../../core/paths.ts'
 import { DocsFs } from '../../io/DocsFs.ts'
+import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import { withAncestors } from './CheckLinks.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -203,4 +204,19 @@ export const formatProseRefsReport = (result: ProseRefsResult, options: ProseRef
     }
   }
   return lines
+}
+
+// The CheckPlugin descriptor cli.ts's registry runner drives — see
+// ../checks/CheckPlugin.ts's own header for why this abstraction exists.
+// `isEnabled` matches cli.ts's exact prior gate: `parsed.prose` (no config
+// field of its own, CLI-flag opt-in only, same as `refs`). No `stamp` — this
+// check has no write-time verb at all, unlike `refs`.
+export const proseRefsPlugin: CheckPlugin<ProseRefsResult> = {
+  exitCode: proseRefsExitCode,
+  format: (result, options) => formatProseRefsReport(result, options),
+  isEnabled: (_resolved, cli) => cli.prose,
+  jsonUnsupportedMessage: '--json cannot be combined with --prose-refs yet',
+  name: 'proseRefs',
+  run: ({ base, ignore, roots, trackedFiles }) =>
+    checkProseRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) }),
 }
