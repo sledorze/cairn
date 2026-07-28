@@ -168,6 +168,19 @@ describe('loadConfig()', () => {
     expect(loadConfig(cwd).checks.coverage).toBeNull()
   })
 
+  // Adversarial finding: every other `checks.coverage: false` test exercises
+  // it ONLY in combination with an `extends` preset that first enables
+  // coverage — the plain top-level case (no `extends` at all) was verified
+  // correct by code inspection (DEFAULT_CONFIG.checks.coverage is already
+  // `null`, so this converges with the "never enabled" case either way) but
+  // left untested, a real gap a future edit to layerConfig's three-way
+  // check could regress silently.
+  it('resolves `checks.coverage: false` to null with no `extends` involved at all', () => {
+    const cwd = mkTmp('cairn-coverage-disable-no-extends-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { coverage: false } }))
+    expect(loadConfig(cwd).checks.coverage).toBeNull()
+  })
+
   it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', () => {
     const cwd = mkTmp('cairn-extends-diamond-')
     fs.writeFileSync(path.join(cwd, 'shared.cairnrc.json'), JSON.stringify({ locale: 'fr' }))
