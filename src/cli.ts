@@ -277,11 +277,18 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   }
 
   const linksOutcome = yield* runCheckPlugin(linksPlugin, pluginArgs)
-  linksResult = linksOutcome.result
-  if (linksOutcome.lines.length > 0) {
-    yield* Console.log(linksOutcome.lines.join('\n'))
+  if (linksOutcome.ran) {
+    // `buildJsonReport` (below) treats `linksResult === null` as "the links
+    // check didn't run" — a real, established `X | null` "skipped" sentinel
+    // at THIS specific boundary (matches `summariesResult`'s own convention
+    // just above), not the ambiguous one `runCheckPlugin`'s own return type
+    // no longer has.
+    linksResult = linksOutcome.result
+    if (linksOutcome.lines.length > 0) {
+      yield* Console.log(linksOutcome.lines.join('\n'))
+    }
+    code = Math.max(code, linksOutcome.code)
   }
-  code = Math.max(code, linksOutcome.code)
 
   if (config.checks.summaries && !parsed.linksOnly) {
     if (parsed.prune) {
@@ -356,24 +363,30 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
       yield* Console.log(lines.join('\n'))
     } else {
       const outcome = yield* runCheckPlugin(refsPlugin, pluginArgs)
-      if (outcome.lines.length > 0) {
-        yield* Console.log(outcome.lines.join('\n'))
+      if (outcome.ran) {
+        if (outcome.lines.length > 0) {
+          yield* Console.log(outcome.lines.join('\n'))
+        }
+        code = Math.max(code, outcome.code)
       }
-      code = Math.max(code, outcome.code)
     }
   }
 
   const proseOutcome = yield* runCheckPlugin(proseRefsPlugin, pluginArgs)
-  if (proseOutcome.lines.length > 0) {
-    yield* Console.log(proseOutcome.lines.join('\n'))
+  if (proseOutcome.ran) {
+    if (proseOutcome.lines.length > 0) {
+      yield* Console.log(proseOutcome.lines.join('\n'))
+    }
+    code = Math.max(code, proseOutcome.code)
   }
-  code = Math.max(code, proseOutcome.code)
 
   const coverageOutcome = yield* runCheckPlugin(coveragePlugin, pluginArgs)
-  if (coverageOutcome.lines.length > 0) {
-    yield* Console.log(coverageOutcome.lines.join('\n'))
+  if (coverageOutcome.ran) {
+    if (coverageOutcome.lines.length > 0) {
+      yield* Console.log(coverageOutcome.lines.join('\n'))
+    }
+    code = Math.max(code, coverageOutcome.code)
   }
-  code = Math.max(code, coverageOutcome.code)
 
   if (parsed.json) {
     const report = buildJsonReport({ links: linksResult, summaries: summariesResult })

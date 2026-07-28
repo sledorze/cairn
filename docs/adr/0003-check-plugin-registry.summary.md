@@ -18,9 +18,9 @@ coverage's resolution logic directly, without a registry-level dependency mechan
 output order and exit-code aggregation are real behavior, manually checked against the
 pre-refactor binary across every flag combination during development.
 
-Two follow-up adversarial passes (this session, after the PR was already open) each
-found and closed one more real gap, then flagged two more as documented, out-of-scope
-limitations rather than silently ignored:
+Three follow-up adversarial passes (this session, after the PR was already open) each
+found and closed real gaps, then flagged some as documented, out-of-scope limitations
+rather than silently ignored:
 
 - Round 1: `coveragePlugin.run` used an unguarded cast that crashed with a raw TypeError
   if ever called with coverage disabled outside the real runner — replaced with an
@@ -40,6 +40,20 @@ limitations rather than silently ignored:
   `--json` gate, the `--refs --stamp`/summaries-`--stamp` co-occurrence and ordering) are
   now `src/cli.integration.test.ts`, a real-subprocess test — the first automated test
   `cli.ts` has ever had.
+- Round 3: `CheckPluginRunOutcome<Result>`'s flat `{ ran: boolean; result: Result | null
+}` shape used `null` as a "didn't run" sentinel — already ambiguous with a real value
+  in this codebase (`CoverageConfig | null` is a legitimately-nullable config type
+  elsewhere), so a future plugin whose own `Result` could itself be `null` would have been
+  silently misread as "skipped." Changed to a discriminated union
+  (`{ ran: false } | { ran: true; code; lines; result: Result }`), making that
+  ambiguity unrepresentable rather than merely undocumented — every `cli.ts` call site
+  now narrows on `.ran` before reading the rest, enforced by the type checker. Also
+  hardened `cli.integration.test.ts` itself (added in round 2, unreviewed until now): a
+  subprocess launch failure (e.g. a missing `tsx` binary) now throws a clear, named error
+  instead of silently returning `stdout: undefined` for a caller's `JSON.parse` to fail
+  opaquely on; added the missing `--json --prose-refs` and 3-way-precedence tests its own
+  `describe` title had implied were covered but weren't; switched from `npx tsx` to the
+  local `node_modules/.bin/tsx` binary directly, avoiding `npx`'s own resolve step.
 
 Found along the way, unrelated to this refactor: `checks.coverage`'s kind globs are
 matched against absolute paths, so the README's own relative-glob examples can never

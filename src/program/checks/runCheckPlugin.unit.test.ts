@@ -38,10 +38,20 @@ const fakePlugin: CheckPlugin<number> = {
 const layer = makeTestDocsFs({})
 
 describe('runCheckPlugin()', () => {
-  it('does not run a disabled plugin at all — code 0, no lines, ran: false', async () => {
+  // Adversarial finding (round 3): a flat `{ ran: boolean; result: Result |
+  // null; ... }` shape used `null` as an "didn't run" sentinel — ambiguous
+  // the moment a real `Result` type could itself legitimately be `null`
+  // (not hypothetical: `checks.coverage` is exactly `CoverageConfig | null`
+  // elsewhere in this same codebase). A discriminated union
+  // (`{ ran: false }` vs. `{ ran: true; result: Result; ... }`) makes that
+  // ambiguity structurally impossible — a disabled outcome has no `result`
+  // FIELD at all, not a `result: null` a real nullable Result could collide
+  // with, and TypeScript itself refuses to let a caller read `.result`
+  // without first narrowing on `.ran`.
+  it('does not run a disabled plugin at all — a `{ ran: false }` outcome with no other fields', async () => {
     const disabled: CheckPlugin<number> = { ...fakePlugin, isEnabled: () => false }
     const outcome = await Effect.runPromise(runCheckPlugin(disabled, args()).pipe(Effect.provide(layer)))
-    expect(outcome).toEqual({ code: 0, lines: [], ran: false, result: null })
+    expect(outcome).toEqual({ ran: false })
   })
 
   it('runs an enabled plugin and returns its formatted lines + exit code + raw result', async () => {
@@ -53,7 +63,7 @@ describe('runCheckPlugin()', () => {
     const outcome = await Effect.runPromise(
       runCheckPlugin(fakePlugin, args({ resolved: { ...DEFAULT_CONFIG, locale: 'fr' } })).pipe(Effect.provide(layer)),
     )
-    expect(outcome.lines).toEqual(['fr:3'])
+    expect(outcome).toEqual({ code: 1, lines: ['fr:3'], ran: true, result: 3 })
   })
 
   // Matches today's exact `if (!parsed.json) { Console.log(...) }` behavior

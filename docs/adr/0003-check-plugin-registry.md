@@ -163,3 +163,13 @@ false`), letting a descendant config override an inherited `extends` preset — 
   changes at all: cardinality and heading-scoping stay inside `checks.coverage`'s own
   `via` discriminated union (see docs/adr/0002); stale-coverage-links would be a genuinely
   new `checks.<name>` plugin consuming `resolveRuleEdges` directly, still undesigned.
+- **`CheckPluginRunOutcome<Result>` is a discriminated union (`{ ran: false }` vs.
+  `{ ran: true; code; lines; result: Result }`), not the original flat `{ ran: boolean;
+result: Result | null }`.** A third adversarial review found the flat shape's `null`
+  "didn't run" sentinel was already ambiguous with a real value in this exact codebase
+  (`CoverageConfig | null` is a legitimately-nullable config type elsewhere) — a future
+  plugin whose own `Result` could itself be `null` for a real reason would have been
+  silently misread as "skipped." The union makes that structurally unrepresentable: a
+  disabled outcome has no `result` field to collide with, and every `cli.ts` call site
+  now must narrow on `.ran` before reading `.code`/`.lines`/`.result`, enforced by the
+  type checker, not a convention.

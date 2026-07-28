@@ -8,21 +8,29 @@ import type { ResolvedConfig } from '../../core/Config.ts'
 import type { DocsFs } from '../../io/DocsFs.ts'
 import type { CheckCliFlags, CheckPlugin, CheckPluginMeta, CheckRunArgs } from './CheckPlugin.ts'
 
-export interface CheckPluginRunOutcome<Result> {
-  readonly code: number
-  /** Empty under `--json` even for a plugin that ran — matches today's
-   * exact `if (!parsed.json) { Console.log(...) }` behavior. */
-  readonly lines: readonly string[]
-  /** False when `isEnabled` was false — the plugin's `run` was never
-   * invoked at all, not run-and-discarded. */
-  readonly ran: boolean
-  /** The RAW result, always present when `ran` is true, `--json` or not —
-   * `buildJsonReport` needs it for the one plugin (links) that still
-   * participates in `--json` output; the other three can never reach this
-   * function under `--json` at all (see `rejectedJsonMessage`, called
-   * upfront by cli.ts before any plugin runs). */
-  readonly result: Result | null
-}
+// A discriminated union, not a flat `{ ran: boolean; result: Result | null }`
+// — the flat shape used `result: null` as a "didn't run" sentinel, which is
+// structurally ambiguous the instant a real `Result` type could itself
+// legitimately be `null` (not hypothetical: `CoverageConfig | null` exists
+// elsewhere in this exact codebase). With `ran` as the discriminant, a
+// disabled outcome has no `result` FIELD at all — TypeScript itself refuses
+// to let a caller read `.result` without first narrowing on `.ran`, so this
+// ambiguity is unrepresentable rather than merely undocumented.
+export type CheckPluginRunOutcome<Result> =
+  | { readonly ran: false }
+  | {
+      readonly code: number
+      /** Empty under `--json` even for a plugin that ran — matches today's
+       * exact `if (!parsed.json) { Console.log(...) }` behavior. */
+      readonly lines: readonly string[]
+      readonly ran: true
+      /** The RAW result — `buildJsonReport` needs it for the one plugin
+       * (links) that still participates in `--json` output; the other
+       * three can never reach this function under `--json` at all (see
+       * `rejectedJsonMessage`, called upfront by cli.ts before any plugin
+       * runs). */
+      readonly result: Result
+    }
 
 export const runCheckPlugin = <Result>(
   plugin: CheckPlugin<Result>,
@@ -30,7 +38,7 @@ export const runCheckPlugin = <Result>(
 ): Effect.Effect<CheckPluginRunOutcome<Result>, never, DocsFs> =>
   Effect.gen(function* () {
     if (!plugin.isEnabled(args.resolved, args.cli)) {
-      return { code: 0, lines: [], ran: false, result: null }
+      return { ran: false }
     }
     const result = yield* plugin.run(args)
     const lines = args.cli.json ? [] : plugin.format(result, { locale: args.resolved.locale })
