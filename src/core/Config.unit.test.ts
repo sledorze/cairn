@@ -48,6 +48,160 @@ describe('decodeConfig()', () => {
     expect(Result.isFailure(decodeConfig({ naming: { dirSummari: 'x' } }))).toBeTruthy()
   })
 
+  it('decodes `checks.coverage` — presence itself is the opt-in, no separate `enabled` field', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'feature', to: 'decision' }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('decodes `checks.coverage.exempt` when present', () => {
+    const raw = { checks: { coverage: { exempt: ['product/features/templates/**'], kinds: [], rules: [] } } }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('decodes a rule’s optional `name` — the discriminant for two rules sharing a kind pair', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'spec', name: 'implements', to: 'decision' }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('decodes a rule’s optional `via` — the discriminant for how the rule is satisfied (only `by: "link"` today)', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'feature', to: 'decision', via: { by: 'link' } }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('returns a Failure when a rule’s `via.by` is not the recognised `"link"` literal', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'feature', to: 'decision', via: { by: 'backlink' } }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('returns a Failure on an unknown key inside `checks.coverage` or a kind selector', () => {
+    expect(Result.isFailure(decodeConfig({ checks: { coverage: { kinds: [], rulez: [] } } }))).toBeTruthy()
+    expect(
+      Result.isFailure(
+        decodeConfig({ checks: { coverage: { kinds: [{ id: 'x', select: { by: 'path', globb: '*' } }], rules: [] } } }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('returns a Failure when `checks.coverage.select.by` is not the recognised `"path"` literal', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: { coverage: { kinds: [{ id: 'x', select: { by: 'frontmatter', glob: '*' } }], rules: [] } },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // A rule referencing a kind id that's never declared is a config typo that would
+  // otherwise deterministically report every `from`-kind doc as missing coverage
+  // forever, since nothing can ever satisfy it — see docs/adr/0002. Caught loudly at
+  // decode time instead.
+  it('returns a Failure when a rule references a kind id not declared in `kinds`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+              rules: [{ from: 'feature', to: 'decisionn' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [{ id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } }],
+              rules: [{ from: 'featur', to: 'decision' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // Not just isFailure=true: the message must actually name the typo'd id
+  // and where it is, matching what `formatConfigError` hands the user —
+  // an empty or generic message would technically still be "a Failure" but
+  // wouldn't be actionable.
+  it('names the undeclared kind id and its position in the Failure message', () => {
+    const result = decodeConfig({
+      checks: {
+        coverage: {
+          kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+          rules: [{ from: 'feature', to: 'decisionn' }],
+        },
+      },
+    })
+    if (!Result.isFailure(result)) {
+      throw new Error('expected a Failure')
+    }
+    expect(result.failure.message).toContain('references undeclared kind "decisionn"')
+    expect(result.failure.message).toContain('rules')
+    expect(result.failure.message).toContain('to')
+  })
+
+  it('accepts a rule whose `from`/`to` both match declared kind ids', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'feature', to: 'decision' }],
+        },
+      },
+    }
+    expect(Result.isSuccess(decodeConfig(raw))).toBeTruthy()
+  })
+
   it('returns a Failure on a wrong-typed field instead of silently reverting to the default', () => {
     expect(Result.isFailure(decodeConfig({ roots: 'docs' }))).toBeTruthy()
     expect(Result.isFailure(decodeConfig({ thresholdLines: 'many' }))).toBeTruthy()
@@ -133,7 +287,7 @@ describe('formatConfigError()', () => {
 describe('the built-in defaults', () => {
   it('matches the documented defaults', () => {
     expect(DEFAULT_CONFIG).toEqual({
-      checks: { links: true, summaries: true },
+      checks: { coverage: null, links: true, summaries: true },
       ignore: ['**/node_modules/**'],
       locale: 'en',
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },

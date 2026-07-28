@@ -145,6 +145,90 @@ npm-import-style string like `effect/Schema`) — verified by running this check
 own real docs, not just synthetic examples. Fenced code examples are never scanned, only inline
 `` `code spans` `` in prose.
 
+### Structural coverage/orphans: `checks.coverage`
+
+For docs beyond code reference (PRDs, feature specs, requirements, decision logs): a green
+`cairn check` today says every summary is fresh and every link resolves — it says nothing
+about whether the docs are actually _related_ the way they need to be. A repo can have 40
+feature docs and 12 decision docs, zero links between them, and still be fully green.
+"Reachability is not coverage."
+
+`checks.coverage` is a separate, **opt-in** structural check — its mere presence in config
+is the opt-in, there's no `--coverage` flag (its `kinds`/`rules` have no CLI equivalent to
+express them with). Declare doc **kinds** by path glob, and **rules** — every doc of one
+kind must link somewhere to a doc of another:
+
+```json
+"roots": ["docs", "product"],
+"checks": {
+  "coverage": {
+    "kinds": [
+      { "id": "feature", "select": { "by": "path", "glob": "product/features/**" } },
+      { "id": "decision", "select": { "by": "path", "glob": "docs/adr/**" } }
+    ],
+    "rules": [{ "from": "feature", "to": "decision" }],
+    "exempt": ["product/features/templates/**"]
+  }
+}
+```
+
+A kind's glob only classifies docs cairn already scans — it does **not** implicitly extend
+`roots` (default `["docs"]`). If your feature docs live under `product/` and `roots` doesn't
+include it, `checks.coverage` checks zero of them. Make sure every kind's glob falls inside a
+configured root, as the example above does by adding `"product"`.
+
+Three report classes, all file-level (a violation is an absence — there's no specific line to
+point at) except the third, which is a warning about the config itself:
+
+- **missing coverage** — a `feature` doc with no outbound link to any `decision` doc.
+- **orphan** — a `decision` doc (a kind that's actually supposed to be linked TO, per some
+  rule's `to` side) with zero inbound references from _anywhere_ in the scanned corpus. A
+  kind that only ever _initiates_ relations (like `feature` here) is never itself checked
+  for orphan status — nothing expects anything to link back to a feature.
+- **unmatched kind** (⚠️, never fails the build) — a declared kind that matched zero scanned
+  docs, e.g. because its glob falls outside `roots` or is simply mistyped. Without this, that
+  mistake is invisible: `"✅ Coverage OK (0 doc(s) checked)"` looks identical to genuine
+  success. Non-fatal because a kind can legitimately have zero docs yet (mid-rollout) — it's
+  a hint to check your config, not a rule violation.
+
+`exempt` (globs) opts a doc out of both missing-coverage and orphan reporting entirely — not
+orphan status alone, so an intentionally unlinked template doc isn't flagged for lacking
+outbound links either. The same escape hatch Sphinx's `:orphan:` marker and MkDocs'
+`not_in_nav` needed to keep their own equivalent checks tolerable in practice.
+
+Two rules can share the same `kinds` pair but mean different things — e.g. a spec both
+`implements` a decision and is `verified_by` one. Give each an optional `name` to keep them
+distinct obligations (both checked, both reported separately); two rules on the same pair
+with no name, or the same name, are treated as one:
+
+```json
+"rules": [
+  { "from": "spec", "to": "decision", "name": "implements" },
+  { "from": "spec", "to": "decision", "name": "verified_by" }
+]
+```
+
+Every rule's `from`/`to` must name a kind id declared in `kinds` — config decode rejects a
+typo (e.g. `"decisionn"`) up front, rather than silently, permanently reporting every
+`from`-kind doc as missing coverage because nothing could ever satisfy it.
+
+A rule also has an optional `via`, naming _how_ it's satisfied — `{ "by": "link" }` (a direct
+outbound reference) is both the only implemented value and the implicit default when `via` is
+omitted, so existing configs need no change. It exists so a future requirement type (a
+minimum link count, a required backlink, a heading-scoped reference) is a new `by` value, not
+a breaking change to every rule already written:
+
+```json
+{ "from": "feature", "to": "decision", "via": { "by": "link" } }
+```
+
+Reuses the same link-extraction the checks above already do — **no new Markdown syntax to
+author**, just the links you'd write anyway. Current scope, deliberately: classification is
+path-glob only (no frontmatter-based kind selector yet), and coverage is checked by a
+direct link only — a chain `feature → decision → spec` does **not** by itself satisfy a
+direct `feature → spec` rule (matches how requirements-traceability tooling treats a trace
+link: real evidence, not an inference).
+
 ### Upgrading from an older cairn
 
 **If you're upgrading past `0.3.0`**: link checking got stricter. Anchors and links outside
@@ -220,6 +304,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `naming.fileSummarySuffix` | Suffix for file summaries. Default `.summary.md`                                                                                                                                                                                                                                   |
 | `checks.summaries`         | Enable summary freshness checking                                                                                                                                                                                                                                                  |
 | `checks.links`             | Enable Markdown link checking                                                                                                                                                                                                                                                      |
+| `checks.coverage`          | Opt-in structural coverage/orphan check (see below). Absent by default — presence enables it, no separate flag                                                                                                                                                                     |
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                                                                                                                                                                                                                |
 | `ignore`                   | Globs to exclude from scanning — a directory-shaped match is pruned before it's ever walked, not just filtered out afterward (issue #63). `.gitignore` is also consulted automatically for the same directory-level pruning, with no config needed, regardless of `onlyGitTracked` |
 | `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`                                                                                                                                                                                              |

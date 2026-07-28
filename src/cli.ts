@@ -24,6 +24,7 @@ import type { LinkCheckResult } from './program/links/CheckLinks.ts'
 import { checkLinks, formatLinkReport, linkExitCode } from './program/links/CheckLinks.ts'
 import { checkProseRefs, formatProseRefsReport, proseRefsExitCode } from './program/links/CheckProseRefs.ts'
 import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './program/links/CheckRefs.ts'
+import { checkCoverage, coverageExitCode, formatCoverageReport } from './program/structure/CheckCoverage.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -165,6 +166,15 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     // Same reasoning as --refs above: --prose-refs's report isn't part of
     // buildJsonReport's shape yet.
     yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --prose-refs yet' }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+  if (parsed.json && config.checks.coverage !== null) {
+    // Same reasoning as --refs/--prose-refs above: the coverage/orphan
+    // report isn't part of buildJsonReport's shape yet. Gated on config
+    // (not a CLI flag) since checkCoverage's kinds/rules have no CLI
+    // equivalent — config presence is already the whole opt-in.
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with checks.coverage yet' }))
     yield* Effect.sync(() => (process.exitCode = 1))
     return
   }
@@ -345,6 +355,21 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     })
     yield* Console.log(formatProseRefsReport(result, { locale }).join('\n'))
     code = Math.max(code, proseRefsExitCode(result))
+  }
+
+  if (config.checks.coverage !== null) {
+    const { exempt, kinds, rules } = config.checks.coverage
+    const result = yield* checkCoverage({
+      base: cwd,
+      exempt,
+      ignore: effectiveIgnore,
+      kinds,
+      roots: absRoots,
+      rules,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
+    })
+    yield* Console.log(formatCoverageReport(result, { locale }).join('\n'))
+    code = Math.max(code, coverageExitCode(result))
   }
 
   if (parsed.json) {

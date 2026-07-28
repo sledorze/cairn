@@ -73,7 +73,7 @@ describe('loadConfig()', () => {
     )
     const config = loadConfig(cwd)
     expect(config.thresholdLines).toBe(50) // inherited from the base preset
-    expect(config.checks).toEqual({ links: false, summaries: false }) // deep-merged
+    expect(config.checks).toEqual({ coverage: null, links: false, summaries: false }) // deep-merged
     expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
   })
 
@@ -108,7 +108,51 @@ describe('loadConfig()', () => {
       path.join(cwd, '.cairnrc.json'),
       JSON.stringify({ extends: ['./b.cairnrc.json', './c.cairnrc.json'] }),
     )
-    expect(loadConfig(cwd).checks).toEqual({ links: false, summaries: false })
+    expect(loadConfig(cwd).checks).toEqual({ coverage: null, links: false, summaries: false })
+  })
+
+  it('inherits `checks.coverage` from an `extends` preset when the local file does not set it', () => {
+    const cwd = mkTmp('cairn-extends-coverage-inherit-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { coverage: { kinds: [], rules: [] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { links: false }, extends: './base.cairnrc.json' }),
+    )
+    expect(loadConfig(cwd).checks.coverage).toEqual({ exempt: [], kinds: [], rules: [] })
+  })
+
+  it('replaces (not merges) `checks.coverage` entirely when the local file also sets it', () => {
+    const cwd = mkTmp('cairn-extends-coverage-replace-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({
+        checks: {
+          coverage: {
+            exempt: ['from-base/**'],
+            kinds: [{ id: 'from-base', select: { by: 'path', glob: '*' } }],
+            rules: [],
+          },
+        },
+      }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({
+        checks: { coverage: { kinds: [{ id: 'from-local', select: { by: 'path', glob: '*' } }], rules: [] } },
+        extends: './base.cairnrc.json',
+      }),
+    )
+    // The local layer's coverage block wins WHOLESALE — no trace of the
+    // base's kinds/exempt survives, unlike `links`/`summaries`' own `??`
+    // (field-by-field) precedence just above.
+    expect(loadConfig(cwd).checks.coverage).toEqual({
+      exempt: [],
+      kinds: [{ id: 'from-local', select: { by: 'path', glob: '*' } }],
+      rules: [],
+    })
   })
 
   it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', () => {

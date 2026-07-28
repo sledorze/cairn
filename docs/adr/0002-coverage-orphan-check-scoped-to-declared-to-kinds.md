@@ -1,0 +1,86 @@
+---
+status: accepted
+---
+
+# Structural coverage/orphan check: direct links only, orphan status scoped to declared `to`-kinds
+
+## Context
+
+`checks.coverage` (issue: ease organizing _product_ knowledge — PRDs, specs, requirements,
+decision logs) adds cairn's first structural check beyond freshness/links: a doc of one
+declared kind must link to a doc of another. Two design points aren't obvious from the code
+alone and would surprise a future reader:
+
+1. **Orphan status only applies to a kind that appears as some rule's `to` side**, not to
+   every declared kind. An early draft (found via TDD, not designed up front) flagged a
+   `feature` doc as "orphaned" just for having zero inbound links — but nothing is ever
+   _supposed_ to link back to a feature; it only _initiates_ relations. Real-world
+   precedent (requirements-traceability-matrix tooling, DO-178C/IEC 62304 audits) treats
+   "orphan" as a specific role — an orphan _requirement_, not an orphan _anything_.
+2. **Coverage is checked by a direct outbound link only — never transitively.** A chain
+   `feature → decision → spec` does not by itself satisfy a direct `feature → spec` rule,
+   even though a spec is technically reachable from the feature. Confirmed correct by
+   construction (an adversarial test), not just asserted.
+
+## Decision
+
+- A rule's `to` kind is the only kind ever eligible for orphan reporting;
+  `orphanCandidateKinds = new Set(rules.map(r => r.to))`. A `from`-only kind is never
+  orphan-checked, however disconnected it is.
+- A `missing`/`orphan` finding requires a **direct** reference — resolved from a doc's own
+  `nodes` (its own outbound links), never by walking through an intermediate doc's links.
+- The inbound graph (`DocGraph.buildDocGraph`) is built from **every** scanned doc, not just
+  declared-kind ones — an ordinary prose doc linking to a decision still clears that
+  decision's orphan status, even though only declared-kind docs are themselves reported on.
+- Rules are deduped by `(name, from, to, via.by)` before evaluation — a duplicated rule
+  entry (accidental or config-generated) must report a violation once, not once per
+  duplicate. This key has been wrong twice already, both times caught by adversarially
+  re-reviewing the PREVIOUS fix rather than the original TDD pass: (1) deduping by
+  `(from, to)` alone silently collapsed two rules sharing a kind pair but meaning
+  DIFFERENT things — e.g. `implements` and `verified_by` between the same two kinds
+  (issue #28's own worked example) — into one, losing a genuine distinct obligation;
+  `name` became the discriminant. (2) Adding `via` (below) without adding it to this key
+  reintroduced the exact same bug class: two same-pair rules differing only in `via`
+  would silently collapse the moment a second `via.by` variant existed — dormant while
+  only one variant is valid, a landmine for the next one. **Every discriminating field
+  `CoverageRule` gains in the future must be added here too** — this key has no
+  structural guard forcing that; two rounds of silent regressions are the evidence it
+  needs one. Two rules that are IDENTICAL on every discriminating field still dedupe as
+  one (there's no way to tell them apart), but any real difference is preserved.
+- Config decode validates, cross-field, that every rule's `from`/`to` matches a kind id
+  declared in the same `kinds` array — added after this ADR first shipped, closing a gap
+  this ADR originally accepted as a documented limitation. A typo'd kind id used to pass
+  schema validation silently and then deterministically report every `from`-kind doc as
+  missing forever; it's now a `Failure` at `decodeConfig` time, naming the undeclared id
+  and its `rules[i].from`/`rules[i].to` position.
+- A rule's `via` field is a discriminated union (`{ by: 'link' }`, one variant today) naming
+  _how_ the rule is satisfied — added for the same reason `KindSelector` got its own `by`
+  discriminant: `checkCoverage`'s "satisfied by a direct outbound reference" semantics was
+  otherwise an implicit fact of the check's logic, with no field in `CoverageRule` marking it
+  as one choice among several a future increment could add (a minimum link count, a required
+  backlink, a heading-scoped reference). Optional and defaulting to `{ by: 'link' }` when
+  absent, unlike `select` (required on `KindDef`) — every rule written before this field
+  existed already meant that, so omitting it must decode identically.
+- A declared kind that matches zero scanned docs is reported as a separate, non-fatal
+  `unmatchedKinds` warning (⚠️) — found by dogfooding the real CLI against this ADR's own
+  README example: a kind's glob only classifies docs already inside `roots`, it never widens
+  `roots` itself, so a glob outside every configured root (or a plain typo) silently checks
+  nothing, and `"✅ Coverage OK (0 doc(s) checked)"` reads identically to a genuinely green
+  repo. Deliberately never affects `coverageExitCode` — a kind can legitimately have zero
+  docs mid-rollout, so this is a hint about the config, not a rule violation.
+
+## Considered Options
+
+- **Flag any doc with zero inbound links, regardless of kind.** Rejected: conflates "this
+  doc initiates relations" with "this doc is supposed to receive them" — see the `feature`
+  example above.
+- **Credit transitive coverage** (a chain satisfies an equivalent direct rule). Rejected:
+  loses the actual evidence a trace link is supposed to provide — matches how real
+  traceability tooling treats a trace as a specific, direct claim, not an inference.
+
+## Consequences
+
+- Classification is path-glob only in this increment (`KindSelector`'s `by: 'path'`
+  variant); `by: 'frontmatter'` is declared in the type (room to add without a breaking
+  change) but not implemented — a team whose doc kinds aren't distinguishable by directory
+  structure alone can't use this check yet.

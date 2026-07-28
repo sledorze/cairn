@@ -80,6 +80,48 @@ const extractHeadingTexts = (masked: string): string[] => {
  * `<a name="...">` HTML anchor (kept verbatim, not slugged — GitHub honours
  * these as-authored).
  */
+export interface PositionedHeading {
+  /** ATX `#` count (1-6), or setext level (`1` for `===`, `2` for `---`). */
+  readonly level: number
+  /** 1-indexed line number the heading TEXT itself is on — for a setext
+   * heading that's the line above its `===`/`---` underline, not the
+   * underline's own line. */
+  readonly line: number
+  readonly slug: string
+  readonly text: string
+}
+
+/** Like `extractHeadingTexts`, plus each heading's level and line, slugged
+ * the same way `extractAnchors` slugs them (same fresh `GithubSlugger`
+ * instance per call, so document-order dedup numbering matches exactly).
+ * Additive: `extractAnchors` itself is untouched. */
+export const extractHeadingsWithPosition = (content: string): PositionedHeading[] => {
+  const masked = maskFencedCode(content)
+  const slugger = new GithubSlugger()
+  const lines = masked.split('\n')
+  const headings: PositionedHeading[] = []
+  for (const [i, line] of lines.entries()) {
+    const atx = ATX_RE.exec(line ?? '')
+    if (atx) {
+      const text = atx[2] ?? ''
+      const flattened = decodeEntities(flattenInlineLinks(text))
+      headings.push({ level: (atx[1] ?? '').length, line: i + 1, slug: slugger.slug(flattened), text })
+      continue
+    }
+    if (i > 0 && SETEXT_RE.test(line ?? '')) {
+      const prev = lines[i - 1] ?? ''
+      if (prev.trim() !== '' && !ATX_RE.test(prev) && !SETEXT_RE.test(prev)) {
+        const text = prev.trim()
+        const flattened = decodeEntities(flattenInlineLinks(text))
+        const level = (line ?? '').trimStart().startsWith('=') ? 1 : 2
+        // `prev` is at 0-indexed `i - 1`, i.e. 1-indexed line `i`.
+        headings.push({ level, line: i, slug: slugger.slug(flattened), text })
+      }
+    }
+  }
+  return headings
+}
+
 export const extractAnchors = (content: string): ReadonlySet<string> => {
   const masked = maskFencedCode(content)
   const slugger = new GithubSlugger()

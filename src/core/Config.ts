@@ -19,10 +19,114 @@
 import type { Result, SchemaError } from 'effect'
 import { Schema, SchemaGetter } from 'effect'
 
+import type { KindDef } from './structure/DocMetadata.ts'
 import type { Naming } from './summaries/DocSummaries.ts'
 import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './summaries/DocSummaries.ts'
 
+// `by: Schema.Literal('path')` — a single-variant discriminated union today,
+// deliberately: `KindSelector` (../structure/DocMetadata.ts) already has room
+// for `by: 'frontmatter'`/`by: 'any'` variants, but this schema only VALIDATES
+// the one this increment implements. Adding a variant later is a new
+// `Schema.Literal` branch, not a breaking change to configs already written
+// with `by: 'path'`.
+const KindSelectorInputSchema = Schema.Struct({
+  by: Schema.Literal('path'),
+  glob: Schema.String,
+}).annotate({
+  description: 'How a doc is classified into a kind. Only `by: "path"` today.',
+  identifier: 'CairnKindSelector',
+})
+
+const KindDefInputSchema = Schema.Struct({
+  id: Schema.String,
+  select: KindSelectorInputSchema,
+}).annotate({ description: 'One named document kind.', identifier: 'CairnKindDef' })
+
+// `by: Schema.Literal('link')` — a single-variant discriminated union today,
+// deliberately, matching `KindSelector`'s own reasoning above: WHAT it means
+// for a rule to be satisfied (today: a direct outbound reference) is a fact
+// about the rule, not just an implementation detail of
+// `../program/structure/CheckCoverage.ts` — encoding it as a field with room
+// for future variants (e.g. a minimum link count, a backlink, a
+// heading-scoped reference) means a later increment adds a `Schema.Literal`
+// branch, not a breaking change to `CoverageRule`'s shape. Optional (unlike
+// `select`, which is required): every rule written before this field existed
+// already means `by: 'link'`, so omitting it must keep decoding the same
+// config the same way.
+const CoverageRequirementInputSchema = Schema.Struct({
+  by: Schema.Literal('link'),
+}).annotate({
+  description: 'How a rule is satisfied. Only `by: "link"` (a direct outbound reference) today.',
+  identifier: 'CairnCoverageRequirement',
+})
+
+const CoverageRuleInputSchema = Schema.Struct({
+  from: Schema.String,
+  // Optional discriminant, not just documentation: two rules sharing the
+  // same (from, to) pair but different meanings (e.g. issue #28's own
+  // `implements` vs `verified_by` between the same two kinds) are DISTINCT
+  // obligations, not the same rule twice — `name` is what tells them apart
+  // for deduplication (../program/structure/CheckCoverage.ts) and in report
+  // output. Two rules on the same pair with no name (or the same name)
+  // still dedupe as one — there'd be no way to tell them apart otherwise.
+  name: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        'Distinguishes this rule from another sharing the same from/to pair (e.g. "implements" vs "verified_by"). Two rules on the same pair with no name, or the same name, are treated as one.',
+    }),
+  ),
+  to: Schema.String,
+  via: Schema.optionalKey(CoverageRequirementInputSchema),
+}).annotate({
+  description: 'Every doc of kind `from` must link somewhere to a doc of kind `to`.',
+  identifier: 'CairnCoverageRule',
+})
+
+// Presence of `checks.coverage` itself IS the opt-in — no separate `enabled`
+// flag: an empty `{kinds:[],rules:[]}` is legal but checks nothing, same
+// shape as `roots: []` already means "nothing to scan," not a schema error.
+//
+// Cross-field check: every rule's `from`/`to` must name a declared kind id.
+// Without this, a typo'd kind id (e.g. "decisionn") isn't a schema error —
+// it's a rule that can never be satisfied, silently reporting every
+// `from`-kind doc as missing coverage forever (see docs/adr/0002's
+// Consequences section, which originally documented this as an accepted
+// gap before it was closed here). Caught loudly at decode time instead of
+// discovered by a confused user reading an always-red report.
+const CoverageInputSchema = Schema.Struct({
+  exempt: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: 'Globs exempted from orphan detection — a doc matching one is never reported as orphaned.',
+    }),
+  ),
+  kinds: Schema.Array(KindDefInputSchema),
+  rules: Schema.Array(CoverageRuleInputSchema),
+})
+  .annotate({
+    description:
+      'Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it.',
+    identifier: 'CairnCoverageConfig',
+  })
+  .pipe(
+    Schema.check(
+      Schema.makeFilter((coverage) => {
+        const declaredIds = new Set(coverage.kinds.map((k) => k.id))
+        const issues: Schema.FilterIssue[] = []
+        coverage.rules.forEach((rule, i) => {
+          if (!declaredIds.has(rule.from)) {
+            issues.push({ issue: `references undeclared kind "${rule.from}"`, path: ['rules', i, 'from'] })
+          }
+          if (!declaredIds.has(rule.to)) {
+            issues.push({ issue: `references undeclared kind "${rule.to}"`, path: ['rules', i, 'to'] })
+          }
+        })
+        return issues
+      }),
+    ),
+  )
+
 const ChecksInputSchema = Schema.Struct({
+  coverage: Schema.optionalKey(CoverageInputSchema),
   links: Schema.optionalKey(
     Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
   ),
@@ -116,10 +220,42 @@ export const CairnConfigSchema = Schema.Struct({
 /** One decoded, still-partial config layer (a single file, before `extends` is folded in). */
 export type CairnConfigInput = Schema.Schema.Type<typeof CairnConfigSchema>
 
+/** How a rule is satisfied. See `CoverageRequirementInputSchema`'s own comment
+ * for why this is a discriminated union (room for future variants) rather
+ * than an implicit, hardcoded fact of `checkCoverage`'s logic. */
+export interface CoverageRequirement {
+  readonly by: 'link'
+}
+
+export interface CoverageRule {
+  readonly from: string
+  /** Distinguishes this rule from another sharing the same `from`/`to` pair
+   * but a different meaning — see `CoverageRuleInputSchema`'s own comment. */
+  readonly name?: string
+  readonly to: string
+  /** Defaults to `{ by: 'link' }` when absent — every rule written before
+   * this field existed already meant that. */
+  readonly via?: CoverageRequirement
+}
+
+export interface CoverageConfig {
+  readonly exempt: readonly string[]
+  readonly kinds: readonly KindDef[]
+  readonly rules: readonly CoverageRule[]
+}
+
 export interface ChecksConfig {
+  /** `null` = disabled (the default) — presence of `checks.coverage` in a
+   * config file is itself the opt-in, not a separate boolean flag. */
+  readonly coverage: CoverageConfig | null
   readonly links: boolean
   readonly summaries: boolean
 }
+
+// Re-exported so a consumer that only imports from `Config.ts` (the usual
+// entry point for config-shaped types) doesn't also need to know
+// `KindSelector` lives in `./structure/DocMetadata.ts`.
+export type { KindDef, KindSelector } from './structure/DocMetadata.ts'
 
 /** Report language. English is the default for broad reuse; French mirrors the tool's
  * origin. Defined here (not in `program/locale.ts`, which re-exports it) because it's a
@@ -153,7 +289,7 @@ export interface Overrides {
 }
 
 export const DEFAULT_CONFIG: ResolvedConfig = {
-  checks: { links: true, summaries: true },
+  checks: { coverage: null, links: true, summaries: true },
   ignore: ['**/node_modules/**'],
   locale: 'en',
   naming: DEFAULT_NAMING,
@@ -198,6 +334,18 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
   ...(layer.stampCommand === undefined ? {} : { stampCommand: layer.stampCommand }),
   ...(layer.thresholdLines === undefined ? {} : { thresholdLines: layer.thresholdLines }),
   checks: {
+    // A whole config object, not a scalar — a layer that specifies
+    // `checks.coverage` at all REPLACES the base's coverage config entirely
+    // (kinds/rules aren't merged field-by-field), matching how `roots`/
+    // `ignore` already replace rather than merge above; only its `links`/
+    // `summaries` sibling booleans use `??` precedence.
+    coverage: layer.checks?.coverage
+      ? {
+          exempt: layer.checks.coverage.exempt ?? [],
+          kinds: layer.checks.coverage.kinds,
+          rules: layer.checks.coverage.rules,
+        }
+      : base.checks.coverage,
     links: layer.checks?.links ?? base.checks.links,
     summaries: layer.checks?.summaries ?? base.checks.summaries,
   },
