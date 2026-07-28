@@ -17,14 +17,15 @@
 // parsed.prose` / `parsed.json && config.checks.coverage !== null` as three
 // near-identical guards; one generic check does it for every plugin.
 //
-// Deliberately NOT included (see docs/adr/0003's "Deferred" section): a
-// shared, once-computed doc-scan context. No two of the four migrated
+// Deliberately NOT included (see docs/adr/0003's "Decision" section, "No
+// shared doc-scan context, no dependsOn"): a shared, once-computed doc-scan
+// context. No two of the four migrated
 // plugins actually consume the same scan today — links/refs/proseRefs each
 // read raw file content directly; coverage extracts DocMetadata. Building a
 // shared-context/dependency-declaration mechanism now, for a consumer that
 // doesn't exist yet, would be exactly the premature generality this
-// increment's own adversarial review (docs/adr/0002 and 0003) keeps finding
-// and fixing after the fact — better to add it when a real second structure-
+// increment's own adversarial review (docs/adr/0003) keeps finding and
+// fixing after the fact — better to add it when a real second structure-
 // consuming plugin (e.g. a future stale-coverage-link check) actually needs it.
 
 import type { Effect } from 'effect'

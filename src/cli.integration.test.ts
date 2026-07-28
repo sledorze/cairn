@@ -9,7 +9,7 @@
 // come back" gap this repo's own docs-summaries.md convention warns about
 // for a different case. This file doesn't attempt exhaustive coverage of
 // cli.ts (that's still real subprocess dogfooding's job) — it locks in the
-// three most fragile, most likely-to-silently-regress behaviors the
+// two most fragile, most likely-to-silently-regress behaviors the
 // check-plugin-registry refactor (docs/adr/0003) touches directly: the
 // `--json` incompatibility gate and its ordering (all 3 plugins that
 // declare one), and the `--refs --stamp` + summaries `--stamp`
