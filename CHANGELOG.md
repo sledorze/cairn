@@ -1,5 +1,57 @@
 # @sledorze/cairn
 
+## 0.6.0
+
+### Minor Changes
+
+- 7d7b787: New, opt-in structural coverage/orphan check for teams using cairn to organize product knowledge (PRDs, specs, requirements, decision logs), not just code docs. Off by default — presence of `checks.coverage` in config is itself the opt-in, nothing changes for anyone who doesn't configure it.
+
+  Declare doc kinds by path glob and a rule that every doc of one kind must link somewhere to a doc of another:
+
+  ```json
+  "checks": {
+    "coverage": {
+      "kinds": [
+        { "id": "feature", "select": { "by": "path", "glob": "product/features/**" } },
+        { "id": "decision", "select": { "by": "path", "glob": "docs/adr/**" } }
+      ],
+      "rules": [{ "from": "feature", "to": "decision" }],
+      "exempt": ["product/features/templates/**"]
+    }
+  }
+  ```
+
+  Two file-level report classes, plus a config-level warning:
+
+  - **missing coverage** — a `from`-kind doc with no outbound link to a `to`-kind doc.
+  - **orphan** — a doc of a kind that's supposed to be referenced (a rule's `to` side) with zero inbound references from anywhere in the scanned corpus.
+  - **unmatched kind** (⚠️, never fails the build) — a declared kind that matched zero scanned docs, most often because its glob falls outside `roots` (a kind's glob classifies docs cairn already scans, it never widens `roots` itself) or is simply mistyped. Without this, that mistake reads as `"✅ Coverage OK (0 doc(s) checked)"` — indistinguishable from a genuinely green repo.
+
+  `exempt` (globs) opts a doc out of BOTH missing-coverage and orphan reporting entirely, not orphan status alone — the same escape hatch Sphinx's `:orphan:` and MkDocs' `not_in_nav` needed to keep their equivalent checks tolerable.
+
+  A rule may carry an optional `name` (e.g. `"implements"` vs. `"verified_by"`) to distinguish two rules that share the same `from`/`to` kind pair but mean different things — two identically-named (or unnamed) rules on the same pair still dedupe as one. Every rule's `from`/`to` must reference a kind id declared in `kinds` — a typo there is now a loud config error at decode time, not a check that silently, permanently reports everything as missing. A rule may also carry an optional `via: { "by": "link" }`, naming how it's satisfied — the only implemented value today, and the implicit default when omitted, but a discriminated field (not hardcoded logic) so a future requirement type is a new value, not a breaking config change.
+
+  This is the one check requirements-traceability tooling, safety-critical audit standards (DO-178C, IEC 62304), and doc generators (Sphinx, MkDocs, Confluence, Obsidian) have all independently converged on as foundational — and it's conspicuously absent from Markdown-specific lint tooling and every ADR tool. Reuses cairn's own existing link-extraction — no new Markdown syntax to author.
+
+- 4f7a5aa: `checks.coverage` can now be re-disabled with `false`, letting a local config override an `extends` preset that enabled it — the same escape hatch `checks.links`/`checks.summaries` already had via their own booleans. Previously, once a preset turned coverage on, there was no way for a descendant config to turn it back off short of replacing `kinds`/`rules` with empty arrays (which still left the check enabled, just vacuously).
+
+  Also fixes the README's own `checks.coverage` example: kind globs are matched against absolute filesystem paths, so a bare relative glob like `"product/features/**"` could never match a real scan — the example now correctly uses `"**/product/features/**"`, consistent with how the default `ignore` (`"**/node_modules/**"`) already works. The matching behavior itself is unchanged; only the documented example was wrong.
+
+- 4f7a5aa: **Behavior change**: `cairn check` now exits non-zero when no configured root resolves to anything on disk (e.g. the default `docs/` doesn't exist and nothing else is configured) — previously this printed a `⚠️ No documentation roots found` warning but still exited 0, indistinguishable from genuine success by exit code alone, the one thing most CI/automation actually checks. The warning message is unchanged; `--json`'s `exitCode` field is corrected too, not just the process exit code.
+
+  If your CI currently relies on the old lenient behavior (e.g. a pipeline stage that runs before any docs exist yet), configure `roots` to point somewhere that already exists, or gate the `cairn check` step accordingly.
+
+### Patch Changes
+
+- ed4d1e9: Fixes two more instances of the same quadratic-time (ReDoS) regex shape just fixed in the Markdown link checker's `LINK_RE` (see the sibling changeset in this release) — found by auditing the codebase for the same unbounded `[^\]]*`/`[^)\s]+` pattern rather than waiting for another one to surface independently. Both are real, reachable with ordinary (or adversarial) document content, not theoretical: `Anchors.ts`'s heading-anchor slugging (an inline link/image inside a heading, reduced to its own text before computing the anchor) and `ProseRefs.ts`'s bare-backtick-citation scanning (masking a real Markdown link's text span before candidate extraction) both scan every heading/every document's prose respectively. Fixed the same way — bounding every previously-unbounded quantifier at a generous 2000 characters — restoring linear-time scanning in both.
+- a1953ae: Two fixes to the Markdown link checker, both in the same link-extraction regex:
+
+  1. **False dead-link report for a `<...>`-wrapped destination.** CommonMark's own way to let a URL contain a literal `)` without it being confused for the link's own closing paren (a real, not-uncommon shape for Wikipedia/LibreTexts-style URLs) — `[text](<https://example.com/path_(with_parens)/more>)`. The link-extraction regex captured the `<`/`>` delimiters as part of the target instead of reading verbatim to the matching `>` first, which had two effects: an internal `)` truncated the captured target mid-URL, and — more broadly — the leaked leading `<` broke scheme detection (`isCheckableTarget`) so _any_ angle-bracket-wrapped external URL, parens or not, was mistaken for a local relative path and reported broken. Both are fixed; a bare (non-angle) destination's existing paren-truncation behavior is unchanged, since that ambiguity is exactly what `<...>` exists to resolve.
+
+  2. **A real, pre-existing quadratic-time (ReDoS) vulnerability**, present since before this file's angle-bracket support was ever added — flagged by CodeQL (`js/polynomial-redos`) and confirmed empirically (a crafted doc with many unclosed `[` sequences and no closing `]` scaled the link scan quadratically with content length, a real denial-of-service risk on untrusted or messily-authored Markdown, not a theoretical finding). Fixed by bounding every previously-unbounded quantifier in the link-matching regex at a generous 2000 characters — link text and destinations are realistically far under that — restoring linear-time scanning.
+
+- 4f7a5aa: `cairn init`'s scaffolded agent guidance (`AGENTS.md`, `CLAUDE.md`'s Claude rule, Copilot instructions, the `cairn` skill) now names every opt-in check — `--refs`, `--prose-refs`, and `checks.coverage` — not just the always-on summaries+links baseline. Previously an agent working in a fresh repo had no way to discover these features short of separately reading the npm README, which a repo-scoped agent doesn't naturally do.
+
 ## 0.5.1
 
 ### Patch Changes
