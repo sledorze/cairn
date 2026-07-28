@@ -173,3 +173,18 @@ result: Result | null }`.** A third adversarial review found the flat shape's `n
   disabled outcome has no `result` field to collide with, and every `cli.ts` call site
   now must narrow on `.ran` before reading `.code`/`.lines`/`.result`, enforced by the
   type checker, not a convention.
+- **Scope/regression parity verified directly against the pre-registry baseline, not
+  just inferred from tests.** Built `origin/main` (merge-base of this branch, `7d7b787`)
+  into a real `dist/cli.js` in a scratch `git worktree` alongside this branch's own build,
+  then ran both against identical real fixture trees and diffed stdout/stderr/exit-code
+  byte-for-byte: `--help` and `check --help` (identical), `check` default/`--refs`/
+  `--prose-refs`/`--links-only`/`--summaries-only`/`--json`/`--refs --json`/
+  `--refs --stamp --json`/`--explain`/`--fix`/`--prune`/`config` against a fixture with a
+  broken link, a missing-coverage feature, and an orphan decision (all identical,
+  including the `.cairn/**` sidecar tree written by `--refs --stamp`), a fully clean
+  fixture (identical exit 0), and a `--refs` content-drift staleness scenario (stamp, then
+  mutate the referenced doc, re-check — identical stale-hash report on both). The only
+  difference found was the zero-resolved-roots exit code (0 on baseline, 1 on this
+  branch) — already a known, intentional, changesetted behavior change from this same PR
+  series (`.changeset/fix-zero-roots-exit-code.md`), not a registry regression. No other
+  behavioral difference of any kind was found across this matrix.

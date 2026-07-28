@@ -66,3 +66,11 @@ own relative-glob examples could never match a real scan — the matching mechan
 already correct and consistent with `ignore`'s own `**/node_modules/**` convention; the
 README's own example just didn't follow it. Fixed the README's example glob, added an
 explanatory paragraph.
+
+A later round replaced round 2's informal, unreproduced "manually checked" claim with a
+real, reproducible comparison: built the pre-registry baseline (`origin/main`) into its
+own `dist/cli.js` in a scratch worktree, ran it against this branch's build over an
+identical fixture matrix (every flag combination, a clean pass, a `--refs` staleness
+scenario), and diffed output/exit-codes byte-for-byte. Everything matched except the
+zero-resolved-roots exit code — already a known, intentional, changesetted behavior
+change from this same PR series, not a registry regression.
