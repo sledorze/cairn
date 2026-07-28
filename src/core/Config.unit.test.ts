@@ -68,6 +68,17 @@ describe('decodeConfig()', () => {
     expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
   })
 
+  // Adversarial finding: `links`/`summaries` can be turned back off with a
+  // plain `false`, letting a descendant config override an inherited
+  // `extends` preset — `checks.coverage` had no equivalent, only whole-
+  // object replacement, so once a preset enabled it there was no way for a
+  // descendant to opt back out short of setting `kinds`/`rules` to empty
+  // arrays (which still leaves it enabled, just vacuously).
+  it('decodes `checks.coverage: false` — an explicit re-disable, distinct from omitting the key entirely', () => {
+    const raw = { checks: { coverage: false as const } }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
   it('decodes a rule’s optional `name` — the discriminant for two rules sharing a kind pair', () => {
     const raw = {
       checks: {

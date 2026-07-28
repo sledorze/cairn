@@ -1,0 +1,1 @@
+^src/core/(SummaryTree|glob|MarkdownLinks|DocSummaries)\.ts$|^src/io/DocsFs\.ts$|^src/program/(CheckSummaries|checks/CheckPlugin|checks/runCheckPlugin|links/CheckLinks|links/CheckRefs|links/CheckProseRefs|structure/CheckCoverage)\.ts$|^src/cli\.ts$|^package\.json$

@@ -1,0 +1,190 @@
+---
+status: accepted
+---
+
+# A CheckPlugin registry for links/refs/proseRefs/coverage — summaries stays hand-wired
+
+## Context
+
+Investigating "what verification could we build atop `checks.coverage`" surfaced three
+candidate ideas (cardinality rules, heading-scoped references, stale-coverage-link
+freshness tracking) and a separate question: how do tools like ESLint let a plugin bring
+its own config schema into a shared config file? Researching ESLint's actual
+architecture (`meta.schema` per rule, a plugin's `rules` namespace, flat-config
+`plugins`) and applying it to cairn's own 5 checks (`CheckLinks.ts`, `CheckSummaries.ts`,
+`CheckRefs.ts`, `CheckProseRefs.ts`, `CheckCoverage.ts`) found: every check is hand-wired
+individually into `cli.ts` (5 separate `if` blocks), each importing its own
+`checkX`/`formatXReport`/`xExitCode` trio — an informal convention, no shared interface.
+Adding a check today means touching `cli.ts`'s dispatch, its `--json` incompatibility
+guards (3 near-identical copies), and (for a check that should appear in `--json`)
+`JsonReport.ts`'s hardcoded shape.
+
+A first design sketch (a full `CheckPlugin<Config, Result>` interface with `dependsOn`
+for cross-plugin data sharing, a config schema built generically from the registry, and
+a once-computed shared doc-scan context) was adversarially critiqued before any code was
+written. The critique found real breaks, not nitpicks:
+
+1. `dependsOn` + a dependency's resolved CONFIG isn't enough for the deepest candidate
+   (stale-coverage-links) — it needs the coverage graph's actual resolved EDGES (which
+   ref satisfies which rule), which `checkCoverage` computed and then discarded inside a
+   closure. The real fix is a shared, pure CORE extraction (`resolveRuleEdges`), not a
+   registry-level dependency mechanism.
+2. `checks.summaries`'s config isn't `checks.summaries` at all — `naming`,
+   `thresholdLines`, `requireDirSummaries`, `stampCommand` are top-level `ResolvedConfig`
+   fields. A `configSchema = checks.<name>` assumption is simply false for this check.
+3. Enablement is modeled two incompatible ways today: `links`/`summaries` are `boolean`
+   fields inside `checks`; `coverage` is presence-of-an-object (`null` = off); `refs`/
+   `proseRefs` have no config field at all, CLI-flag-only.
+4. A once-computed shared doc-scan context is unsafe the moment a `--fix`-capable check
+   (links) and a doc-reading check (coverage) coexist — a stale pre-fix snapshot.
+5. `--stamp` is already an overloaded, order-dependent CLI flag (summaries vs. refs);
+   inventing `--stamp=<plugin>` would be new user-facing surface for a need only one
+   check (`refs`) has today.
+
+## Decision
+
+Built a smaller, honest version of the registry, scoped to what four of the five checks
+actually need, not a generalized plugin system:
+
+- **`CheckPlugin<Result>`** (`src/program/checks/CheckPlugin.ts`): `isEnabled(resolved,
+cli)`, `run(args)`, `format(result, opts)`, `exitCode(result)`, optional
+  `jsonUnsupportedMessage` and `stamp`. `args: CheckRunArgs` carries the WHOLE
+  `ResolvedConfig`, not a per-plugin config slice (closes finding #2 — a plugin reaches
+  into whatever top-level fields it needs itself, same as it always did).
+- **`runCheckPlugin`**/**`rejectedJsonMessage`** (`src/program/checks/runCheckPlugin.ts`):
+  the generic runner (isEnabled → run → format → exitCode, matching the exact
+  `--json` line-suppression cli.ts already did) and the upfront, order-preserving
+  `--json` incompatibility gate that replaces 3 copy-pasted `if` guards with one.
+- **`links`, `refs`, `proseRefs`, `coverage` migrate onto it** — each gains a plugin
+  descriptor (`linksPlugin`, `refsPlugin`, `proseRefsPlugin`, `coveragePlugin`), thin
+  wiring only, no change to any check's own logic. `refsPlugin.stamp` is the one
+  concession to finding #5: a real, single capability, not a generalized verb system.
+- **`summaries` deliberately stays hand-wired** in `cli.ts` (closes finding #2/#3): four
+  CLI verbs (check/stamp/prune/migrate-stamps) that don't fit `run`/`format`/`exitCode`,
+  and forcing them to would be exactly the "false generality" this design otherwise
+  exists to avoid.
+- **No shared doc-scan context, no `dependsOn`** (closes finding #1/#4): no two of the
+  four migrated checks share a scan today, so there is no real second consumer to design
+  around. Instead, `resolveRuleEdges` (`src/core/structure/Coverage.ts`) was extracted as
+  a PURE core function out of `checkCoverage`'s own satisfaction loop — the actual answer
+  to "how does a future stale-coverage-link check reuse coverage's resolution logic
+  without duplicating it": a shared core function, called directly by whichever checks
+  need it, not a registry-level dependency-injection mechanism.
+- **cli.ts's 4 call sites stay in their original relative order**, each now calling the
+  shared runner instead of hand-rolling isEnabled/format/exitCode inline — deliberately
+  NOT collapsed into one iteration loop. Console output order and exit-code aggregation
+  are real, observable CLI behavior; a single unified loop would risk silently reordering
+  them. Manually checked at a terminal against the pre-refactor binary across every flag
+  combination during development: plain check, `--links-only`, `--summaries-only`,
+  `--json` (compatible and all 3 rejecting cases), `--refs` (check and `--stamp`),
+  `--prose-refs`, `--fix`, and the `--refs --stamp` + summaries `--stamp` co-occurrence.
+  An earlier draft of this ADR called this "verified byte-for-byte" — overstated for a
+  manual, one-off terminal session with nothing checked in to reproduce it. Found by
+  adversarial review; the two most fragile of those behaviors (the `--json`
+  incompatibility gate, and the `--refs --stamp`/summaries-`--stamp` co-occurrence and
+  its ordering) are now locked in as permanent, automated regression tests
+  (`src/cli.integration.test.ts`, real subprocess — the first automated test cli.ts has
+  ever had; see its own header for why `cli.ts` was otherwise exempt from this by
+  long-standing convention). The rest remain manual-dogfood-only, same as every other
+  `cli.ts` behavior in this repo.
+
+## Considered Options
+
+- **A minimal fix: dedupe just the 3 `--json` guards into one function, leave the 4
+  hand-wired `cli.ts` dispatch blocks otherwise untouched.** Genuinely would have
+  removed most of the actual, cited duplication (~27 lines) with far less new surface
+  area than the full `CheckPlugin`/`runCheckPlugin` abstraction (~160 lines of
+  production code, ~525 of tests) — a real, fair "is this over-engineered for a 5-check
+  CLI" question an adversarial review raised. Not taken: this increment was explicitly
+  scoped, on request, as "a real plugin registry" rather than "extend the existing
+  per-field pattern" — the goal was proving out a real, reusable `CheckPlugin` shape
+  (uniform `isEnabled`/exit-code aggregation/optional `stamp`, not just json-guard
+  dedup) against 4 real, structurally different checks, informed by the earlier
+  cardinality/heading-scope/stale-link investigation, not solving today's minimal
+  duplication as cheaply as possible.
+- **The full `dependsOn`/generic-config-schema sketch**, as originally designed. Rejected
+  after the adversarial critique — every one of its 5 findings pointed to the same
+  lesson: build the registry the four REAL migrating checks need, not the one a
+  hypothetical fifth might.
+- **Migrate `summaries` too**, restructuring its config under `checks.summaries` to fit
+  the `configSchema` pattern. Rejected: a breaking config-file change for zero behavioral
+  gain, to make an abstraction "complete" rather than useful.
+- **Collapse the 4 call sites into one iteration loop** over a `CHECKS` array. Rejected:
+  real, if subtle, regression risk to console output order and Math.max exit-code
+  aggregation for a cosmetic code-size win; the shared runner already removes the
+  duplicated logic without that risk.
+
+## Consequences
+
+- Adding a FIFTH check that fits this shape (isEnabled/run/format/exitCode, optionally
+  stamp) and REJECTS `--json` (like `refs`/`proseRefs`/`coverage`) is now: write the
+  plugin descriptor, add one call site in `cli.ts` in the right position, done — no
+  `--json` guard to hand-copy, no separate exit-code aggregation to remember. Two real
+  gaps this does NOT close, found by adversarial review after the fact rather than
+  designed away up front — narrower claims than an earlier draft of this ADR made:
+  - `JsonReport.ts` stays untouched and hardcoded to `{ summaries, links, exitCode }`. A
+    future check that SHOULD participate in `--json` (unlike the 3 that reject it
+    outright) still needs `JsonReport.ts` and `cli.ts`'s `buildJsonReport(...)` call
+    hand-edited — the registry has no generic story for "this plugin's result belongs in
+    the JSON body," only "this plugin refuses to run under `--json` at all." Omitting
+    `jsonUnsupportedMessage` on such a plugin by mistake would silently drop its result
+    from the JSON body with no error, since `runCheckPlugin` still runs it, still
+    computes its exit code, just never routes the result anywhere `--json` reads from.
+  - `Config.ts`'s own per-check schema wiring (`ChecksInputSchema`, `ResolvedConfig`,
+    `DEFAULT_CONFIG`, the `layerConfig` merge — 4 touch-points, unchanged by this PR, see
+    this PR's own `Config.ts` diff from #82 for what that looks like) is exactly as manual
+    for a config-bearing 6th check as it always was. This registry only removes `cli.ts`
+    dispatch boilerplate, not config-schema boilerplate.
+- `summaries` remains a structural exception, documented, not silently inconsistent — a
+  future refactor that wants to unify it too would need to solve its four-verb shape
+  first, not retrofit it into this one.
+- **A second real, pre-existing gap (from #82, unrelated to the registry work itself, but
+  fixed in this PR at the user's request)**: `links`/`summaries` can be turned OFF via a
+  boolean (`checks.links: false`), letting a descendant config override an inherited
+  `extends` preset — but `checks.coverage`'s schema required a full config object
+  whenever the key was present at all, with no `false`/`null` a descendant config could
+  write to re-disable coverage once a parent preset turned it on. Closed: `checks.coverage`
+  now accepts `CoverageInputSchema | Literal(false)`; `layerConfig` resolves `false` to
+  `null` explicitly (a three-way `undefined`/`false`/object check, not a truthy check —
+  a truthy check would have silently treated `false` as "absent" and kept inheriting).
+- **A real, pre-existing bug found while dogfooding this refactor (unrelated to the
+  registry work itself, but fixed in this PR at the user's request)**: `checks.coverage`'s
+  kind globs are matched against ABSOLUTE filesystem paths (`DocsFs` always returns
+  absolute, POSIX-normalised paths) — a plain relative glob like `"product/features/**"`
+  can never match a real scan without a leading `**/`, the same reason the default
+  `ignore` is `"**/node_modules/**"`, not bare `"node_modules/**"`. The matching mechanism
+  itself was already correct and consistent with `ignore`'s own established convention —
+  the bug was that the README's own example broke that convention. Closed: the README's
+  `checks.coverage` example globs are now correctly `**/`-prefixed, with an explicit
+  paragraph explaining why every glob in this config needs one.
+- `resolveRuleEdges`'s every-satisfying-ref (not boolean) return shape is now the
+  concrete foundation a future stale-coverage-link check, cardinality rule, or
+  heading-scoped reference variant builds on — none of those three ideas need registry
+  changes at all: cardinality and heading-scoping stay inside `checks.coverage`'s own
+  `via` discriminated union (see docs/adr/0002); stale-coverage-links would be a genuinely
+  new `checks.<name>` plugin consuming `resolveRuleEdges` directly, still undesigned.
+- **`CheckPluginRunOutcome<Result>` is a discriminated union (`{ ran: false }` vs.
+  `{ ran: true; code; lines; result: Result }`), not the original flat `{ ran: boolean;
+result: Result | null }`.** A third adversarial review found the flat shape's `null`
+  "didn't run" sentinel was already ambiguous with a real value in this exact codebase
+  (`CoverageConfig | null` is a legitimately-nullable config type elsewhere) — a future
+  plugin whose own `Result` could itself be `null` for a real reason would have been
+  silently misread as "skipped." The union makes that structurally unrepresentable: a
+  disabled outcome has no `result` field to collide with, and every `cli.ts` call site
+  now must narrow on `.ran` before reading `.code`/`.lines`/`.result`, enforced by the
+  type checker, not a convention.
+- **Scope/regression parity verified directly against the pre-registry baseline, not
+  just inferred from tests.** Built `origin/main` (merge-base of this branch, `7d7b787`)
+  into a real `dist/cli.js` in a scratch `git worktree` alongside this branch's own build,
+  then ran both against identical real fixture trees and diffed stdout/stderr/exit-code
+  byte-for-byte: `--help` and `check --help` (identical), `check` default/`--refs`/
+  `--prose-refs`/`--links-only`/`--summaries-only`/`--json`/`--refs --json`/
+  `--refs --stamp --json`/`--explain`/`--fix`/`--prune`/`config` against a fixture with a
+  broken link, a missing-coverage feature, and an orphan decision (all identical,
+  including the `.cairn/**` sidecar tree written by `--refs --stamp`), a fully clean
+  fixture (identical exit 0), and a `--refs` content-drift staleness scenario (stamp, then
+  mutate the referenced doc, re-check — identical stale-hash report on both). The only
+  difference found was the zero-resolved-roots exit code (0 on baseline, 1 on this
+  branch) — already a known, intentional, changesetted behavior change from this same PR
+  series (`.changeset/fix-zero-roots-exit-code.md`), not a registry regression. No other
+  behavioral difference of any kind was found across this matrix.

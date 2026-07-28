@@ -20,6 +20,7 @@ import { matchesAny } from '../../core/glob.ts'
 import { isWithinBase } from '../../core/paths.ts'
 import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs } from '../../io/DocsFs.ts'
+import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
 
@@ -478,3 +479,18 @@ export const checkLinks = ({
 
     return { broken, checked: mdFiles.length - unreadable.length, fixed, unreadable }
   })
+
+// The CheckPlugin descriptor cli.ts's registry runner drives — see
+// ../checks/CheckPlugin.ts's own header for why this abstraction exists.
+// `isEnabled` matches cli.ts's exact prior gate: `config.checks.links &&
+// !parsed.summariesOnly`. No `jsonUnsupportedMessage`: links is the one
+// migrated check that DOES participate in `--json` output (via
+// buildJsonReport), so it must never be rejected outright.
+export const linksPlugin: CheckPlugin<LinkCheckResult> = {
+  exitCode: linkExitCode,
+  format: (result, options) => formatLinkReport(result, options),
+  isEnabled: (resolved, cli) => resolved.checks.links && !cli.summariesOnly,
+  name: 'links',
+  run: ({ base, cli, ignore, roots, trackedFiles }) =>
+    checkLinks({ base, fix: cli.fix, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) }),
+}

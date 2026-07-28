@@ -20,8 +20,19 @@ unset $(git rev-parse --local-env-vars) 2>/dev/null || true
 # direct cli.ts edit, is exactly what the CLI-startup synthetic benchmark below exists
 # to catch — confirmed by testing: without these two, a real injected startup
 # regression in cli.ts was silently skipped since it isn't itself a benchmarked
-# src/core/*.ts hot path).
-HOT_PATHS='^src/core/(SummaryTree|glob|MarkdownLinks|DocSummaries)\.ts$|^src/io/DocsFs\.ts$|^src/program/CheckSummaries\.ts$|^src/cli\.ts$|^package\.json$'
+# src/core/*.ts hot path). Also src/program/checks/ (the CheckPlugin registry
+# dispatch itself) and the 4 migrated checks — none of src/core/*.bench.ts or
+# CheckSummaries.bench.ts exercise that dispatch layer at all (CheckSummaries
+# is the one check that stays outside it), so a regression there would
+# otherwise be invisible to this gate too. scripts/bench-cli-check.ts below
+# closes that gap by timing a real `check` run through it.
+#
+# Read from a shared file, not inlined here — .github/workflows/bench.yml needs the
+# EXACT same filter (its own "skip the expensive double-build on an unrelated PR"
+# gate) and a copy-pasted regex is exactly the kind of thing that silently drifts the
+# next time one of them is widened but not the other (this filter itself was widened
+# once already, in this same PR, to close a real coverage gap — see git blame).
+HOT_PATHS="$(cat scripts/bench-hot-paths.regex)"
 
 BASE_REF="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 if [ -z "$BASE_REF" ]; then
@@ -55,11 +66,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Uses THIS checkout's (HEAD's) copy of bench-cli-startup.ts for both timings, same
-# reasoning as bench.yml (see that workflow's comment): the worktree at MERGE_BASE
-# won't have the script yet the first time this lands, and cross-referencing HEAD's
-# copy from the worktree's own directory keeps dist/cli.js resolving to that ref's
-# own build either way.
+# Uses THIS checkout's (HEAD's) copy of bench-cli-startup.ts/bench-cli-check.ts for
+# both timings, same reasoning as bench.yml (see that workflow's comment): the
+# worktree at MERGE_BASE won't have the scripts yet the first time either lands, and
+# cross-referencing HEAD's copy from the worktree's own directory keeps dist/cli.js
+# resolving to that ref's own build either way.
 HEAD_DIR="$(pwd)"
 git worktree add --detach --quiet "$WORKTREE_DIR" "$MERGE_BASE"
 (
@@ -68,10 +79,12 @@ git worktree add --detach --quiet "$WORKTREE_DIR" "$MERGE_BASE"
   pnpm exec vitest bench --run --outputJson "$TMP_DIR/before.json" >/dev/null
   pnpm build >/dev/null
   pnpm exec tsx "$HEAD_DIR/scripts/bench-cli-startup.ts" "$TMP_DIR/before.json" >/dev/null
+  pnpm exec tsx "$HEAD_DIR/scripts/bench-cli-check.ts" "$TMP_DIR/before.json" >/dev/null
 )
 
 pnpm exec vitest bench --run --outputJson "$TMP_DIR/after.json" >/dev/null
 pnpm build >/dev/null
 pnpm exec tsx scripts/bench-cli-startup.ts "$TMP_DIR/after.json" >/dev/null
+pnpm exec tsx scripts/bench-cli-check.ts "$TMP_DIR/after.json" >/dev/null
 
 pnpm exec tsx scripts/bench-assert.ts "$TMP_DIR/before.json" "$TMP_DIR/after.json"

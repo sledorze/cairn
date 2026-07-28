@@ -20,11 +20,13 @@ import { expandRoots, loadConfig, loadConfigWithSource, LOCALES } from './config
 import { AGENT_TARGETS, runInit } from './init/generate.ts'
 import { DocsFsLive } from './io/DocsFs.ts'
 import { GitFs, GitFsLive } from './io/Git.ts'
+import type { CheckCliFlags } from './program/checks/CheckPlugin.ts'
+import { rejectedJsonMessage, runCheckPlugin } from './program/checks/runCheckPlugin.ts'
 import type { LinkCheckResult } from './program/links/CheckLinks.ts'
-import { checkLinks, formatLinkReport, linkExitCode } from './program/links/CheckLinks.ts'
-import { checkProseRefs, formatProseRefsReport, proseRefsExitCode } from './program/links/CheckProseRefs.ts'
-import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './program/links/CheckRefs.ts'
-import { checkCoverage, coverageExitCode, formatCoverageReport } from './program/structure/CheckCoverage.ts'
+import { linksPlugin } from './program/links/CheckLinks.ts'
+import { proseRefsPlugin } from './program/links/CheckProseRefs.ts'
+import { refsPlugin } from './program/links/CheckRefs.ts'
+import { coveragePlugin } from './program/structure/CheckCoverage.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -37,6 +39,24 @@ import {
 import { buildJsonReport } from './program/JsonReport.ts'
 import type { Locale } from './program/locale.ts'
 import { pick } from './program/locale.ts'
+
+// The 4 checks migrated onto the CheckPlugin abstraction, in the EXACT
+// order their equivalent hand-wired blocks used to run (links, then —
+// after summaries, which stays hand-wired, see ./program/checks/
+// CheckPlugin.ts's own header — refs, proseRefs, coverage). Order matters:
+// it's the order `--json` incompatibility messages are checked in
+// (rejectedJsonMessage) AND the order console output appears in.
+const JSON_INCOMPATIBLE_PLUGINS = [refsPlugin, proseRefsPlugin, coveragePlugin]
+
+// Narrowed once, at module scope, instead of a `!` non-null assertion
+// (forbidden by this repo's lint config) at each call site — a genuine,
+// permanent fact about `refsPlugin`'s own descriptor, not a runtime
+// condition, so checking it once here is the right place, not inline in
+// `runCheck` every time `--refs --stamp` is handled.
+const refsStamp = refsPlugin.stamp
+if (refsStamp === undefined) {
+  throw new Error('refsPlugin is expected to declare a stamp capability')
+}
 
 // --- shared `check` flags/args ---
 
@@ -149,32 +169,29 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   const config = yield* loadConfigOrFail(cwd, overrides, Option.getOrUndefined(parsed.config))
   const locale = config.locale
 
+  const cliFlags: CheckCliFlags = {
+    fix: parsed.fix,
+    json: parsed.json,
+    linksOnly: parsed.linksOnly,
+    prose: parsed.prose,
+    refs: parsed.refs,
+    stamp: parsed.stamp,
+    summariesOnly: parsed.summariesOnly,
+  }
+
   if (parsed.json && (parsed.stamp || parsed.migrateStamps)) {
     yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp/--migrate-stamps' }))
     yield* Effect.sync(() => (process.exitCode = 1))
     return
   }
-  if (parsed.json && parsed.refs) {
-    // --refs's own report isn't part of buildJsonReport's { summaries, links,
-    // exitCode } shape yet (v1, named as a follow-up) — reject rather than
-    // silently drop it from the JSON body while still letting it affect exitCode.
-    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --refs yet' }))
-    yield* Effect.sync(() => (process.exitCode = 1))
-    return
-  }
-  if (parsed.json && parsed.prose) {
-    // Same reasoning as --refs above: --prose-refs's report isn't part of
-    // buildJsonReport's shape yet.
-    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --prose-refs yet' }))
-    yield* Effect.sync(() => (process.exitCode = 1))
-    return
-  }
-  if (parsed.json && config.checks.coverage !== null) {
-    // Same reasoning as --refs/--prose-refs above: the coverage/orphan
-    // report isn't part of buildJsonReport's shape yet. Gated on config
-    // (not a CLI flag) since checkCoverage's kinds/rules have no CLI
-    // equivalent — config presence is already the whole opt-in.
-    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with checks.coverage yet' }))
+  // Replaces 3 near-identical hand-written guards (--refs/--prose-refs/
+  // checks.coverage) with one generic, order-preserving check — each
+  // migrated plugin owns its own `jsonUnsupportedMessage`
+  // (./program/checks/CheckPlugin.ts), so a NEW plugin never needs a 4th
+  // copy-pasted `if` here.
+  const jsonRejection = rejectedJsonMessage(JSON_INCOMPATIBLE_PLUGINS, config, cliFlags)
+  if (jsonRejection !== null) {
+    yield* Console.log(JSON.stringify({ error: jsonRejection }))
     yield* Effect.sync(() => (process.exitCode = 1))
     return
   }
@@ -238,28 +255,51 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   let linksResult: LinkCheckResult | null = null
   let summariesResult: SummaryPlan | null = null
 
-  if (absRoots.length === 0 && !parsed.json) {
-    yield* Console.log(
-      pick(locale, {
-        en: `⚠️  No documentation roots found (looked for: ${config.roots.join(', ')}).`,
-        fr: `⚠️  Aucune racine de documentation trouvée (cherché : ${config.roots.join(', ')}).`,
-      }),
-    )
+  // A config that resolves to checking literally nothing must fail loudly,
+  // not report green — found adversarially (goal: "refute the DX for end
+  // users (dev/ai) is great"): this used to be a warning-only line with no
+  // effect on `code`, so a totally misconfigured repo (or one where the
+  // scan just silently found nothing) passed CI by exit code alone, the one
+  // thing automation actually checks. `--json` still suppresses the
+  // human-readable line (matching every other warning's `--json` behavior),
+  // but `code` — and so `report.exitCode` below — reflects the failure
+  // either way.
+  if (absRoots.length === 0) {
+    code = Math.max(code, 1)
+    if (!parsed.json) {
+      yield* Console.log(
+        pick(locale, {
+          en: `⚠️  No documentation roots found (looked for: ${config.roots.join(', ')}).`,
+          fr: `⚠️  Aucune racine de documentation trouvée (cherché : ${config.roots.join(', ')}).`,
+        }),
+      )
+    }
   }
 
-  if (config.checks.links && !parsed.summariesOnly) {
-    const links = yield* checkLinks({
-      base: cwd,
-      fix: parsed.fix,
-      ignore: effectiveIgnore,
-      roots: absRoots,
-      ...(trackedFiles === undefined ? {} : { trackedFiles }),
-    })
-    linksResult = links
-    if (!parsed.json) {
-      yield* Console.log(formatLinkReport(links, { locale }).join('\n'))
+  // Shared by every plugin-driven check below — same base/roots/ignore/
+  // trackedFiles/config/cli every hand-wired block used to thread through
+  // individually.
+  const pluginArgs = {
+    base: cwd,
+    cli: cliFlags,
+    ignore: effectiveIgnore,
+    resolved: config,
+    roots: absRoots,
+    ...(trackedFiles === undefined ? {} : { trackedFiles }),
+  }
+
+  const linksOutcome = yield* runCheckPlugin(linksPlugin, pluginArgs)
+  if (linksOutcome.ran) {
+    // `buildJsonReport` (below) treats `linksResult === null` as "the links
+    // check didn't run" — a real, established `X | null` "skipped" sentinel
+    // at THIS specific boundary (matches `summariesResult`'s own convention
+    // just above), not the ambiguous one `runCheckPlugin`'s own return type
+    // no longer has.
+    linksResult = linksOutcome.result
+    if (linksOutcome.lines.length > 0) {
+      yield* Console.log(linksOutcome.lines.join('\n'))
     }
-    code = Math.max(code, linkExitCode(links))
+    code = Math.max(code, linksOutcome.code)
   }
 
   if (config.checks.summaries && !parsed.linksOnly) {
@@ -324,58 +364,56 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     }
   }
 
+  // refs is the one migrated check with a `--stamp` verb of its own (a
+  // different write-time operation, not part of the run/format/exitCode
+  // shape `runCheckPlugin` drives — see refsPlugin's own `stamp` doc
+  // comment) — never contributes to `code`, matching summaries' own
+  // `--stamp` branch above.
   if (parsed.refs) {
-    const refsArgs = {
-      base: cwd,
-      ignore: effectiveIgnore,
-      roots: absRoots,
-      ...(trackedFiles === undefined ? {} : { trackedFiles }),
-    }
     if (parsed.stamp) {
-      const result = yield* stampRefs(refsArgs)
-      yield* Console.log(
-        pick(locale, {
-          en: `🔗 Stamped ${result.stamped} doc(s)' reference hash(es) (.cairn/** sidecar).`,
-          fr: `🔗 ${result.stamped} document(s) tamponné(s) (hachage des références, fichier annexe .cairn/**).`,
-        }),
-      )
+      const lines = yield* refsStamp(pluginArgs)
+      yield* Console.log(lines.join('\n'))
     } else {
-      const result = yield* checkRefs(refsArgs)
-      yield* Console.log(formatRefsReport(result, { locale }).join('\n'))
-      code = Math.max(code, refsExitCode(result))
+      const outcome = yield* runCheckPlugin(refsPlugin, pluginArgs)
+      if (outcome.ran) {
+        if (outcome.lines.length > 0) {
+          yield* Console.log(outcome.lines.join('\n'))
+        }
+        code = Math.max(code, outcome.code)
+      }
     }
   }
 
-  if (parsed.prose) {
-    const result = yield* checkProseRefs({
-      base: cwd,
-      ignore: effectiveIgnore,
-      roots: absRoots,
-      ...(trackedFiles === undefined ? {} : { trackedFiles }),
-    })
-    yield* Console.log(formatProseRefsReport(result, { locale }).join('\n'))
-    code = Math.max(code, proseRefsExitCode(result))
+  const proseOutcome = yield* runCheckPlugin(proseRefsPlugin, pluginArgs)
+  if (proseOutcome.ran) {
+    if (proseOutcome.lines.length > 0) {
+      yield* Console.log(proseOutcome.lines.join('\n'))
+    }
+    code = Math.max(code, proseOutcome.code)
   }
 
-  if (config.checks.coverage !== null) {
-    const { exempt, kinds, rules } = config.checks.coverage
-    const result = yield* checkCoverage({
-      base: cwd,
-      exempt,
-      ignore: effectiveIgnore,
-      kinds,
-      roots: absRoots,
-      rules,
-      ...(trackedFiles === undefined ? {} : { trackedFiles }),
-    })
-    yield* Console.log(formatCoverageReport(result, { locale }).join('\n'))
-    code = Math.max(code, coverageExitCode(result))
+  const coverageOutcome = yield* runCheckPlugin(coveragePlugin, pluginArgs)
+  if (coverageOutcome.ran) {
+    if (coverageOutcome.lines.length > 0) {
+      yield* Console.log(coverageOutcome.lines.join('\n'))
+    }
+    code = Math.max(code, coverageOutcome.code)
   }
 
   if (parsed.json) {
     const report = buildJsonReport({ links: linksResult, summaries: summariesResult })
-    yield* Console.log(JSON.stringify(report, null, 2))
-    code = report.exitCode
+    // `Math.max`, not `report.exitCode` alone — `report.exitCode` is
+    // derived purely from links/summaries, so using it verbatim would
+    // silently discard any OTHER contribution to `code` (today: the
+    // zero-resolved-roots check above, the only such case reachable under
+    // `--json`, since refs/proseRefs/coverage are all already rejected
+    // upfront when `--json` is set). The printed JSON body's own
+    // `exitCode` field is corrected too, not just `process.exitCode` below
+    // — a consumer reading only the JSON body must see the same number the
+    // process actually exits with, not a stale one.
+    const exitCode = Math.max(code, report.exitCode)
+    yield* Console.log(JSON.stringify({ ...report, exitCode }, null, 2))
+    code = exitCode
   }
 
   if (code !== 0) {

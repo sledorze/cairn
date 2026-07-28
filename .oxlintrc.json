@@ -103,7 +103,7 @@
       // each `it.layer(...)` block in that file has its own `beforeAll`/`afterAll` pair,
       // manually verified to be scoped correctly (each fixture is created once per block
       // and disposed in that same block's `afterAll`, not shared across blocks).
-      "files": ["src/io/Git.integration.test.ts"],
+      "files": ["src/io/Git.integration.test.ts", "src/devTools/BenchCliCheck.integration.test.ts"],
       "rules": {
         "vitest/no-duplicate-hooks": "off",
         "vitest/no-standalone-expect": "off"

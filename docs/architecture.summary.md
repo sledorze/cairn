@@ -19,6 +19,11 @@ Separation of concerns: pure decisions, IO at the edges.
     namespace — kept disjoint from `StampStore`'s sidecar path: a summary-tree node and a
     scanned doc can be the SAME file, so the two must never collide), `ProseRefs` (pure
     bare-backtick-citation candidate extraction for `--prose-refs`, issue #47).
+  - **`structure/`**: the doc-kind/coverage-graph domain (docs/adr/0002, docs/adr/0003) —
+    `DocMetadata` (path-glob kind classification + one ordered `heading`/`ref` node
+    sequence per doc), `DocGraph` (corpus-wide inbound-reference `Bag`, for orphans),
+    `Coverage` (`resolveRuleEdges` — pure rule-satisfaction resolution, extracted out of
+    `CheckCoverage.ts` so a future check can reuse it directly).
   - **Shared by both** (top-level `core/`): `sidecar.ts` (the `.cairn/**` path mapping +
     lenient-JSON-codec mechanics `StampStore`/`RefStore` both build on), `hashing.ts`
     (`hashContent` — moved out of `DocSummaries` once it was found to be the one thing
@@ -32,7 +37,12 @@ Separation of concerns: pure decisions, IO at the edges.
   mode; shells out via `effect`'s own `ChildProcess`/`ChildProcessSpawner`, requiring the
   Node platform layer like `DocsFsLive` does, never baked in; every call scrubs
   repository-pinning env vars and sets `GIT_CEILING_DIRECTORIES`, `gitEnv.ts`).
-- **`program/`**, same two-subdomain split:
+- **`program/`**, same two-subdomain split, plus a `checks/` abstraction (docs/adr/0003):
+  - **`checks/`**: the `CheckPlugin` interface (`isEnabled`/`run`/`format`/`exitCode`,
+    optional `jsonUnsupportedMessage`/`stamp`) and its generic runner
+    (`runCheckPlugin`/`rejectedJsonMessage`) — `links`/`refs`/`proseRefs`/`coverage` each
+    export a plugin descriptor and `cli.ts` drives all four through it; `summaries` stays
+    hand-wired (four CLI verbs — check/stamp/prune/migrate-stamps — don't fit the shape).
   - **`summaries/`**: `CheckSummaries` (reads/writes the `.cairn/**` sidecar tree;
     `stampFiles` self-heals a legacy in-content stamp on every ordinary `--stamp`, so
     `--migrate-stamps` is only an optional named alias, never required).
@@ -41,10 +51,17 @@ Separation of concerns: pure decisions, IO at the edges.
     `CheckProseRefs` (opt-in `--prose-refs`, issue #47: migration aid — resolves prose
     citations rooted at `base`; a resolving one is always silent, only a drifted one is
     reported, with the link syntax to convert it).
-  - **Shared by both**: `JsonReport` (`--json`'s combined shape), `locale` (re-exports
-    `Locale`; en default, fr mirror).
+  - **`structure/`**: `CheckCoverage` — opt-in (`checks.coverage`'s mere presence)
+    missing-coverage/orphan/unmatched-kind reporting over a declared doc-kind graph.
+  - **Shared by more than one check**: `JsonReport` (`--json`'s combined shape — only
+    links/summaries participate; refs/proseRefs/coverage reject `--json` outright),
+    `locale` (re-exports `Locale`; en default, fr mirror).
 - **Edge**: `config.ts` (disk IO: reads rc/`extends`/`package.json`, decodes via
-  `core/Config`, expands root globs), `cli.ts`, `init/`.
+  `core/Config`, expands root globs), `cli.ts` (excluded from coverage, historically
+  dogfooded via real subprocess only — `cli.integration.test.ts` now locks in its two
+  most fragile checks-registry behaviors as permanent, automated real-subprocess tests,
+  plus a self-enforced completeness guard that every documented flag is exercised by
+  name; exhaustive flag-COMBINATION coverage still isn't attempted), `init/`.
 - **`testSupport/`** (test-only, excluded from the published build): real-temp-directory
   fixture helper shared by `*.integration.test.ts` files — not a runtime layer.
 - **Content hash, not mtime, tracked outside your docs**: git drops mtimes, so

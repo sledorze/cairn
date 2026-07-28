@@ -1,0 +1,16 @@
+{
+  "refs": [
+    {
+      "hash": "dc3ac2f2c912a0da73f206f001abe1596a5c8c5cbfcab6fbdb6f0751f89c4f2b",
+      "target": "./0001-optional-external-link-liveness-checks.md"
+    },
+    {
+      "hash": "b7f13c411883f6c57d2f43805c4668c5529725a706ddd15d4a081649ac355419",
+      "target": "./0002-coverage-orphan-check-scoped-to-declared-to-kinds.md"
+    },
+    {
+      "hash": "228191e91515efeafe7627c21565817a1a08bdcfbff3c08e41a715cf03ccc023",
+      "target": "./0003-check-plugin-registry.md"
+    }
+  ]
+}

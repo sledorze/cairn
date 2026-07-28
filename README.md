@@ -153,21 +153,24 @@ about whether the docs are actually _related_ the way they need to be. A repo ca
 feature docs and 12 decision docs, zero links between them, and still be fully green.
 "Reachability is not coverage."
 
-`checks.coverage` is a separate, **opt-in** structural check — its mere presence in config
-is the opt-in, there's no `--coverage` flag (its `kinds`/`rules` have no CLI equivalent to
-express them with). Declare doc **kinds** by path glob, and **rules** — every doc of one
-kind must link somewhere to a doc of another:
+`checks.coverage` is a separate, **opt-in** structural check — a config OBJECT under
+`checks.coverage` is the opt-in, there's no `--coverage` flag (its `kinds`/`rules` have no
+CLI equivalent to express them with). `checks.coverage: false` is the explicit way to opt
+back OUT — most useful to re-disable it in a config that `extends` a preset which enables
+it, the same escape hatch `checks.links`/`checks.summaries` already have via their own
+booleans. Declare doc **kinds** by path glob, and **rules** — every doc of one kind must
+link somewhere to a doc of another:
 
 ```json
 "roots": ["docs", "product"],
 "checks": {
   "coverage": {
     "kinds": [
-      { "id": "feature", "select": { "by": "path", "glob": "product/features/**" } },
-      { "id": "decision", "select": { "by": "path", "glob": "docs/adr/**" } }
+      { "id": "feature", "select": { "by": "path", "glob": "**/product/features/**" } },
+      { "id": "decision", "select": { "by": "path", "glob": "**/docs/adr/**" } }
     ],
     "rules": [{ "from": "feature", "to": "decision" }],
-    "exempt": ["product/features/templates/**"]
+    "exempt": ["**/product/features/templates/**"]
   }
 }
 ```
@@ -176,6 +179,14 @@ A kind's glob only classifies docs cairn already scans — it does **not** impli
 `roots` (default `["docs"]`). If your feature docs live under `product/` and `roots` doesn't
 include it, `checks.coverage` checks zero of them. Make sure every kind's glob falls inside a
 configured root, as the example above does by adding `"product"`.
+
+Every glob in this config — `ignore`, a kind's `select.glob`, `exempt` — is matched against
+the doc's real, **absolute** filesystem path, never a path relative to `roots` or the repo
+root. A leading `**/` (matching any prefix, including none) is what makes a glob like
+`"**/product/features/**"` match regardless of exactly where the repo checkout lives on disk
+— the same reason the default `ignore` is `"**/node_modules/**"`, not bare `"node_modules/**"`.
+Omitting it (as an earlier version of this example did) silently matches nothing, ever — no
+error, just a doc that's forever `unmatched`.
 
 Three report classes, all file-level (a violation is an absence — there's no specific line to
 point at) except the third, which is a warning about the config itself:
@@ -304,7 +315,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `naming.fileSummarySuffix` | Suffix for file summaries. Default `.summary.md`                                                                                                                                                                                                                                   |
 | `checks.summaries`         | Enable summary freshness checking                                                                                                                                                                                                                                                  |
 | `checks.links`             | Enable Markdown link checking                                                                                                                                                                                                                                                      |
-| `checks.coverage`          | Opt-in structural coverage/orphan check (see below). Absent by default — presence enables it, no separate flag                                                                                                                                                                     |
+| `checks.coverage`          | Opt-in structural coverage/orphan check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                     |
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                                                                                                                                                                                                                |
 | `ignore`                   | Globs to exclude from scanning — a directory-shaped match is pruned before it's ever walked, not just filtered out afterward (issue #63). `.gitignore` is also consulted automatically for the same directory-level pruning, with no config needed, regardless of `onlyGitTracked` |
 | `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`                                                                                                                                                                                              |

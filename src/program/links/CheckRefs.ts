@@ -25,6 +25,7 @@ import { hashContent } from '../../core/hashing.ts'
 import { isWithinBase } from '../../core/paths.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
 import { DocsFs } from '../../io/DocsFs.ts'
+import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
 
@@ -253,4 +254,30 @@ export const formatRefsReport = (result: RefsCheckResult, options: RefsReportOpt
     }
   }
   return lines
+}
+
+// The CheckPlugin descriptor cli.ts's registry runner drives — see
+// ../checks/CheckPlugin.ts's own header for why this abstraction exists.
+// `isEnabled` matches cli.ts's exact prior gate: `parsed.refs` (refs has no
+// config field of its own, CLI-flag opt-in only). `jsonUnsupportedMessage`
+// matches cli.ts's prior `--json cannot be combined with --refs yet` guard
+// word-for-word — a behavior-preserving refactor, not a new message.
+export const refsPlugin: CheckPlugin<RefsCheckResult> = {
+  exitCode: refsExitCode,
+  format: (result, options) => formatRefsReport(result, options),
+  isEnabled: (_resolved, cli) => cli.refs,
+  jsonUnsupportedMessage: '--json cannot be combined with --refs yet',
+  name: 'refs',
+  run: ({ base, ignore, roots, trackedFiles }) =>
+    checkRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) }),
+  stamp: ({ base, ignore, resolved, roots, trackedFiles }) =>
+    Effect.gen(function* () {
+      const result = yield* stampRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) })
+      return [
+        pick(resolved.locale, {
+          en: `🔗 Stamped ${result.stamped} doc(s)' reference hash(es) (.cairn/** sidecar).`,
+          fr: `🔗 ${result.stamped} document(s) tamponné(s) (hachage des références, fichier annexe .cairn/**).`,
+        }),
+      ]
+    }),
 }
