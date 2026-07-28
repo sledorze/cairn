@@ -14,6 +14,13 @@
       "additionalProperties": false,
       "description": "One named document kind."
     },
+    "CairnCoverageRequirement": {
+      "type": "object",
+      "properties": { "by": { "type": "string", "enum": ["link"] } },
+      "required": ["by"],
+      "additionalProperties": false,
+      "description": "How a rule is satisfied. Only `by: \"link\"` (a direct outbound reference) today."
+    },
     "CairnCoverageRule": {
       "type": "object",
       "properties": {
@@ -22,7 +29,8 @@
           "type": "string",
           "description": "Distinguishes this rule from another sharing the same from/to pair (e.g. \"implements\" vs \"verified_by\"). Two rules on the same pair with no name, or the same name, are treated as one."
         },
-        "to": { "type": "string" }
+        "to": { "type": "string" },
+        "via": { "$ref": "#/$defs/CairnCoverageRequirement" }
       },
       "required": ["from", "to"],
       "additionalProperties": false,

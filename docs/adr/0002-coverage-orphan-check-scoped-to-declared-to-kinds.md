@@ -47,6 +47,21 @@ alone and would surprise a future reader:
   schema validation silently and then deterministically report every `from`-kind doc as
   missing forever; it's now a `Failure` at `decodeConfig` time, naming the undeclared id
   and its `rules[i].from`/`rules[i].to` position.
+- A rule's `via` field is a discriminated union (`{ by: 'link' }`, one variant today) naming
+  _how_ the rule is satisfied — added for the same reason `KindSelector` got its own `by`
+  discriminant: `checkCoverage`'s "satisfied by a direct outbound reference" semantics was
+  otherwise an implicit fact of the check's logic, with no field in `CoverageRule` marking it
+  as one choice among several a future increment could add (a minimum link count, a required
+  backlink, a heading-scoped reference). Optional and defaulting to `{ by: 'link' }` when
+  absent, unlike `select` (required on `KindDef`) — every rule written before this field
+  existed already meant that, so omitting it must decode identically.
+- A declared kind that matches zero scanned docs is reported as a separate, non-fatal
+  `unmatchedKinds` warning (⚠️) — found by dogfooding the real CLI against this ADR's own
+  README example: a kind's glob only classifies docs already inside `roots`, it never widens
+  `roots` itself, so a glob outside every configured root (or a plain typo) silently checks
+  nothing, and `"✅ Coverage OK (0 doc(s) checked)"` reads identically to a genuinely green
+  repo. Deliberately never affects `coverageExitCode` — a kind can legitimately have zero
+  docs mid-rollout, so this is a hint about the config, not a rule violation.
 
 ## Considered Options
 

@@ -342,28 +342,114 @@ describe('checkCoverage()', () => {
     expect(result.missing).toEqual([])
     expect(result.orphans).toEqual([])
   })
+
+  // Real trap found by dogfooding the built CLI: a kind's glob only
+  // classifies docs cairn already scanned — it does NOT implicitly widen
+  // `roots`. A kind whose glob falls outside every configured root (or is
+  // simply mistyped) matches zero docs, and every rule mentioning it is then
+  // vacuously "satisfied" or invisible — `"✅ Coverage OK (0 doc(s)
+  // checked)"` looks identical to a genuinely green repo. Surfaced
+  // separately (never fatal — a kind can legitimately have zero docs yet,
+  // e.g. mid-rollout) so a config mistake is discoverable, not silent.
+  it('reports a declared kind that matched zero scanned docs as unmatched — the roots/glob-mismatch trap', async () => {
+    const layer = makeTestDocsFs({
+      '/r/features/f1.md': { content: '# Feature\n\n[why](../decisions/d1.md)', mtimeMs: 1 },
+    })
+    const kindsWithATypo = [
+      { id: 'feature', select: { by: 'path' as const, glob: '/r/features/**' } },
+      { id: 'decision', select: { by: 'path' as const, glob: '/r/decisionz/**' } }, // typo'd glob
+    ]
+    const result = await Effect.runPromise(
+      checkCoverage({ base: '/r', kinds: kindsWithATypo, roots: ['/r'], rules: RULES }).pipe(Effect.provide(layer)),
+    )
+    expect(result.unmatchedKinds).toEqual(['decision'])
+    // Not fatal on its own: only 'decision' is unmatched, 'feature' → nothing
+    // resolves (its own link target doesn't exist as a doc), which IS a real
+    // missing-coverage finding, but unmatchedKinds itself never drives the
+    // exit code (see coverageExitCode's own tests).
+  })
+
+  it('never reports a kind that matched at least one doc as unmatched', async () => {
+    const layer = makeTestDocsFs({
+      '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },
+      '/r/features/f1.md': { content: '# Feature\n\n[why](../decisions/d1.md)', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkCoverage({ base: '/r', kinds: KINDS, roots: ['/r'], rules: RULES }).pipe(Effect.provide(layer)),
+    )
+    expect(result.unmatchedKinds).toEqual([])
+  })
 })
 
 describe('coverageExitCode()', () => {
   it('is 0 when both missing and orphans are empty', () => {
-    expect(coverageExitCode({ checked: 1, missing: [], orphans: [] })).toBe(0)
+    expect(coverageExitCode({ checked: 1, missing: [], orphans: [], unmatchedKinds: [] })).toBe(0)
+  })
+
+  // unmatchedKinds is a config-mistake hint (see checkCoverage's own test),
+  // not a violation — a kind can legitimately have zero docs mid-rollout, so
+  // its presence alone must never flip the exit code the way missing/orphans
+  // findings do.
+  it('is 0 when unmatchedKinds is non-empty but missing and orphans are both empty', () => {
+    expect(coverageExitCode({ checked: 1, missing: [], orphans: [], unmatchedKinds: ['decision'] })).toBe(0)
   })
 
   it('is 1 when only missing is non-empty (orphans empty)', () => {
     expect(
-      coverageExitCode({ checked: 1, missing: [{ path: '/r/f.md', rule: { from: 'a', to: 'b' } }], orphans: [] }),
+      coverageExitCode({
+        checked: 1,
+        missing: [{ path: '/r/f.md', rule: { from: 'a', to: 'b' } }],
+        orphans: [],
+        unmatchedKinds: [],
+      }),
     ).toBe(1)
   })
 
   it('is 1 when only orphans is non-empty (missing empty)', () => {
-    expect(coverageExitCode({ checked: 1, missing: [], orphans: [{ kinds: ['a'], path: '/r/d.md' }] })).toBe(1)
+    expect(
+      coverageExitCode({ checked: 1, missing: [], orphans: [{ kinds: ['a'], path: '/r/d.md' }], unmatchedKinds: [] }),
+    ).toBe(1)
+  })
+})
+
+describe('coverageExitCode() — unmatchedKinds never contributes on its own', () => {
+  it('is still 1 when unmatchedKinds is non-empty alongside a real missing finding', () => {
+    expect(
+      coverageExitCode({
+        checked: 1,
+        missing: [{ path: '/r/f.md', rule: { from: 'a', to: 'b' } }],
+        orphans: [],
+        unmatchedKinds: ['b'],
+      }),
+    ).toBe(1)
   })
 })
 
 describe('formatCoverageReport()', () => {
   it('reports OK with the checked count when both missing and orphans are empty', () => {
-    expect(formatCoverageReport({ checked: 3, missing: [], orphans: [] })).toEqual([
+    expect(formatCoverageReport({ checked: 3, missing: [], orphans: [], unmatchedKinds: [] })).toEqual([
       '✅ Coverage OK (3 doc(s) checked).',
+    ])
+  })
+
+  it('appends an unmatched-kind warning even on an otherwise-OK report — the roots/glob-mismatch trap must not look silently green', () => {
+    const lines = formatCoverageReport({ checked: 1, missing: [], orphans: [], unmatchedKinds: ['decision'] })
+    expect(lines).toEqual([
+      '✅ Coverage OK (1 doc(s) checked).',
+      '⚠️  kind "decision" matched 0 scanned docs — check its glob against `roots`, or that it is simply not typo\'d.',
+    ])
+  })
+
+  it('lists every unmatched kind, one line each, alongside real findings too', () => {
+    const lines = formatCoverageReport({
+      checked: 1,
+      missing: [{ path: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' } }],
+      orphans: [],
+      unmatchedKinds: ['decision', 'spec'],
+    })
+    expect(lines.filter((l) => l.startsWith('⚠️'))).toEqual([
+      '⚠️  kind "decision" matched 0 scanned docs — check its glob against `roots`, or that it is simply not typo\'d.',
+      '⚠️  kind "spec" matched 0 scanned docs — check its glob against `roots`, or that it is simply not typo\'d.',
     ])
   })
 
@@ -372,6 +458,7 @@ describe('formatCoverageReport()', () => {
       checked: 2,
       missing: [{ path: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' } }],
       orphans: [{ kinds: ['decision'], path: '/r/decisions/d1.md' }],
+      unmatchedKinds: [],
     })
     expect(lines).toEqual([
       '❌ 1 doc(s) missing required coverage:',
@@ -387,6 +474,7 @@ describe('formatCoverageReport()', () => {
       checked: 1,
       missing: [{ path: '/r/specs/s1.md', rule: { from: 'spec', name: 'implements', to: 'decision' } }],
       orphans: [],
+      unmatchedKinds: [],
     })
     expect(lines).toEqual([
       '❌ 1 doc(s) missing required coverage:',
@@ -400,6 +488,7 @@ describe('formatCoverageReport()', () => {
       checked: 1,
       missing: [{ path: '/r/specs/s1.md', rule: { from: 'spec', to: 'decision' } }],
       orphans: [],
+      unmatchedKinds: [],
     })
     expect(lines).toContain('    ✗ no link to a "decision"-kind doc (required by kind "spec")')
   })
@@ -409,6 +498,7 @@ describe('formatCoverageReport()', () => {
       checked: 1,
       missing: [],
       orphans: [{ kinds: ['decision', 'internal'], path: '/r/decisions/d1.md' }],
+      unmatchedKinds: [],
     })
     expect(lines).toContain('  /r/decisions/d1.md (decision, internal)')
   })
@@ -418,6 +508,7 @@ describe('formatCoverageReport()', () => {
       checked: 1,
       missing: [{ path: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' } }],
       orphans: [],
+      unmatchedKinds: [],
     })
     expect(lines.some((l) => l.includes('/r/features/f1.md'))).toBeTruthy()
     expect(lines.some((l) => l.includes('orphan'))).toBeFalsy()
@@ -428,25 +519,35 @@ describe('formatCoverageReport()', () => {
       checked: 1,
       missing: [],
       orphans: [{ kinds: ['decision'], path: '/r/decisions/d1.md' }],
+      unmatchedKinds: [],
     })
     expect(lines.some((l) => l.includes('/r/decisions/d1.md'))).toBeTruthy()
     expect(lines.some((l) => l.includes('missing required coverage'))).toBeFalsy()
   })
 
   it('reports in French when locale is "fr" — both the OK line and every finding class', () => {
-    expect(formatCoverageReport({ checked: 1, missing: [], orphans: [] }, { locale: 'fr' })).toEqual([
-      '✅ Couverture OK (1 document(s) vérifié(s)).',
-    ])
+    expect(
+      formatCoverageReport({ checked: 1, missing: [], orphans: [], unmatchedKinds: [] }, { locale: 'fr' }),
+    ).toEqual(['✅ Couverture OK (1 document(s) vérifié(s)).'])
     const lines = formatCoverageReport(
       {
         checked: 2,
         missing: [{ path: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' } }],
         orphans: [{ kinds: ['decision'], path: '/r/decisions/d1.md' }],
+        unmatchedKinds: [],
       },
       { locale: 'fr' },
     )
     expect(lines.some((l) => l.includes('sans la couverture requise'))).toBeTruthy()
     expect(lines.some((l) => l.includes('aucun lien vers un document de type'))).toBeTruthy()
     expect(lines.some((l) => l.includes('orphelin'))).toBeTruthy()
+  })
+
+  it('reports the unmatched-kind warning in French too', () => {
+    const lines = formatCoverageReport(
+      { checked: 1, missing: [], orphans: [], unmatchedKinds: ['decision'] },
+      { locale: 'fr' },
+    )
+    expect(lines.some((l) => l.includes('n’a correspondu à aucun document'))).toBeTruthy()
   })
 })

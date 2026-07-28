@@ -159,6 +159,7 @@ express them with). Declare doc **kinds** by path glob, and **rules** — every 
 kind must link somewhere to a doc of another:
 
 ```json
+"roots": ["docs", "product"],
 "checks": {
   "coverage": {
     "kinds": [
@@ -171,14 +172,24 @@ kind must link somewhere to a doc of another:
 }
 ```
 
-Two report classes, both file-level (a violation is an absence — there's no specific line
-to point at):
+A kind's glob only classifies docs cairn already scans — it does **not** implicitly extend
+`roots` (default `["docs"]`). If your feature docs live under `product/` and `roots` doesn't
+include it, `checks.coverage` checks zero of them. Make sure every kind's glob falls inside a
+configured root, as the example above does by adding `"product"`.
+
+Three report classes, all file-level (a violation is an absence — there's no specific line to
+point at) except the third, which is a warning about the config itself:
 
 - **missing coverage** — a `feature` doc with no outbound link to any `decision` doc.
 - **orphan** — a `decision` doc (a kind that's actually supposed to be linked TO, per some
   rule's `to` side) with zero inbound references from _anywhere_ in the scanned corpus. A
   kind that only ever _initiates_ relations (like `feature` here) is never itself checked
   for orphan status — nothing expects anything to link back to a feature.
+- **unmatched kind** (⚠️, never fails the build) — a declared kind that matched zero scanned
+  docs, e.g. because its glob falls outside `roots` or is simply mistyped. Without this, that
+  mistake is invisible: `"✅ Coverage OK (0 doc(s) checked)"` looks identical to genuine
+  success. Non-fatal because a kind can legitimately have zero docs yet (mid-rollout) — it's
+  a hint to check your config, not a rule violation.
 
 `exempt` (globs) opts a doc out of orphan reporting entirely — the same escape hatch
 Sphinx's `:orphan:` marker and MkDocs' `not_in_nav` needed to keep their own equivalent
@@ -199,6 +210,16 @@ with no name, or the same name, are treated as one:
 Every rule's `from`/`to` must name a kind id declared in `kinds` — config decode rejects a
 typo (e.g. `"decisionn"`) up front, rather than silently, permanently reporting every
 `from`-kind doc as missing coverage because nothing could ever satisfy it.
+
+A rule also has an optional `via`, naming _how_ it's satisfied — `{ "by": "link" }` (a direct
+outbound reference) is both the only implemented value and the implicit default when `via` is
+omitted, so existing configs need no change. It exists so a future requirement type (a
+minimum link count, a required backlink, a heading-scoped reference) is a new `by` value, not
+a breaking change to every rule already written:
+
+```json
+{ "from": "feature", "to": "decision", "via": { "by": "link" } }
+```
 
 Reuses the same link-extraction the checks above already do — **no new Markdown syntax to
 author**, just the links you'd write anyway. Current scope, deliberately: classification is

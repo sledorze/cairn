@@ -17,6 +17,15 @@ than designed up front:
   An earlier version of this increment accepted this as a known gap (it would otherwise
   silently, deterministically report every `from`-kind doc as missing forever); closed by
   a cross-field schema check.
+- **A rule's `via` field discriminates _how_ it's satisfied**, mirroring `KindSelector`'s own
+  `by` field: `{ by: 'link' }` (a direct outbound reference) is the only implemented value
+  and the implicit default when `via` is omitted, so a future requirement type is a new
+  value, not a breaking change to every rule already written.
+- **A kind matching zero scanned docs is a non-fatal `⚠️ unmatchedKinds` warning**, found by
+  dogfooding the real CLI against this ADR's own README example: a kind's glob classifies
+  docs already inside `roots`, never widens `roots` itself, so a glob outside every root (or
+  a typo) used to check nothing while `"✅ Coverage OK (0 doc(s) checked)"` read as genuine
+  success. Never affects the exit code — a kind can legitimately have zero docs mid-rollout.
 
 Consequences still accepted for this increment: classification is path-glob only;
 `KindSelector`'s `by: 'frontmatter'` variant is declared but unimplemented.

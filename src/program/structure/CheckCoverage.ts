@@ -62,6 +62,15 @@ export interface CoverageResult {
   readonly checked: number
   readonly missing: readonly MissingCoverage[]
   readonly orphans: readonly OrphanDoc[]
+  /** A declared kind id that matched zero scanned docs — found by
+   * dogfooding the real CLI against the README's own example: a kind's
+   * glob only classifies docs already inside `roots`, it never widens
+   * `roots` itself, so a glob outside every configured root (or a plain
+   * typo) silently checks nothing and every rule mentioning it goes
+   * quiet, indistinguishable from genuine coverage. Never drives
+   * `coverageExitCode` — a kind can legitimately have zero docs yet
+   * (mid-rollout), so this is a hint, not a violation. */
+  readonly unmatchedKinds: readonly string[]
 }
 
 /** 0 when nothing is missing or orphaned, 1 otherwise — same convention as
@@ -181,7 +190,10 @@ export const checkCoverage = ({
       }
     }
 
-    return { checked: docs.length, missing, orphans }
+    const matchedKindIds = new Set(docs.flatMap((d) => d.kinds))
+    const unmatchedKinds = [...new Set(kinds.map((k) => k.id))].filter((id) => !matchedKindIds.has(id))
+
+    return { checked: docs.length, missing, orphans, unmatchedKinds }
   })
 
 export interface CoverageReportOptions {
@@ -192,12 +204,24 @@ export interface CoverageReportOptions {
 export const formatCoverageReport = (result: CoverageResult, options: CoverageReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
   const lines: string[] = []
+  // Appended regardless of branch below — an unmatched kind (the
+  // roots/glob-mismatch trap) must be visible even on an otherwise-green
+  // report, not just when a real missing/orphan finding already broke the
+  // silence. Never affects `coverageExitCode` — see `unmatchedKinds`'s own
+  // doc comment on `CoverageResult`.
+  const unmatchedWarnings = result.unmatchedKinds.map((id) =>
+    pick(locale, {
+      en: `⚠️  kind "${id}" matched 0 scanned docs — check its glob against \`roots\`, or that it is simply not typo'd.`,
+      fr: `⚠️  le type « ${id} » n’a correspondu à aucun document analysé — vérifiez son glob par rapport à \`roots\`, ou une simple faute de frappe.`,
+    }),
+  )
   if (result.missing.length === 0 && result.orphans.length === 0) {
     lines.push(
       pick(locale, {
         en: `✅ Coverage OK (${result.checked} doc(s) checked).`,
         fr: `✅ Couverture OK (${result.checked} document(s) vérifié(s)).`,
       }),
+      ...unmatchedWarnings,
     )
     return lines
   }
@@ -233,5 +257,6 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       lines.push(`  ${p} (${docKinds.join(', ')})`)
     }
   }
+  lines.push(...unmatchedWarnings)
   return lines
 }

@@ -83,6 +83,39 @@ describe('decodeConfig()', () => {
     expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
   })
 
+  it('decodes a rule’s optional `via` — the discriminant for how the rule is satisfied (only `by: "link"` today)', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'feature', to: 'decision', via: { by: 'link' } }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('returns a Failure when a rule’s `via.by` is not the recognised `"link"` literal', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'feature', to: 'decision', via: { by: 'backlink' } }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
   it('returns a Failure on an unknown key inside `checks.coverage` or a kind selector', () => {
     expect(Result.isFailure(decodeConfig({ checks: { coverage: { kinds: [], rulez: [] } } }))).toBeTruthy()
     expect(
@@ -131,6 +164,27 @@ describe('decodeConfig()', () => {
         }),
       ),
     ).toBeTruthy()
+  })
+
+  // Not just isFailure=true: the message must actually name the typo'd id
+  // and where it is, matching what `formatConfigError` hands the user —
+  // an empty or generic message would technically still be "a Failure" but
+  // wouldn't be actionable.
+  it('names the undeclared kind id and its position in the Failure message', () => {
+    const result = decodeConfig({
+      checks: {
+        coverage: {
+          kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+          rules: [{ from: 'feature', to: 'decisionn' }],
+        },
+      },
+    })
+    if (!Result.isFailure(result)) {
+      throw new Error('expected a Failure')
+    }
+    expect(result.failure.message).toContain('references undeclared kind "decisionn"')
+    expect(result.failure.message).toContain('rules')
+    expect(result.failure.message).toContain('to')
   })
 
   it('accepts a rule whose `from`/`to` both match declared kind ids', () => {

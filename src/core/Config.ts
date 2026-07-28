@@ -42,6 +42,24 @@ const KindDefInputSchema = Schema.Struct({
   select: KindSelectorInputSchema,
 }).annotate({ description: 'One named document kind.', identifier: 'CairnKindDef' })
 
+// `by: Schema.Literal('link')` — a single-variant discriminated union today,
+// deliberately, matching `KindSelector`'s own reasoning above: WHAT it means
+// for a rule to be satisfied (today: a direct outbound reference) is a fact
+// about the rule, not just an implementation detail of
+// `../program/structure/CheckCoverage.ts` — encoding it as a field with room
+// for future variants (e.g. a minimum link count, a backlink, a
+// heading-scoped reference) means a later increment adds a `Schema.Literal`
+// branch, not a breaking change to `CoverageRule`'s shape. Optional (unlike
+// `select`, which is required): every rule written before this field existed
+// already means `by: 'link'`, so omitting it must keep decoding the same
+// config the same way.
+const CoverageRequirementInputSchema = Schema.Struct({
+  by: Schema.Literal('link'),
+}).annotate({
+  description: 'How a rule is satisfied. Only `by: "link"` (a direct outbound reference) today.',
+  identifier: 'CairnCoverageRequirement',
+})
+
 const CoverageRuleInputSchema = Schema.Struct({
   from: Schema.String,
   // Optional discriminant, not just documentation: two rules sharing the
@@ -58,6 +76,7 @@ const CoverageRuleInputSchema = Schema.Struct({
     }),
   ),
   to: Schema.String,
+  via: Schema.optionalKey(CoverageRequirementInputSchema),
 }).annotate({
   description: 'Every doc of kind `from` must link somewhere to a doc of kind `to`.',
   identifier: 'CairnCoverageRule',
@@ -201,12 +220,22 @@ export const CairnConfigSchema = Schema.Struct({
 /** One decoded, still-partial config layer (a single file, before `extends` is folded in). */
 export type CairnConfigInput = Schema.Schema.Type<typeof CairnConfigSchema>
 
+/** How a rule is satisfied. See `CoverageRequirementInputSchema`'s own comment
+ * for why this is a discriminated union (room for future variants) rather
+ * than an implicit, hardcoded fact of `checkCoverage`'s logic. */
+export interface CoverageRequirement {
+  readonly by: 'link'
+}
+
 export interface CoverageRule {
   readonly from: string
   /** Distinguishes this rule from another sharing the same `from`/`to` pair
    * but a different meaning — see `CoverageRuleInputSchema`'s own comment. */
   readonly name?: string
   readonly to: string
+  /** Defaults to `{ by: 'link' }` when absent — every rule written before
+   * this field existed already meant that. */
+  readonly via?: CoverageRequirement
 }
 
 export interface CoverageConfig {
