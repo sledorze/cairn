@@ -26,7 +26,13 @@ unset $(git rev-parse --local-env-vars) 2>/dev/null || true
 # is the one check that stays outside it), so a regression there would
 # otherwise be invisible to this gate too. scripts/bench-cli-check.ts below
 # closes that gap by timing a real `check` run through it.
-HOT_PATHS='^src/core/(SummaryTree|glob|MarkdownLinks|DocSummaries)\.ts$|^src/io/DocsFs\.ts$|^src/program/(CheckSummaries|checks/CheckPlugin|checks/runCheckPlugin|links/CheckLinks|links/CheckRefs|links/CheckProseRefs|structure/CheckCoverage)\.ts$|^src/cli\.ts$|^package\.json$'
+#
+# Read from a shared file, not inlined here — .github/workflows/bench.yml needs the
+# EXACT same filter (its own "skip the expensive double-build on an unrelated PR"
+# gate) and a copy-pasted regex is exactly the kind of thing that silently drifts the
+# next time one of them is widened but not the other (this filter itself was widened
+# once already, in this same PR, to close a real coverage gap — see git blame).
+HOT_PATHS="$(cat scripts/bench-hot-paths.regex)"
 
 BASE_REF="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 if [ -z "$BASE_REF" ]; then
