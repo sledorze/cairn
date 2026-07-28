@@ -18,6 +18,17 @@ coverage's resolution logic directly, without a registry-level dependency mechan
 output order and exit-code aggregation are real behavior, verified byte-for-byte against
 the pre-refactor binary across every flag combination.
 
+Two follow-up adversarial passes (this session, after the PR was already open) each
+found and closed one more real gap, then flagged two more as documented, out-of-scope
+limitations rather than silently ignored: `coveragePlugin.run` used an unguarded cast
+that crashed with a raw TypeError if ever called with coverage disabled outside the real
+runner — replaced with an explicit, clearly-named failure. The ADR's "adding a fifth
+check is done" claim was narrowed: true only for checks that reject `--json` outright —
+`JsonReport.ts` and `Config.ts`'s own per-check schema wiring are both still exactly as
+manual as before. `checks.coverage` also still has no `false`/`null` a descendant config
+can write to re-disable it once an `extends` preset turns it on, unlike `links`/
+`summaries`'s own booleans — predates this PR, not fixed here.
+
 Found along the way, unrelated to this refactor: `checks.coverage`'s kind globs are
 matched against absolute paths, so the README's own relative-glob examples can never
 match a real scan — confirmed pre-existing on `origin/main`, flagged as a separate

@@ -38,6 +38,24 @@ test('coveragePlugin.name is "coverage"', () => {
   expect(coveragePlugin.name).toBe('coverage')
 })
 
+// Adversarial finding: `run` used to trust `isEnabled` was already checked
+// via an unguarded `as CoverageConfig` cast — safe through the real
+// runner (runCheckPlugin.ts always checks isEnabled first), but any OTHER
+// caller (a test, a script, a future 6th plugin copying this pattern) that
+// calls `.run()` directly with `checks.coverage` disabled got a raw,
+// unhelpful `TypeError: Cannot destructure property 'exempt' of 'null'`
+// instead of a clear, named failure. Fixed to fail loudly and clearly
+// instead — still a defect (this is a genuine "should never happen through
+// the real runner" precondition violation, not a recoverable error), but a
+// legible one.
+test('run() fails with a clear, named error (not a raw destructure TypeError) when called with checks.coverage disabled', async () => {
+  const layer = makeTestDocsFs({})
+  const effect = coveragePlugin
+    .run({ base: '/r', cli: CLI, ignore: [], resolved: DEFAULT_CONFIG, roots: ['/r'] })
+    .pipe(Effect.provide(layer))
+  await expect(Effect.runPromise(effect)).rejects.toThrow(/coveragePlugin\.run.*checks\.coverage.*disabled/i)
+})
+
 test('coveragePlugin.format() delegates to formatCoverageReport()', () => {
   const result = { checked: 1, missing: [], orphans: [], unmatchedKinds: [] }
   expect(coveragePlugin.format(result, { locale: 'en' })).toEqual(formatCoverageReport(result, { locale: 'en' }))
@@ -78,8 +96,13 @@ test('coveragePlugin.run() actually reaches checkCoverage with the resolved kind
 
 test('coveragePlugin.run() also reaches checkCoverage with trackedFiles narrowing the scanned universe', async () => {
   const layer = makeTestDocsFs({
-    '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },
     '/r/features/f1.md': { content: '# Feature, no links', mtimeMs: 1 },
+    // A SECOND feature-kind doc, deliberately left OUT of `trackedFiles` —
+    // proves the ternary at the trackedFiles call site actually threads
+    // through and excludes it, rather than always scanning everything
+    // (which a mutated `trackedFiles === undefined ? {} : {}` — dropping
+    // the spread entirely — would silently still pass with only 1 doc).
+    '/r/features/untracked.md': { content: '# Untracked feature, must be excluded', mtimeMs: 1 },
   })
   const resolved = {
     ...DEFAULT_CONFIG,

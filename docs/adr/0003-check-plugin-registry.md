@@ -96,12 +96,38 @@ cli)`, `run(args)`, `format(result, opts)`, `exitCode(result)`, optional
 ## Consequences
 
 - Adding a FIFTH check that fits this shape (isEnabled/run/format/exitCode, optionally
-  stamp) is now: write the plugin descriptor, add one call site in `cli.ts` in the right
-  position, done — no `--json` guard to hand-copy, no separate exit-code aggregation to
-  remember.
+  stamp) and REJECTS `--json` (like `refs`/`proseRefs`/`coverage`) is now: write the
+  plugin descriptor, add one call site in `cli.ts` in the right position, done — no
+  `--json` guard to hand-copy, no separate exit-code aggregation to remember. Two real
+  gaps this does NOT close, found by adversarial review after the fact rather than
+  designed away up front — narrower claims than an earlier draft of this ADR made:
+  - `JsonReport.ts` stays untouched and hardcoded to `{ summaries, links, exitCode }`. A
+    future check that SHOULD participate in `--json` (unlike the 3 that reject it
+    outright) still needs `JsonReport.ts` and `cli.ts`'s `buildJsonReport(...)` call
+    hand-edited — the registry has no generic story for "this plugin's result belongs in
+    the JSON body," only "this plugin refuses to run under `--json` at all." Omitting
+    `jsonUnsupportedMessage` on such a plugin by mistake would silently drop its result
+    from the JSON body with no error, since `runCheckPlugin` still runs it, still
+    computes its exit code, just never routes the result anywhere `--json` reads from.
+  - `Config.ts`'s own per-check schema wiring (`ChecksInputSchema`, `ResolvedConfig`,
+    `DEFAULT_CONFIG`, the `layerConfig` merge — 4 touch-points, unchanged by this PR, see
+    this PR's own `Config.ts` diff from #82 for what that looks like) is exactly as manual
+    for a config-bearing 6th check as it always was. This registry only removes `cli.ts`
+    dispatch boilerplate, not config-schema boilerplate.
 - `summaries` remains a structural exception, documented, not silently inconsistent — a
   future refactor that wants to unify it too would need to solve its four-verb shape
   first, not retrofit it into this one.
+- **A second real, pre-existing gap, also unrelated to this refactor and also out of
+  scope here**: `links`/`summaries` can be turned OFF via a boolean (`checks.links:
+false`), letting a descendant config override an inherited `extends` preset — but
+  `checks.coverage`'s schema requires a full config object whenever the key is present at
+  all; there's no `false`/`null` a descendant config can write to re-disable coverage
+  once a parent preset turns it on, only whole-object replacement with empty
+  `kinds`/`rules` (which still leaves `isEnabled` true, just vacuous). Predates this PR
+  (from #82); flagged here since this ADR already documents two related enablement-model
+  inconsistencies this PR fixed for `links`/`refs`/`proseRefs`/`coverage` at the registry
+  level — this one is a level down, inside `checks.coverage`'s own schema, not fixed by
+  this PR's `isEnabled` unification.
 - **A real, pre-existing bug was found while dogfooding this refactor, unrelated to it**:
   `checks.coverage`'s kind globs are matched against ABSOLUTE filesystem paths (`DocsFs`
   always returns absolute, POSIX-normalised paths), but the README's own documented

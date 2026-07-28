@@ -31,7 +31,7 @@
 
 import { Effect } from 'effect'
 
-import type { CoverageConfig, CoverageRule, KindDef } from '../../core/Config.ts'
+import type { CoverageRule, KindDef } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
@@ -267,13 +267,16 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
 // `isEnabled` matches cli.ts's exact prior gate: `resolved.checks.coverage
 // !== null` (presence of `checks.coverage` in config IS the opt-in — no CLI
 // flag exists, deliberately, since `kinds`/`rules` have no CLI equivalent to
-// express them with). `run` casts `resolved.checks.coverage` to
-// `CoverageConfig` (never `!`, same "structurally guaranteed, not
-// statically provable" idiom ../../core/structure/DocMetadata.ts's
-// `offsetToLine` already uses for its own binary-search invariant) — safe
-// ONLY because `isEnabled` already gated on exactly this condition; the
-// registry runner (../checks/runCheckPlugin.ts) never calls `run` for a
-// disabled plugin.
+// express them with). The real registry runner (../checks/runCheckPlugin.ts)
+// always checks `isEnabled` before calling `run`, so `checks.coverage` being
+// non-null here is structurally guaranteed in practice — but `run` still
+// checks it explicitly and fails with `Effect.die` (a clear, named defect)
+// rather than trusting that invariant via an unguarded cast: an earlier
+// version used `resolved.checks.coverage as CoverageConfig`, which any OTHER
+// caller of `.run()` directly (a test, a script, a future plugin copying
+// this pattern) with coverage disabled hit as a raw, unhelpful
+// `TypeError: Cannot destructure property 'exempt' of 'null'` — adversarial
+// review found this and this explicit check replaced it.
 export const coveragePlugin: CheckPlugin<CoverageResult> = {
   exitCode: coverageExitCode,
   format: (result, options) => formatCoverageReport(result, options),
@@ -281,7 +284,13 @@ export const coveragePlugin: CheckPlugin<CoverageResult> = {
   jsonUnsupportedMessage: '--json cannot be combined with checks.coverage yet',
   name: 'coverage',
   run: ({ base, ignore, resolved, roots, trackedFiles }) => {
-    const { exempt, kinds, rules } = resolved.checks.coverage as CoverageConfig
+    const coverage = resolved.checks.coverage
+    if (coverage === null) {
+      return Effect.die(
+        new Error('coveragePlugin.run called with checks.coverage disabled — isEnabled() should have prevented this'),
+      )
+    }
+    const { exempt, kinds, rules } = coverage
     return checkCoverage({
       base,
       exempt,
