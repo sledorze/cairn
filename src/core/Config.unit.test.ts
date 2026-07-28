@@ -48,6 +48,42 @@ describe('decodeConfig()', () => {
     expect(Result.isFailure(decodeConfig({ naming: { dirSummari: 'x' } }))).toBeTruthy()
   })
 
+  it('decodes `checks.coverage` — presence itself is the opt-in, no separate `enabled` field', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+          rules: [{ from: 'feature', to: 'decision' }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('decodes `checks.coverage.exempt` when present', () => {
+    const raw = { checks: { coverage: { exempt: ['product/features/templates/**'], kinds: [], rules: [] } } }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('returns a Failure on an unknown key inside `checks.coverage` or a kind selector', () => {
+    expect(Result.isFailure(decodeConfig({ checks: { coverage: { kinds: [], rulez: [] } } }))).toBeTruthy()
+    expect(
+      Result.isFailure(
+        decodeConfig({ checks: { coverage: { kinds: [{ id: 'x', select: { by: 'path', globb: '*' } }], rules: [] } } }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('returns a Failure when `checks.coverage.select.by` is not the recognised `"path"` literal', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: { coverage: { kinds: [{ id: 'x', select: { by: 'frontmatter', glob: '*' } }], rules: [] } },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
   it('returns a Failure on a wrong-typed field instead of silently reverting to the default', () => {
     expect(Result.isFailure(decodeConfig({ roots: 'docs' }))).toBeTruthy()
     expect(Result.isFailure(decodeConfig({ thresholdLines: 'many' }))).toBeTruthy()
@@ -133,7 +169,7 @@ describe('formatConfigError()', () => {
 describe('the built-in defaults', () => {
   it('matches the documented defaults', () => {
     expect(DEFAULT_CONFIG).toEqual({
-      checks: { links: true, summaries: true },
+      checks: { coverage: null, links: true, summaries: true },
       ignore: ['**/node_modules/**'],
       locale: 'en',
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   describeAnchors,
   extractAnchors,
+  extractHeadingsWithPosition,
   isValidLineAnchor,
   normalizeAnchor,
   parseLineAnchor,
@@ -90,6 +91,38 @@ describe('extractAnchors()', () => {
 
   it('returns an empty set for a document with no headings or HTML anchors', () => {
     expect(extractAnchors('just some prose.')).toEqual(new Set())
+  })
+})
+
+// Additive: same slugging/dedup behaviour as extractAnchors(), plus each
+// heading's level and 1-indexed line number — needed by
+// ../structure/DocMetadata.ts. extractAnchors() itself is untouched.
+describe('extractHeadingsWithPosition()', () => {
+  it('reports ATX heading level and 1-indexed line, in document order', () => {
+    expect(extractHeadingsWithPosition('# Getting Started\n\n## API Reference')).toEqual([
+      { level: 1, line: 1, slug: 'getting-started', text: 'Getting Started' },
+      { level: 2, line: 3, slug: 'api-reference', text: 'API Reference' },
+    ])
+  })
+
+  it('reports a setext heading at the line the TEXT itself is on (not the underline)', () => {
+    expect(extractHeadingsWithPosition('Getting Started\n===============')).toEqual([
+      { level: 1, line: 1, slug: 'getting-started', text: 'Getting Started' },
+    ])
+    expect(extractHeadingsWithPosition('API Reference\n-------------')).toEqual([
+      { level: 2, line: 1, slug: 'api-reference', text: 'API Reference' },
+    ])
+  })
+
+  it('dedupes slugs the same way extractAnchors() does, in document order', () => {
+    expect(extractHeadingsWithPosition('# Foo\n# Foo')).toEqual([
+      { level: 1, line: 1, slug: 'foo', text: 'Foo' },
+      { level: 1, line: 2, slug: 'foo-1', text: 'Foo' },
+    ])
+  })
+
+  it('returns an empty array for a document with no headings', () => {
+    expect(extractHeadingsWithPosition('just some prose.')).toEqual([])
   })
 })
 

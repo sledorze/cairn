@@ -73,7 +73,7 @@ describe('loadConfig()', () => {
     )
     const config = loadConfig(cwd)
     expect(config.thresholdLines).toBe(50) // inherited from the base preset
-    expect(config.checks).toEqual({ links: false, summaries: false }) // deep-merged
+    expect(config.checks).toEqual({ coverage: null, links: false, summaries: false }) // deep-merged
     expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
   })
 
@@ -108,7 +108,7 @@ describe('loadConfig()', () => {
       path.join(cwd, '.cairnrc.json'),
       JSON.stringify({ extends: ['./b.cairnrc.json', './c.cairnrc.json'] }),
     )
-    expect(loadConfig(cwd).checks).toEqual({ links: false, summaries: false })
+    expect(loadConfig(cwd).checks).toEqual({ coverage: null, links: false, summaries: false })
   })
 
   it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', () => {

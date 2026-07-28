@@ -1,8 +1,45 @@
 {
   "$defs": {
+    "CairnKindSelector": {
+      "type": "object",
+      "properties": { "by": { "type": "string", "enum": ["path"] }, "glob": { "type": "string" } },
+      "required": ["by", "glob"],
+      "additionalProperties": false,
+      "description": "How a doc is classified into a kind. Only `by: \"path\"` today."
+    },
+    "CairnKindDef": {
+      "type": "object",
+      "properties": { "id": { "type": "string" }, "select": { "$ref": "#/$defs/CairnKindSelector" } },
+      "required": ["id", "select"],
+      "additionalProperties": false,
+      "description": "One named document kind."
+    },
+    "CairnCoverageRule": {
+      "type": "object",
+      "properties": { "from": { "type": "string" }, "to": { "type": "string" } },
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to`."
+    },
+    "CairnCoverageConfig": {
+      "type": "object",
+      "properties": {
+        "exempt": {
+          "type": "array",
+          "description": "Globs exempted from orphan detection — a doc matching one is never reported as orphaned.",
+          "items": { "type": "string" }
+        },
+        "kinds": { "type": "array", "items": { "$ref": "#/$defs/CairnKindDef" } },
+        "rules": { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageRule" } }
+      },
+      "required": ["kinds", "rules"],
+      "additionalProperties": false,
+      "description": "Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it."
+    },
     "CairnChecksConfig": {
       "type": "object",
       "properties": {
+        "coverage": { "$ref": "#/$defs/CairnCoverageConfig" },
         "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
         "summaries": {
           "type": "boolean",

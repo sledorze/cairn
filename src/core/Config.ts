@@ -19,10 +19,56 @@
 import type { Result, SchemaError } from 'effect'
 import { Schema, SchemaGetter } from 'effect'
 
+import type { KindDef } from './structure/DocMetadata.ts'
 import type { Naming } from './summaries/DocSummaries.ts'
 import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './summaries/DocSummaries.ts'
 
+// `by: Schema.Literal('path')` — a single-variant discriminated union today,
+// deliberately: `KindSelector` (../structure/DocMetadata.ts) already has room
+// for `by: 'frontmatter'`/`by: 'any'` variants, but this schema only VALIDATES
+// the one this increment implements. Adding a variant later is a new
+// `Schema.Literal` branch, not a breaking change to configs already written
+// with `by: 'path'`.
+const KindSelectorInputSchema = Schema.Struct({
+  by: Schema.Literal('path'),
+  glob: Schema.String,
+}).annotate({
+  description: 'How a doc is classified into a kind. Only `by: "path"` today.',
+  identifier: 'CairnKindSelector',
+})
+
+const KindDefInputSchema = Schema.Struct({
+  id: Schema.String,
+  select: KindSelectorInputSchema,
+}).annotate({ description: 'One named document kind.', identifier: 'CairnKindDef' })
+
+const CoverageRuleInputSchema = Schema.Struct({
+  from: Schema.String,
+  to: Schema.String,
+}).annotate({
+  description: 'Every doc of kind `from` must link somewhere to a doc of kind `to`.',
+  identifier: 'CairnCoverageRule',
+})
+
+// Presence of `checks.coverage` itself IS the opt-in — no separate `enabled`
+// flag: an empty `{kinds:[],rules:[]}` is legal but checks nothing, same
+// shape as `roots: []` already means "nothing to scan," not a schema error.
+const CoverageInputSchema = Schema.Struct({
+  exempt: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: 'Globs exempted from orphan detection — a doc matching one is never reported as orphaned.',
+    }),
+  ),
+  kinds: Schema.Array(KindDefInputSchema),
+  rules: Schema.Array(CoverageRuleInputSchema),
+}).annotate({
+  description:
+    'Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it.',
+  identifier: 'CairnCoverageConfig',
+})
+
 const ChecksInputSchema = Schema.Struct({
+  coverage: Schema.optionalKey(CoverageInputSchema),
   links: Schema.optionalKey(
     Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
   ),
@@ -116,10 +162,29 @@ export const CairnConfigSchema = Schema.Struct({
 /** One decoded, still-partial config layer (a single file, before `extends` is folded in). */
 export type CairnConfigInput = Schema.Schema.Type<typeof CairnConfigSchema>
 
+export interface CoverageRule {
+  readonly from: string
+  readonly to: string
+}
+
+export interface CoverageConfig {
+  readonly exempt: readonly string[]
+  readonly kinds: readonly KindDef[]
+  readonly rules: readonly CoverageRule[]
+}
+
 export interface ChecksConfig {
+  /** `null` = disabled (the default) — presence of `checks.coverage` in a
+   * config file is itself the opt-in, not a separate boolean flag. */
+  readonly coverage: CoverageConfig | null
   readonly links: boolean
   readonly summaries: boolean
 }
+
+// Re-exported so a consumer that only imports from `Config.ts` (the usual
+// entry point for config-shaped types) doesn't also need to know
+// `KindSelector` lives in `./structure/DocMetadata.ts`.
+export type { KindDef, KindSelector } from './structure/DocMetadata.ts'
 
 /** Report language. English is the default for broad reuse; French mirrors the tool's
  * origin. Defined here (not in `program/locale.ts`, which re-exports it) because it's a
@@ -153,7 +218,7 @@ export interface Overrides {
 }
 
 export const DEFAULT_CONFIG: ResolvedConfig = {
-  checks: { links: true, summaries: true },
+  checks: { coverage: null, links: true, summaries: true },
   ignore: ['**/node_modules/**'],
   locale: 'en',
   naming: DEFAULT_NAMING,
@@ -198,6 +263,18 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
   ...(layer.stampCommand === undefined ? {} : { stampCommand: layer.stampCommand }),
   ...(layer.thresholdLines === undefined ? {} : { thresholdLines: layer.thresholdLines }),
   checks: {
+    // A whole config object, not a scalar — a layer that specifies
+    // `checks.coverage` at all REPLACES the base's coverage config entirely
+    // (kinds/rules aren't merged field-by-field), matching how `roots`/
+    // `ignore` already replace rather than merge above; only its `links`/
+    // `summaries` sibling booleans use `??` precedence.
+    coverage: layer.checks?.coverage
+      ? {
+          exempt: layer.checks.coverage.exempt ?? [],
+          kinds: layer.checks.coverage.kinds,
+          rules: layer.checks.coverage.rules,
+        }
+      : base.checks.coverage,
     links: layer.checks?.links ?? base.checks.links,
     summaries: layer.checks?.summaries ?? base.checks.summaries,
   },

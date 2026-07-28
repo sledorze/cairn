@@ -148,6 +148,27 @@ export const extractLinks = (content: string): MarkdownLink[] => {
   return links
 }
 
+export interface PositionedLink extends MarkdownLink {
+  /** Character offset (0-indexed) of the whole match's start (the `!`/`[`),
+   * into the SAME `content` string passed in — a caller converts this to a
+   * line number itself (e.g. `../structure/DocMetadata.ts`'s `offsetToLine`);
+   * this module stays position-format-agnostic. */
+  readonly index: number
+}
+
+/** Like `extractLinks`, plus each link's character offset — additive, not a
+ * replacement: `extractLinks` itself is untouched (still no position field),
+ * so every existing caller is unaffected. Kept as its own function rather
+ * than adding an optional field to `extractLinks`'s result, so callers that
+ * don't need position pay no cost and get no new field to ignore. */
+export const extractLinksWithPosition = (content: string): PositionedLink[] => {
+  const links: PositionedLink[] = []
+  for (const match of content.matchAll(LINK_RE)) {
+    links.push({ index: match.index ?? 0, target: linkTarget(match), text: match[1] ?? '' })
+  }
+  return links
+}
+
 /** Extract reference-style link definitions (`[label]: ./path "title"`). */
 export const extractLinkDefinitions = (content: string): MarkdownLinkDef[] => {
   const defs: MarkdownLinkDef[] = []

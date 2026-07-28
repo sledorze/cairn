@@ -4,6 +4,7 @@ import {
   buildBasenameIndex,
   checkContent,
   extractLinks,
+  extractLinksWithPosition,
   extractReferences,
   isCheckableTarget,
   stripAnchor,
@@ -128,6 +129,24 @@ describe('extractLinks()', () => {
     // slower/shared CI runner (a real, not hypothetical, source of flakiness
     // — this exact assertion flaked once at ~1.05s against a 1s threshold).
     expect(elapsedMs).toBeLessThan(5000)
+  })
+})
+
+// Additive: same extraction as extractLinks(), plus each match's character
+// offset — needed by ../structure/DocMetadata.ts to convert a link's
+// position into a line number. extractLinks() itself is untouched (still
+// no position field), so every existing caller is unaffected.
+describe('extractLinksWithPosition()', () => {
+  it('extracts the same target/text as extractLinks(), plus each link’s character offset', () => {
+    const md = 'see [home](./a.md) and [other](../b/c.md).'
+    expect(extractLinksWithPosition(md)).toEqual([
+      { index: 4, target: './a.md', text: 'home' },
+      { index: 23, target: '../b/c.md', text: 'other' },
+    ])
+  })
+
+  it('returns an empty array when there are no links', () => {
+    expect(extractLinksWithPosition('plain text, no links')).toEqual([])
   })
 })
 
