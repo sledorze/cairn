@@ -26,11 +26,30 @@ describe('the bench-check fixture', () => {
       }
       for (let i = 0; i < DECISION_COUNT; i++) {
         expect(fs.existsSync(path.join(root, `docs/adr/${i}.md`))).toBeTruthy()
+        expect(fs.readFileSync(path.join(root, `docs/adr/${i}.md`), 'utf8')).toContain(`# Decision ${i}`)
       }
+      // Exactly DECISION_COUNT/FEATURE_COUNT files, not off-by-one in either
+      // direction — a `<` -> `<=` mutation in the fixture's own build loop would
+      // silently write one extra (orphan-free-by-luck) doc past either range.
+      expect(fs.readdirSync(path.join(root, 'docs/adr'))).toHaveLength(DECISION_COUNT)
+      expect(fs.readdirSync(path.join(root, 'product/features'))).toHaveLength(FEATURE_COUNT)
       const config = JSON.parse(fs.readFileSync(path.join(root, '.cairnrc.json'), 'utf8')) as {
-        checks: { coverage: { rules: { from: string; to: string }[] } }
+        checks: {
+          coverage: {
+            kinds: { id: string; select: { by: string; glob: string } }[]
+            rules: { from: string; to: string }[]
+          }
+        }
+        requireDirSummaries: boolean
+        roots: string[]
       }
+      expect(config.checks.coverage.kinds).toEqual([
+        { id: 'feature', select: { by: 'path', glob: '**/product/features/**' } },
+        { id: 'decision', select: { by: 'path', glob: '**/docs/adr/**' } },
+      ])
       expect(config.checks.coverage.rules).toEqual([{ from: 'feature', to: 'decision' }])
+      expect(config.requireDirSummaries).toBeFalsy()
+      expect(config.roots).toEqual(['docs', 'product'])
     } finally {
       fs.rmSync(root, { force: true, recursive: true })
     }
@@ -60,6 +79,27 @@ describe('decoding a bench report', () => {
   it('throws a Schema decode error, not a silent pass-through, when the shape does not match', () => {
     expect(() => decodeReport({ files: [{ filepath: 'a.bench.ts' }] })).toThrow(/groups/)
     expect(() => decodeReport({ notFiles: [] })).toThrow(/files/)
+  })
+
+  it('rejects a group missing benchmarks or fullName, and a benchmark with the wrong field types', () => {
+    expect(() => decodeReport({ files: [{ filepath: 'a.bench.ts', groups: [{ fullName: 'g' }] }] })).toThrow(
+      /benchmarks/,
+    )
+    expect(() =>
+      decodeReport({ files: [{ filepath: 'a.bench.ts', groups: [{ benchmarks: [{ mean: 1, name: 'x' }] }] }] }),
+    ).toThrow(/fullName/)
+    expect(() =>
+      decodeReport({
+        files: [
+          { filepath: 'a.bench.ts', groups: [{ benchmarks: [{ mean: 'not-a-number', name: 'x' }], fullName: 'g' }] },
+        ],
+      }),
+    ).toThrow(/mean/)
+    expect(() =>
+      decodeReport({
+        files: [{ filepath: 'a.bench.ts', groups: [{ benchmarks: [{ mean: 1, name: 42 }], fullName: 'g' }] }],
+      }),
+    ).toThrow(/name/)
   })
 })
 

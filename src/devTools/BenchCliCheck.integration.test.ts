@@ -1,3 +1,4 @@
+import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -41,9 +42,36 @@ it.layer(NodeServices.layer)('runCliCheckOnce', (layerIt) => {
       const error = yield* Effect.flip(runCliCheckOnce(path.join(cli.root, 'cli.js'), fixtureDir.root))
       expect(error).toBeInstanceOf(CliCheckFailedError)
       if (error instanceof CliCheckFailedError) {
+        expect(error['_tag']).toBe('CliCheckFailedError')
         expect(error.exitCode).toBe(1)
       }
     }),
+  )
+
+  // Asserts on the ACTUAL spawned command, not just its observable success/failure —
+  // a mutant that dropped the `'check'` argv entry, or dropped `{ cwd }` entirely
+  // (spawning in this test process's own cwd instead of the fixture), would still
+  // exit 0 against a script that ignores its arguments, so neither prior test could
+  // catch it. Confirmed as a real gap by mutation testing (Stryker survived both).
+  layerIt.effect(
+    'spawns node with the resolved cliPath, the literal "check" argument, and cwd set to the given directory',
+    () =>
+      Effect.gen(function* () {
+        const marker = makeTempProject('bench-cli-check-marker-')
+        const markerFile = path.join(marker.root, 'observed.json')
+        const cli = yield* acquireTempProject('bench-cli-check-observe-', {
+          'cli.js': `require('node:fs').writeFileSync(${JSON.stringify(markerFile)}, JSON.stringify({ argv: process.argv.slice(1), cwd: process.cwd() }))`,
+        })
+        const fixtureDir = yield* acquireTempProject('bench-cli-check-fixture-')
+        try {
+          yield* runCliCheckOnce(path.join(cli.root, 'cli.js'), fixtureDir.root)
+          const observed = JSON.parse(fs.readFileSync(markerFile, 'utf8')) as { argv: string[]; cwd: string }
+          expect(observed.argv).toEqual([path.join(cli.root, 'cli.js'), 'check'])
+          expect(fs.realpathSync(observed.cwd)).toBe(fs.realpathSync(fixtureDir.root))
+        } finally {
+          marker.dispose()
+        }
+      }),
   )
 
   // The bug this test guards against: an EARLIER version spawned `node [cliPath,
