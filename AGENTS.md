@@ -69,6 +69,22 @@ When you create or edit any doc:
   already does for a legacy in-content stamp, as its own named/reported step. Never
   required.
 
+## Other opt-in checks (all off by default — see the README for full details)
+
+- `--refs` (with `--stamp`) — tracks the _content_ of what a link points to, not
+  just whether it resolves: `--refs --stamp` records a hash of every reference
+  target; a later `--refs` run reports any that changed since.
+- `--prose-refs` — migration aid: flags a bare-backtick file citation in prose
+  (e.g. a citation with no `[text](path)` syntax) whose target has moved or been
+  deleted. Silent for anything that still resolves.
+- `checks.coverage` (config only, no CLI flag) — for docs beyond code reference
+  (PRDs, specs, decision logs): declares doc **kinds** by path glob and **rules**
+  ("every `feature` doc must link to a `decision` doc"), then reports missing
+  links and orphaned docs. Catches something the checks above can't: a repo can have
+  zero broken links and still have unrelated feature/decision docs that were never
+  actually connected. Worth checking for if you're asked to organize product
+  knowledge, not just code docs.
+
 You author the prose. The tool only verifies and stamps — and it never touches your prose to do it.
 
 <!-- cairn:end -->

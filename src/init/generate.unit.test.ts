@@ -82,6 +82,24 @@ describe('runInit(--agent opencode)', () => {
     expect(fs.existsSync(path.join(cwd, '.claude/rules/docs-summaries.md'))).toBeFalsy()
     expect(fs.existsSync(path.join(cwd, '.github/instructions/docs-summaries.instructions.md'))).toBeFalsy()
   })
+
+  // DX finding: the scaffolded agent guidance — the ONE place an agent
+  // working in a fresh repo learns cairn exists at all — only ever
+  // documented the summaries+links baseline. An agent bootstrapped via
+  // `cairn init` had zero way to discover `checks.coverage` (this tool's
+  // own flagship feature for "organize product knowledge," per the
+  // README's own lead) or `--refs`/`--prose-refs` short of separately
+  // reading the npm README — not something a repo-scoped agent naturally
+  // does. Every opt-in check must at least be NAMED so an agent knows to
+  // investigate further when relevant, even if the full mechanical
+  // workflow for each stays in the README, not this lean rule file.
+  it('mentions every opt-in check by name, not just the summaries+links baseline', () => {
+    runInit({ agent: 'opencode', cwd, roots: ['docs'] })
+    const agentsMd = fs.readFileSync(path.join(cwd, 'AGENTS.md'), 'utf8')
+    expect(agentsMd).toContain('checks.coverage')
+    expect(agentsMd).toContain('--refs')
+    expect(agentsMd).toContain('--prose-refs')
+  })
 })
 
 // The starter `.cairnrc.json` scaffolds a `$schema` pointer so adopters get editor
