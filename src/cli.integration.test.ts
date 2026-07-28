@@ -27,6 +27,7 @@
 // (`tsx src/cli.ts check`) runs against source, not the built artifact.
 
 import { execFileSync } from 'node:child_process'
+import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -154,5 +155,151 @@ describe("cli.ts (real subprocess) — --refs --stamp co-occurs with summaries' 
     const refsLine = result.stdout.indexOf("Stamped 1 doc(s)' reference hash")
     expect(summariesLine).toBeGreaterThanOrEqual(0)
     expect(refsLine).toBeGreaterThan(summariesLine)
+  })
+})
+
+// Goal: "refute we don't have a mechanism to prove all feats are tested." Audited
+// which cli.ts FLAGS were ever exercised by their literal `--name` syntax anywhere
+// in the test suite (not just their underlying program-level function, which is a
+// different, weaker claim — a flag can be wired to a well-tested function with the
+// wiring itself, the argv parsing -> correct call, never verified). Found 7 real
+// gaps: --prune, --explain, --links-only, --config, --threshold, --locale, --root
+// had ZERO test evidence at the CLI-flag level. This section is the fix, in two
+// parts: a self-enforcing completeness guard (below) so a FUTURE flag added to
+// cli.ts without a matching test fails CI instead of silently joining the same
+// gap, plus one real smoke test per flag that was actually missing.
+describe('cli.ts (real subprocess) — every documented flag is exercised by name', () => {
+  /** Parses one `--help` output's own FLAGS section (not GLOBAL FLAGS — those are
+   * framework-provided, not app logic) into the flag names it documents. */
+  const extractDocumentedFlags = (helpOutput: string): string[] => {
+    const flagsSection = helpOutput.split(/^GLOBAL FLAGS$/m)[0] ?? helpOutput
+    return [...flagsSection.matchAll(/^ {2}(--[a-z][a-z-]*)\b/gm)].map((m) => m[1] as string)
+  }
+
+  it('sanity: --help really does document more than a couple of flags today', () => {
+    const p = project('cli-flags-sanity')
+    const flags = extractDocumentedFlags(runCli(p.root, ['check', '--help']).stdout)
+    expect(flags.length).toBeGreaterThan(5)
+  })
+
+  it('every flag documented by `check --help`, `config --help`, and `init --help` appears literally in this file', () => {
+    const p = project('cli-flags-completeness')
+    const documented = new Set([
+      ...extractDocumentedFlags(runCli(p.root, ['check', '--help']).stdout),
+      ...extractDocumentedFlags(runCli(p.root, ['config', '--help']).stdout),
+      ...extractDocumentedFlags(runCli(p.root, ['init', '--help']).stdout),
+    ])
+    const ownSource = fs.readFileSync(import.meta.filename, 'utf8')
+    const undocumented = [...documented].filter((flag) => !ownSource.includes(`'${flag}'`))
+    expect(undocumented).toEqual([])
+  })
+})
+
+describe('cli.ts (real subprocess) — flags with no prior CLI-level test coverage', () => {
+  it('--links-only skips the summaries check entirely, not just its findings', () => {
+    const p = project('cli-links-only', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      // Long enough to need a summary (default threshold 30 lines) — proves
+      // --links-only doesn't just hide a passing summaries line, it never runs
+      // that check at all.
+      'docs/a.md': `# A\n\n${'line\n'.repeat(40)}`,
+    })
+    const result = runCli(p.root, ['check', '--links-only'])
+    expect(result.stdout).not.toContain('summar')
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('--explain adds the expected/recorded hash breakdown that a plain run omits', () => {
+    const p = project('cli-explain', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': `# A\n\n${'line\n'.repeat(40)}`,
+    })
+    const plain = runCli(p.root, ['check', '--summaries-only'])
+    const explained = runCli(p.root, ['check', '--summaries-only', '--explain'])
+    expect(plain.stdout).not.toContain('expected')
+    expect(explained.stdout).toContain('expected')
+    expect(explained.stdout).toContain('recorded')
+  })
+
+  it('--prune deletes a real orphan summary (source doc gone) from disk', () => {
+    const p = project('cli-prune', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      // `a.summary.md` with no matching `a.md` — a genuine orphan, not a stub.
+      'docs/a.summary.md': '# A — summary\n\nStale summary for a deleted source doc.\n',
+    })
+    expect(fs.existsSync(path.join(p.root, 'docs/a.summary.md'))).toBeTruthy()
+    const result = runCli(p.root, ['check', '--prune'])
+    expect(result.stdout).toContain('removed 1 orphan summary')
+    expect(fs.existsSync(path.join(p.root, 'docs/a.summary.md'))).toBeFalsy()
+  })
+
+  it('--config points at an explicit config file instead of the default lookup', () => {
+    const p = project('cli-config-flag', {
+      'custom.json': JSON.stringify({ requireDirSummaries: false, roots: ['elsewhere'] }),
+      'elsewhere/a.md': '# A\n\nShort.\n',
+    })
+    const result = runCli(p.root, ['config', '--config', 'custom.json'])
+    expect(result.stdout).toContain('custom.json')
+    expect(result.stdout).toContain('"roots": [\n    "elsewhere"\n  ]')
+  })
+
+  it('--threshold overrides the line count above which a doc needs a summary', () => {
+    const p = project('cli-threshold', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      // 10 real lines of body.
+      'docs/a.md': `# A\n\n${'line\n'.repeat(10)}`,
+    })
+    const belowThreshold = runCli(p.root, ['check', '--summaries-only', '--threshold', '50'])
+    const aboveThreshold = runCli(p.root, ['check', '--summaries-only', '--threshold', '5'])
+    expect(belowThreshold.exitCode).toBe(0)
+    expect(aboveThreshold.exitCode).toBe(1)
+  })
+
+  it('--locale fr switches real report output to French, not just a config field', () => {
+    const p = project('cli-locale', { 'docs/a.md': '[broken](./nope.md)\n' })
+    const result = runCli(p.root, ['check', '--locale', 'fr'])
+    expect(result.stdout).toContain('lien(s) mort(s)')
+  })
+
+  it('--root adds a directory to scan, merged with (not replacing) any configured roots', () => {
+    const p = project('cli-root-flag', {
+      // No .cairnrc.json at all — proves the extra root isn't coming from config.
+      'extra-docs/a.md': '[broken](./nope.md)\n',
+    })
+    const result = runCli(p.root, ['check', '--root', 'extra-docs'])
+    expect(result.stdout).toContain('dead link')
+    expect(result.exitCode).toBe(1)
+  })
+
+  it('--fix rewrites a real unambiguous renamed-file link on disk', () => {
+    const p = project('cli-fix', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/index.md': '# Doc\n\n- [x](./old-name.md)\n',
+      'docs/sub/old-name.md': '# Renamed target\n',
+    })
+    const result = runCli(p.root, ['check', '--fix'])
+    expect(result.stdout).toContain('Auto-repaired 1 link')
+    expect(fs.readFileSync(path.join(p.root, 'docs/index.md'), 'utf8')).toContain('[x](./sub/old-name.md)')
+  })
+
+  it('--migrate-stamps strips the legacy in-content stamp AND writes the .cairn/** sidecar', () => {
+    const legacyStamp = `<!-- source-sha256: ${'0'.repeat(64)} -->\n\n`
+    const p = project('cli-migrate-stamps', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': `# A\n\n${'line\n'.repeat(40)}`,
+      'docs/a.summary.md': `${legacyStamp}# A — summary\n`,
+    })
+    const result = runCli(p.root, ['check', '--migrate-stamps'])
+    expect(result.stdout).toContain('Migrated 1 legacy in-content stamp')
+    expect(fs.readFileSync(path.join(p.root, 'docs/a.summary.md'), 'utf8')).not.toContain('source-sha256')
+    expect(fs.existsSync(path.join(p.root, '.cairn/docs/a.summary.md.json'))).toBeTruthy()
+  })
+
+  it('init --agent claude scaffolds CLAUDE.md with an @AGENTS.md import', () => {
+    const p = project('cli-init-agent')
+    const result = runCli(p.root, ['init', '--agent', 'claude'])
+    expect(result.exitCode).toBe(0)
+    expect(fs.existsSync(path.join(p.root, 'AGENTS.md'))).toBeTruthy()
+    expect(fs.readFileSync(path.join(p.root, 'CLAUDE.md'), 'utf8')).toContain('@AGENTS.md')
   })
 })
