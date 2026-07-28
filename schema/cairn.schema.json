@@ -40,19 +40,24 @@
       "type": "object",
       "properties": {
         "coverage": {
-          "type": "object",
-          "properties": {
-            "exempt": {
-              "type": "array",
-              "description": "Globs exempted from orphan detection — a doc matching one is never reported as orphaned.",
-              "items": { "type": "string" }
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "exempt": {
+                  "type": "array",
+                  "description": "Globs exempted from orphan detection — a doc matching one is never reported as orphaned.",
+                  "items": { "type": "string" }
+                },
+                "kinds": { "type": "array", "items": { "$ref": "#/$defs/CairnKindDef" } },
+                "rules": { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageRule" } }
+              },
+              "required": ["kinds", "rules"],
+              "additionalProperties": false,
+              "description": "Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it."
             },
-            "kinds": { "type": "array", "items": { "$ref": "#/$defs/CairnKindDef" } },
-            "rules": { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageRule" } }
-          },
-          "required": ["kinds", "rules"],
-          "additionalProperties": false,
-          "description": "Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it."
+            { "type": "boolean", "enum": [false] }
+          ]
         },
         "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
         "summaries": {

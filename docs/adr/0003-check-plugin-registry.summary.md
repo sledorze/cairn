@@ -55,7 +55,14 @@ rather than silently ignored:
   `describe` title had implied were covered but weren't; switched from `npx tsx` to the
   local `node_modules/.bin/tsx` binary directly, avoiding `npx`'s own resolve step.
 
-Found along the way, unrelated to this refactor: `checks.coverage`'s kind globs are
-matched against absolute paths, so the README's own relative-glob examples can never
-match a real scan — confirmed pre-existing on `origin/main`, flagged as a separate
-follow-up, not fixed here.
+Two more pre-existing gaps (from #82, unrelated to the registry work itself) were found
+along the way and, at the user's explicit request, fixed in this same PR rather than
+just tracked: `checks.coverage` had no `false`/`null` a descendant config could write to
+re-disable it once an `extends` preset turned it on — now accepts
+`CoverageInputSchema | Literal(false)`, resolved via an explicit three-way check in
+`layerConfig` (not a truthy check, which would silently treat `false` as "absent").
+And `checks.coverage`'s kind globs are matched against absolute paths, so the README's
+own relative-glob examples could never match a real scan — the matching mechanism was
+already correct and consistent with `ignore`'s own `**/node_modules/**` convention; the
+README's own example just didn't follow it. Fixed the README's example glob, added an
+explanatory paragraph.

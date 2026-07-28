@@ -125,8 +125,19 @@ const CoverageInputSchema = Schema.Struct({
     ),
   )
 
+// `CoverageInputSchema | Literal(false)`, not just `CoverageInputSchema` —
+// `links`/`summaries` can be turned back off with a plain `false`, letting a
+// descendant config override an inherited `extends` preset; `checks.coverage`
+// needs the same escape hatch (a real, found-via-adversarial-review gap:
+// once a preset enabled coverage, no descendant config had any way to
+// disable it again short of replacing `kinds`/`rules` with empty arrays,
+// which still leaves `isEnabled` true, just vacuously). Resolves to `null`
+// (the same "disabled" value omitting the key entirely produces at the
+// base config) in `layerConfig`, below.
+const CoverageOrDisabledSchema = Schema.Union([CoverageInputSchema, Schema.Literal(false)])
+
 const ChecksInputSchema = Schema.Struct({
-  coverage: Schema.optionalKey(CoverageInputSchema),
+  coverage: Schema.optionalKey(CoverageOrDisabledSchema),
   links: Schema.optionalKey(
     Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
   ),
@@ -338,14 +349,23 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
     // `checks.coverage` at all REPLACES the base's coverage config entirely
     // (kinds/rules aren't merged field-by-field), matching how `roots`/
     // `ignore` already replace rather than merge above; only its `links`/
-    // `summaries` sibling booleans use `??` precedence.
-    coverage: layer.checks?.coverage
-      ? {
-          exempt: layer.checks.coverage.exempt ?? [],
-          kinds: layer.checks.coverage.kinds,
-          rules: layer.checks.coverage.rules,
-        }
-      : base.checks.coverage,
+    // `summaries` sibling booleans use `??` precedence. Three-way, not a
+    // truthy check: `undefined` (key absent) inherits `base`; `false`
+    // (explicit re-disable) resolves to `null`; anything else REPLACES
+    // wholesale. A plain `layer.checks?.coverage ? ... : base.checks.coverage`
+    // would silently treat `false` as "absent" (both falsy) and inherit the
+    // base's coverage instead of disabling it — the exact bug this field
+    // exists to fix.
+    coverage:
+      layer.checks?.coverage === undefined
+        ? base.checks.coverage
+        : layer.checks.coverage === false
+          ? null
+          : {
+              exempt: layer.checks.coverage.exempt ?? [],
+              kinds: layer.checks.coverage.kinds,
+              rules: layer.checks.coverage.rules,
+            },
     links: layer.checks?.links ?? base.checks.links,
     summaries: layer.checks?.summaries ?? base.checks.summaries,
   },

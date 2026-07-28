@@ -138,25 +138,25 @@ cli)`, `run(args)`, `format(result, opts)`, `exitCode(result)`, optional
 - `summaries` remains a structural exception, documented, not silently inconsistent — a
   future refactor that wants to unify it too would need to solve its four-verb shape
   first, not retrofit it into this one.
-- **A second real, pre-existing gap, also unrelated to this refactor and also out of
-  scope here**: `links`/`summaries` can be turned OFF via a boolean (`checks.links:
-false`), letting a descendant config override an inherited `extends` preset — but
-  `checks.coverage`'s schema requires a full config object whenever the key is present at
-  all; there's no `false`/`null` a descendant config can write to re-disable coverage
-  once a parent preset turns it on, only whole-object replacement with empty
-  `kinds`/`rules` (which still leaves `isEnabled` true, just vacuous). Predates this PR
-  (from #82); flagged here since this ADR already documents two related enablement-model
-  inconsistencies this PR fixed for `links`/`refs`/`proseRefs`/`coverage` at the registry
-  level — this one is a level down, inside `checks.coverage`'s own schema, not fixed by
-  this PR's `isEnabled` unification.
-- **A real, pre-existing bug was found while dogfooding this refactor, unrelated to it**:
-  `checks.coverage`'s kind globs are matched against ABSOLUTE filesystem paths (`DocsFs`
-  always returns absolute, POSIX-normalised paths), but the README's own documented
-  examples use relative globs (e.g. `"product/features/**"`) that can never match a real
-  scan without a leading `**/`. Confirmed present on `origin/main` before this branch
-  existed (bisected via `git stash`), so out of scope for this PR — needs its own fix
-  (either matching against a root-relative path, or documenting the `**/` requirement
-  loudly) as a follow-up.
+- **A second real, pre-existing gap (from #82, unrelated to the registry work itself, but
+  fixed in this PR at the user's request)**: `links`/`summaries` can be turned OFF via a
+  boolean (`checks.links: false`), letting a descendant config override an inherited
+  `extends` preset — but `checks.coverage`'s schema required a full config object
+  whenever the key was present at all, with no `false`/`null` a descendant config could
+  write to re-disable coverage once a parent preset turned it on. Closed: `checks.coverage`
+  now accepts `CoverageInputSchema | Literal(false)`; `layerConfig` resolves `false` to
+  `null` explicitly (a three-way `undefined`/`false`/object check, not a truthy check —
+  a truthy check would have silently treated `false` as "absent" and kept inheriting).
+- **A real, pre-existing bug found while dogfooding this refactor (unrelated to the
+  registry work itself, but fixed in this PR at the user's request)**: `checks.coverage`'s
+  kind globs are matched against ABSOLUTE filesystem paths (`DocsFs` always returns
+  absolute, POSIX-normalised paths) — a plain relative glob like `"product/features/**"`
+  can never match a real scan without a leading `**/`, the same reason the default
+  `ignore` is `"**/node_modules/**"`, not bare `"node_modules/**"`. The matching mechanism
+  itself was already correct and consistent with `ignore`'s own established convention —
+  the bug was that the README's own example broke that convention. Closed: the README's
+  `checks.coverage` example globs are now correctly `**/`-prefixed, with an explicit
+  paragraph explaining why every glob in this config needs one.
 - `resolveRuleEdges`'s every-satisfying-ref (not boolean) return shape is now the
   concrete foundation a future stale-coverage-link check, cardinality rule, or
   heading-scoped reference variant builds on — none of those three ideas need registry

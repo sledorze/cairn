@@ -155,6 +155,19 @@ describe('loadConfig()', () => {
     })
   })
 
+  it('re-disables `checks.coverage` with `false` when a local config overrides an `extends` preset that enabled it', () => {
+    const cwd = mkTmp('cairn-extends-coverage-disable-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { coverage: { kinds: [{ id: 'x', select: { by: 'path', glob: '*' } }], rules: [] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { coverage: false }, extends: './base.cairnrc.json' }),
+    )
+    expect(loadConfig(cwd).checks.coverage).toBeNull()
+  })
+
   it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', () => {
     const cwd = mkTmp('cairn-extends-diamond-')
     fs.writeFileSync(path.join(cwd, 'shared.cairnrc.json'), JSON.stringify({ locale: 'fr' }))

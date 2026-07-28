@@ -163,11 +163,11 @@ kind must link somewhere to a doc of another:
 "checks": {
   "coverage": {
     "kinds": [
-      { "id": "feature", "select": { "by": "path", "glob": "product/features/**" } },
-      { "id": "decision", "select": { "by": "path", "glob": "docs/adr/**" } }
+      { "id": "feature", "select": { "by": "path", "glob": "**/product/features/**" } },
+      { "id": "decision", "select": { "by": "path", "glob": "**/docs/adr/**" } }
     ],
     "rules": [{ "from": "feature", "to": "decision" }],
-    "exempt": ["product/features/templates/**"]
+    "exempt": ["**/product/features/templates/**"]
   }
 }
 ```
@@ -176,6 +176,14 @@ A kind's glob only classifies docs cairn already scans — it does **not** impli
 `roots` (default `["docs"]`). If your feature docs live under `product/` and `roots` doesn't
 include it, `checks.coverage` checks zero of them. Make sure every kind's glob falls inside a
 configured root, as the example above does by adding `"product"`.
+
+Every glob in this config — `ignore`, a kind's `select.glob`, `exempt` — is matched against
+the doc's real, **absolute** filesystem path, never a path relative to `roots` or the repo
+root. A leading `**/` (matching any prefix, including none) is what makes a glob like
+`"**/product/features/**"` match regardless of exactly where the repo checkout lives on disk
+— the same reason the default `ignore` is `"**/node_modules/**"`, not bare `"node_modules/**"`.
+Omitting it (as an earlier version of this example did) silently matches nothing, ever — no
+error, just a doc that's forever `unmatched`.
 
 Three report classes, all file-level (a violation is an absence — there's no specific line to
 point at) except the third, which is a warning about the config itself:
