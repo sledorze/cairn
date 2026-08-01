@@ -450,7 +450,7 @@ describe('checkCoverage()', () => {
 
     it('reports missing coverage when a spec links to a path that does not exist on disk', async () => {
       const layer = makeTestDocsFs({
-        '/r/specs/s1.md': { content: '# Spec\n\n[impl](../../src/missing.ts)', mtimeMs: 1 },
+        '/r/specs/s1.md': { content: '# Spec\n\n[impl](../src/missing.ts)', mtimeMs: 1 },
       })
       const result = await Effect.runPromise(
         checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: EXTERNAL_RULES }).pipe(

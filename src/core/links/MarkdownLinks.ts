@@ -194,7 +194,14 @@ export interface PositionedLinkDef extends MarkdownLinkDef {
 export const extractLinkDefinitionsWithPosition = (content: string): PositionedLinkDef[] => {
   const defs: PositionedLinkDef[] = []
   for (const match of content.matchAll(LINK_DEF_RE)) {
-    defs.push({ index: match.index ?? 0, label: match[1] ?? '', target: match[2] ?? '' })
+    // Groups 1 (label) and 2 (target) are both `+` (one-or-more) in
+    // LINK_DEF_RE — a successful match always captures both, never
+    // `undefined`; `match.index` is likewise always a number for a
+    // `matchAll` result (TS's `RegExpMatchArray` type is conservative
+    // here, not the runtime reality) — same structural guarantee
+    // `linkTarget`'s own comment documents for `LINK_RE`'s groups. `as`,
+    // not `??`, so this never introduces a branch no real input can take.
+    defs.push({ index: match.index as number, label: match[1] as string, target: match[2] as string })
   }
   return defs
 }

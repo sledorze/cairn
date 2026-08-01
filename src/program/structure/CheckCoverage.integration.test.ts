@@ -92,6 +92,26 @@ describe('checkCoverage() against the real filesystem (DocsFsLive)', () => {
     }
   })
 
+  // Exercises `DocsFsLive.realPath`'s own failure path for real — the ONE
+  // thing `makeTestDocsFs`'s in-memory double can't prove, since its
+  // `realPath` never actually calls `fs.realPath` and so never exercises
+  // the real binding's `Effect.catch` fallback to `null` on a genuinely
+  // unresolvable (nonexistent) path.
+  it('reports missing coverage for an external-path rule whose target genuinely does not exist on the real filesystem', async () => {
+    const p = project('checkcoverage-real-external-missing', {
+      'specs/s1.md': '# Spec\n\n[impl](../src/missing.ts)',
+    })
+    const specKinds = [{ id: 'spec', select: { by: 'path' as const, glob: '**/specs/**' } }]
+    const externalRules = [{ from: 'spec', to: { external: 'path' as const } }]
+    const result = await run(checkCoverage({ base: p.root, kinds: specKinds, roots: [p.root], rules: externalRules }))
+    expect(result.missing).toEqual([
+      {
+        path: path.join(p.root, 'specs/s1.md').split(path.sep).join('/'),
+        rule: { from: 'spec', to: { external: 'path' } },
+      },
+    ])
+  })
+
   // Adversarial finding, security-relevant: a symlink physically located
   // INSIDE the checked-out repo can still point OUTSIDE it — the one
   // scenario neither `makeTestDocsFs`'s in-memory map nor a lexical-only
