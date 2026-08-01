@@ -409,7 +409,7 @@ export const checkLinks = ({
     // Issue #48: `trackedFiles`, when provided, narrows BOTH the existence
     // universe and the source-scan set — an untracked file is invisible to a
     // fresh CI checkout on both sides of a link.
-    const listedFiles = yield* dfs.listFiles(roots, ignore)
+    const listedFiles = yield* dfs.listFiles(roots, ignore, base)
     const allFiles = trackedFiles === undefined ? listedFiles : listedFiles.filter((file) => trackedFiles.has(file))
     const index = buildBasenameIndex(allFiles)
     const known = withAncestors(allFiles)

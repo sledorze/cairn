@@ -145,7 +145,7 @@ export const checkProseRefs = ({
 }: CheckProseRefsArgs): Effect.Effect<ProseRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore)
+    const allFiles = yield* dfs.listFiles(roots, ignore, base)
     const mdFiles = allFiles.filter(
       (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
     )

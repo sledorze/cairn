@@ -65,7 +65,7 @@
       "target": "../src/core/Config.ts"
     },
     {
-      "hash": "f89bd5053dd51d3c86d91bc0387972ceee63a29359353cf4aedc29f1735607f7",
+      "hash": "7f6c0b1a002e598397b33e95c5af24ab0aa104e0ad576377556a23400992a974",
       "target": "../src/io/DocsFs.ts"
     },
     {
@@ -73,23 +73,23 @@
       "target": "../src/io/Git.ts"
     },
     {
-      "hash": "7baac26486b068762c2f1a88f536d5e100b0f65b741059e89a32f40564ad4aff",
+      "hash": "f43bce61126ccc25cc11ec1dc85d5245d5366ccee4d8c1f8872cedfc123ee644",
       "target": "../src/program/summaries/CheckSummaries.ts"
     },
     {
-      "hash": "1b17c9b928906c2528b4a624400f5bb5c0258d9cfab22414557995ec887f1bde",
+      "hash": "eb865205a215aae68b9da438a761d2a700424553dcf3ffb91b5cf03c9195dda9",
       "target": "../src/program/links/CheckLinks.ts"
     },
     {
-      "hash": "aa589a825a6444a8f835b9a0ff88987504f91637f6ecfddea196139b36483567",
+      "hash": "4425ccb5eaa130c1aaa00d972619319ddcb7d151b89dca2ddc8b1739ef7b7286",
       "target": "../src/program/links/CheckRefs.ts"
     },
     {
-      "hash": "1e375f11be304561d7d0a75550fb9ff8e97ddb4fa35be8badc6f5b1f602cf9bf",
+      "hash": "002036b94ec7a7478f66825dd471050e5f0f5abcee896519d117f25adbc20a42",
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
-      "hash": "7e5a522eae7a3a711f5d33a81f2a28abff004995cd12ba1b2d50433da0730570",
+      "hash": "06ce75a8cf5f85b52a66dad49b336fc83c2264d1811e192572a91e27192fba01",
       "target": "../src/program/structure/CheckCoverage.ts"
     },
     {

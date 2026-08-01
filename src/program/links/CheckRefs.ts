@@ -117,11 +117,12 @@ const resolveReferenceContent = ({
 const listMdFiles = (
   roots: readonly string[],
   ignore: readonly string[],
+  base: string,
   trackedFiles?: ReadonlySet<string>,
 ): Effect.Effect<readonly string[], never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore)
+    const allFiles = yield* dfs.listFiles(roots, ignore, base)
     return allFiles.filter(
       (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
     )
@@ -146,7 +147,7 @@ export const stampRefs = ({
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    const mdFiles = yield* listMdFiles(roots, ignore, base, trackedFiles)
     let stamped = 0
     for (const file of mdFiles) {
       // Found via adversarial "no unhandled exception" review: a doc that
@@ -189,7 +190,7 @@ export const checkRefs = ({
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    const mdFiles = yield* listMdFiles(roots, ignore, base, trackedFiles)
     const stale: FileStaleRefs[] = []
     let checked = 0
     for (const file of mdFiles) {

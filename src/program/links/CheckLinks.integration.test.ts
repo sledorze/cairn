@@ -377,6 +377,32 @@ describe('checkLinks() against the real filesystem (DocsFsLive)', () => {
     },
   )
 
+  // Adversarial finding, security-relevant (issue #28's PR, round 6): a
+  // caller-supplied ROOT itself (not just an entry discovered while
+  // recursing) can be a symlink escaping `base` — closed at the
+  // `DocsFs.listFiles`/`walk()` level, wired through via the `base` param
+  // `checkLinks` already passes. Proves the wiring, not just DocsFs.ts's
+  // own unit-level test.
+  it.skipIf(!supportsSymlinks)(
+    'a docs root symlinked to a real target outside `base` is excluded entirely, not scanned',
+    async () => {
+      const p = project('checklinks-real-symlink-root')
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'checklinks-real-symlink-root-outside-'))
+      fs.writeFileSync(path.join(outsideDir, 'secret.md'), '# not part of the repo\n\n[x](./nowhere.md)')
+      const docsRoot = path.join(p.root, 'docs')
+      try {
+        fs.symlinkSync(outsideDir, docsRoot, 'dir')
+        const result = await checkDocs(p)
+        // Not just "no broken links reported" (which an empty scan would
+        // also produce) — `checked` proves nothing was scanned at all.
+        expect(result.checked).toBe(0)
+        expect(result.broken).toEqual([])
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
+      }
+    },
+  )
+
   // Positive counterpart: a symlink whose real target stays INSIDE `base`
   // is a legitimate reference and must still resolve — proves this is a
   // containment check, not "reject every symlink."

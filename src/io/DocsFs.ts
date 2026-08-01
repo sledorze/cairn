@@ -32,7 +32,18 @@ export interface DocsFsService {
    * (no directory it matches) still only removes that one file from the
    * result, same as before — only DIRECTORY pruning is new.
    */
-  readonly listFiles: (roots: readonly string[], ignore?: readonly string[]) => Effect.Effect<readonly string[]>
+  /**
+   * `base`, when supplied, extends the same round-5 symlink-containment
+   * guarantee to the ROOTS themselves, not just entries discovered while
+   * recursing: a root whose real (symlink-resolved) path falls outside
+   * `base` is excluded entirely (see `DocsFsLive`'s own comment). Optional
+   * and opt-in — omitting it preserves pre-existing behavior unchanged.
+   */
+  readonly listFiles: (
+    roots: readonly string[],
+    ignore?: readonly string[],
+    base?: string,
+  ) => Effect.Effect<readonly string[]>
   readonly readFile: (abs: string) => Effect.Effect<string>
   /**
    * Resolve `abs` to its real, symlink-free canonical path — `null` if it
@@ -215,13 +226,47 @@ export const DocsFsLive = Layer.effect(
         return nested.flat()
       })
 
-    const listFiles = (roots: readonly string[], ignore: readonly string[] = []): Effect.Effect<readonly string[]> =>
+    const listFiles = (
+      roots: readonly string[],
+      ignore: readonly string[] = [],
+      base?: string,
+    ): Effect.Effect<readonly string[]> =>
       Effect.gen(function* () {
         const out: string[] = []
         for (const root of roots) {
           const present = yield* fs.exists(root)
           if (!present) {
             continue
+          }
+          // Adversarial finding, security-relevant (issue #28's PR, 6th
+          // review pass): round 5's containment check applies only to a
+          // symlink DISCOVERED while recursing — the caller-supplied ROOT
+          // itself was never checked at all. A malicious PR needs only to
+          // replace a literal `docs` directory with a symlink (git's own
+          // symlink mode 120000) to an absolute path on the CI runner;
+          // every checker passes lexical roots straight through, so this
+          // sat one level above every nested-symlink fix already shipped.
+          // Opt-in via `base` (every checker already has it) so an
+          // existing caller that hasn't been updated keeps today's
+          // behavior byte for byte.
+          //
+          // Deliberately NO `Effect.catch` here, unlike every nested-entry
+          // check elsewhere in this function: `root` is the directory the
+          // CALLER explicitly named (matches this file's own established
+          // "atRoot" precedent above — a directory the caller names must
+          // fail LOUDLY if something's wrong with it, e.g. a genuinely
+          // broken/looping symlink; only entries discovered DURING
+          // recursion get the lenient silent-exclude treatment). A real
+          // failure here propagates to this function's own outer
+          // `Effect.orDie`, same as any other root-level problem — never
+          // silently reads as "0 files, legitimately empty," the exact
+          // failure mode issue #63's own dimension-coverage review already
+          // fixed once for a permission-denied root.
+          if (base !== undefined) {
+            const real = yield* fs.realPath(root)
+            if (!isWithinBase(real, base)) {
+              continue
+            }
           }
           for (const abs of yield* walk(root, true, ignore, roots)) {
             // Normalise to POSIX so the pure planners see `/` paths on every OS.

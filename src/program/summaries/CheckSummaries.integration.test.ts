@@ -1,4 +1,5 @@
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -111,6 +112,38 @@ describe('checkSummaries() + GitFsLive against a real git repository', () => {
         expect(todoPaths.some((f) => f.endsWith('b.summary.md'))).toBeFalsy()
       } finally {
         fs.chmodSync(bPath, 0o644)
+      }
+    },
+  )
+
+  // Adversarial finding, security-relevant (issue #28's PR, round 6): a
+  // caller-supplied ROOT that's itself a symlink escaping `base` — closed
+  // at the `DocsFs.listFiles`/`walk()` level, but `CheckSummaries.ts` is a
+  // consumer NEITHER of the two rounds that fixed this (round 5: nested
+  // symlinks; round 6: root symlinks) directly exercised — this proves the
+  // fix is genuinely inherited via `listFiles(roots, ignore, base)`, not
+  // something that only happens to work for the checkers already tested.
+  const supportsSymlinks = process.platform !== 'win32'
+  it.skipIf(!supportsSymlinks)(
+    'a docs root symlinked to a real target outside `base` is excluded entirely — never scanned for missing summaries',
+    async () => {
+      const p = project('summaries-real-symlink-root')
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'summaries-real-symlink-outside-'))
+      fs.writeFileSync(path.join(outsideDir, 'secret.md'), big)
+      const docsRoot = path.join(p.root, 'docs')
+      try {
+        fs.symlinkSync(outsideDir, docsRoot, 'dir')
+        const result = await Effect.runPromise(
+          checkSummaries({ base: p.root, roots: [docsRoot], thresholdLines: 30 }).pipe(
+            Effect.provide(DocsFsLive),
+            Effect.provide(NodeServices.layer),
+          ),
+        )
+        // The escaped `secret.md` — despite being well over the threshold
+        // — never enters the plan at all, not even as a `todo` entry.
+        expect(result.todo).toEqual([])
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
       }
     },
   )
