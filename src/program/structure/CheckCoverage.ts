@@ -37,7 +37,7 @@ import { matchesAny } from '../../core/glob.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
-import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase, listMarkdownFiles } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -85,19 +85,6 @@ export interface CoverageResult {
 export const coverageExitCode = (result: CoverageResult): number =>
   result.missing.length > 0 || result.orphans.length > 0 ? 1 : 0
 
-const listMdFiles = (
-  roots: readonly string[],
-  ignore: readonly string[],
-  trackedFiles?: ReadonlySet<string>,
-): Effect.Effect<readonly string[], never, DocsFs> =>
-  Effect.gen(function* () {
-    const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore)
-    return allFiles.filter(
-      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
-    )
-  })
-
 // `base` bounds the ONE place this check does touch the real filesystem
 // beyond already-`roots`-scoped docs: an `{ external: 'path' }` rule's
 // existence check, below. Every kind-based rule still needs no `isWithinBase`
@@ -115,7 +102,7 @@ export const checkCoverage = ({
 }: CheckCoverageArgs): Effect.Effect<CoverageResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    const mdFiles = yield* listMarkdownFiles(dfs, roots, ignore, trackedFiles)
 
     // Deduped by every field that can distinguish two rules on the same
     // kind pair — found via adversarial review, in three rounds so far.

@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DocsFs, isSafelyWithinBase, makeTestDocsFs } from './DocsFs.ts'
+import { DocsFs, isSafelyWithinBase, listMarkdownFiles, makeTestDocsFs } from './DocsFs.ts'
 
 describe('makeTestDocsFs()', () => {
   it('stat() rejects for a path not in the store, same as readFile()', async () => {
@@ -69,5 +69,61 @@ describe('isSafelyWithinBase()', () => {
     const dfs = { realPath: () => Effect.succeed('/etc/secret') }
     const result = await Effect.runPromise(isSafelyWithinBase(dfs, '/r/docs/escape-link', '/r'))
     expect(result).toBeFalsy()
+  })
+})
+
+// The extracted (issue #93) shared file-listing filter — previously
+// hand-duplicated in CheckCoverage.ts/CheckRefs.ts, with a third,
+// silently-drifted copy in CheckSummaries.ts that omitted the file-level
+// `ignore` re-check (see this function's own doc comment for why that
+// drift never actually mis-reported, just wasted IO).
+describe('listMarkdownFiles()', () => {
+  it('returns only .md files under roots, never a non-.md file', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/a.md': { content: '# a', mtimeMs: 1 },
+      '/r/docs/notes.txt': { content: 'not markdown', mtimeMs: 1 },
+    })
+    const program = Effect.gen(function* () {
+      const dfs = yield* DocsFs
+      return yield* listMarkdownFiles(dfs, ['/r/docs'], [])
+    }).pipe(Effect.provide(layer))
+    await expect(Effect.runPromise(program)).resolves.toEqual(['/r/docs/a.md'])
+  })
+
+  // The whole reason this function exists, not just a filter reuse: a
+  // FILE-shaped `ignore` pattern (as opposed to a directory-shaped one,
+  // already pruned by `listFiles` itself) is only ever excluded by this
+  // re-check.
+  it('excludes a file-shaped `ignore` match that `listFiles` itself never prunes (directory-only pruning)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/generated.md': { content: '# generated', mtimeMs: 1 },
+      '/r/docs/kept.md': { content: '# kept', mtimeMs: 1 },
+    })
+    const program = Effect.gen(function* () {
+      const dfs = yield* DocsFs
+      return yield* listMarkdownFiles(dfs, ['/r/docs'], ['**/docs/generated.md'])
+    }).pipe(Effect.provide(layer))
+    await expect(Effect.runPromise(program)).resolves.toEqual(['/r/docs/kept.md'])
+  })
+
+  it('when `trackedFiles` is supplied, excludes a physically-present but untracked file', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/tracked.md': { content: '# tracked', mtimeMs: 1 },
+      '/r/docs/untracked.md': { content: '# untracked', mtimeMs: 1 },
+    })
+    const program = Effect.gen(function* () {
+      const dfs = yield* DocsFs
+      return yield* listMarkdownFiles(dfs, ['/r/docs'], [], new Set(['/r/docs/tracked.md']))
+    }).pipe(Effect.provide(layer))
+    await expect(Effect.runPromise(program)).resolves.toEqual(['/r/docs/tracked.md'])
+  })
+
+  it('omitting `trackedFiles` includes every physically-present .md file, same as before onlyGitTracked existed', async () => {
+    const layer = makeTestDocsFs({ '/r/docs/a.md': { content: '# a', mtimeMs: 1 } })
+    const program = Effect.gen(function* () {
+      const dfs = yield* DocsFs
+      return yield* listMarkdownFiles(dfs, ['/r/docs'], [])
+    }).pipe(Effect.provide(layer))
+    await expect(Effect.runPromise(program)).resolves.toEqual(['/r/docs/a.md'])
   })
 })

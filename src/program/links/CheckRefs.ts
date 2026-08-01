@@ -20,10 +20,9 @@ import { Effect } from 'effect'
 import { extractReferences } from '../../core/links/MarkdownLinks.ts'
 import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
-import { matchesAny } from '../../core/glob.ts'
 import { hashContent } from '../../core/hashing.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
-import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase, listMarkdownFiles } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -108,19 +107,6 @@ const resolveReferenceContent = ({
     return yield* dfs.readFile(targetAbs).pipe(Effect.catchDefect(() => Effect.succeed(null)))
   })
 
-const listMdFiles = (
-  roots: readonly string[],
-  ignore: readonly string[],
-  trackedFiles?: ReadonlySet<string>,
-): Effect.Effect<readonly string[], never, DocsFs> =>
-  Effect.gen(function* () {
-    const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore)
-    return allFiles.filter(
-      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
-    )
-  })
-
 const toRecord = (ref: { readonly anchor: string | null; readonly target: string }, hash: string): RefRecord =>
   ref.anchor === null ? { hash, target: ref.target } : { anchor: ref.anchor, hash, target: ref.target }
 
@@ -140,7 +126,7 @@ export const stampRefs = ({
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    const mdFiles = yield* listMarkdownFiles(dfs, roots, ignore, trackedFiles)
     let stamped = 0
     for (const file of mdFiles) {
       // Found via adversarial "no unhandled exception" review: a doc that
@@ -183,7 +169,7 @@ export const checkRefs = ({
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    const mdFiles = yield* listMarkdownFiles(dfs, roots, ignore, trackedFiles)
     const stale: FileStaleRefs[] = []
     let checked = 0
     for (const file of mdFiles) {

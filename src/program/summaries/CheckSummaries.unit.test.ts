@@ -1,8 +1,8 @@
-import { Effect } from 'effect'
-import type { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { hashContent } from '../../core/hashing.ts'
+import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import {
   checkSummaries,
@@ -145,6 +145,61 @@ describe('checkSummaries()', () => {
         checkSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
       )
       expect(withUndefined.todo).toEqual(withoutField.todo)
+    })
+  })
+
+  // Issue #93: `readMarkdown` used to omit the file-level `ignore` re-check
+  // `listMdFiles`'s twins in CheckCoverage.ts/CheckRefs.ts already applied
+  // (`listFiles` itself only prunes `ignore`d DIRECTORIES, never a
+  // file-shaped pattern) — never actually mis-reported, since the pure
+  // planner (`core/summaries/SummaryTree.ts`) re-filters by `ignore` at
+  // plan time regardless, but it read the ignored file's content anyway,
+  // pure wasted IO. Now closed via the shared `listMarkdownFiles`
+  // (`io/DocsFs.ts`).
+  describe('ignore (file-shaped pattern, issue #93)', () => {
+    it('excludes a file-shaped `ignore` match from the plan, same as the directory-shaped case already did', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/generated.md': tf(big),
+        '/r/docs/kept.md': tf(big),
+      })
+      const plan = await Effect.runPromise(
+        checkSummaries({
+          base,
+          ignore: ['**/docs/generated.md'],
+          roots: ['/r/docs'],
+          thresholdLines: 30,
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(plan.todo.map((n) => n.path)).toEqual(['/r/docs/kept.summary.md', '/r/docs/_SUMMARY.md'])
+    })
+
+    // The actual fix, not just the dedup: proves `readMarkdown` now skips
+    // READING the ignored file entirely, rather than reading it and having
+    // the pure planner discard it downstream.
+    it('never reads the content of a file-shaped `ignore` match', async () => {
+      const readCalls: string[] = []
+      const service: DocsFsService = {
+        deleteFile: () => Effect.succeed(undefined),
+        exists: () => Effect.succeed(false),
+        listFiles: () => Effect.succeed(['/r/docs/generated.md', '/r/docs/kept.md']),
+        readFile: (abs) => {
+          readCalls.push(abs)
+          return Effect.succeed(big)
+        },
+        realPath: (abs) => Effect.succeed(abs),
+        stat: () => Effect.die('not used in this test'),
+        writeFile: () => Effect.succeed(undefined),
+      }
+      const layer = Layer.succeed(DocsFs, service)
+      await Effect.runPromise(
+        checkSummaries({
+          base,
+          ignore: ['**/docs/generated.md'],
+          roots: ['/r/docs'],
+          thresholdLines: 30,
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(readCalls).toEqual(['/r/docs/kept.md'])
     })
   })
 

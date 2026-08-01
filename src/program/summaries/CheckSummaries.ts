@@ -19,7 +19,7 @@ import type { PlanArgs, PlanNode, SummaryPlan } from '../../core/summaries/Summa
 import { isDirSummary, nodeExpectedHash, planSummaries } from '../../core/summaries/SummaryTree.ts'
 import type { MetaLayout } from '../../core/sidecar.ts'
 import { metaRootFor, nodePathForSidecar, sidecarPathFor } from '../../core/sidecar.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, listMarkdownFiles } from '../../io/DocsFs.ts'
 import type { Locale } from '../locale.ts'
 import { enOnly, pick } from '../locale.ts'
 
@@ -92,32 +92,35 @@ const readMarkdown = (
 ): Effect.Effect<Map<string, string>, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const all = yield* dfs.listFiles(roots, ignore)
+    // `listMarkdownFiles` (../../io/DocsFs.ts): issue #48's `trackedFiles`
+    // narrowing (an untracked doc is invisible to a fresh CI checkout, so a
+    // local run with `onlyGitTracked` on must be too — restricting the file
+    // set BEFORE reading, not filtering the plan afterward, means an
+    // untracked-only directory also never becomes "in scope, needs a
+    // `_SUMMARY.md`" in the first place) AND the file-level `ignore`
+    // re-check `listFiles` itself only applies to directories. This file's
+    // own copy used to omit that second part (issue #93) — the pure
+    // planner (`core/summaries/SummaryTree.ts`) re-filters by `ignore` at
+    // plan time regardless, so nothing was ever mis-reported, but an
+    // ignored doc's content got read here anyway, pure wasted IO.
     const files = new Map<string, string>()
-    for (const file of all) {
-      // Issue #48: an untracked doc is invisible to a fresh CI checkout, so a
-      // local run with `onlyGitTracked` on must be too — restricting the file
-      // set BEFORE reading (not filtering the plan afterward) means an
-      // untracked-only directory also never becomes "in scope, needs a
-      // `_SUMMARY.md`" in the first place.
-      if (file.endsWith('.md') && (trackedFiles === undefined || trackedFiles.has(file))) {
-        // Found via adversarial "no unhandled exception" review: a doc that
-        // successfully LISTS but can't actually be READ (permission denied,
-        // revoked between listing and reading) must not crash the whole run
-        // — `dfs.readFile` is `Effect.orDie`-wrapped, so this reaches the
-        // DEFECT channel. Skipped exactly like an untracked/ignored file
-        // already is — the pure planner then reasonably reads it as "not
-        // present" rather than the whole `cairn check` dying over one
-        // unreadable doc. (Narrower than `CheckLinks.ts`'s own fix for the
-        // identical failure mode, which additionally surfaces a distinct,
-        // exit-code-affecting `unreadable` report — deliberately not
-        // replicated here, since `SummaryPlan`'s shape is pure/IO-agnostic
-        // by design and widely consumed; named as a real, scoped-out
-        // follow-up rather than silently matched in richness.)
-        const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
-        if (content !== null) {
-          files.set(file, content)
-        }
+    for (const file of yield* listMarkdownFiles(dfs, roots, ignore, trackedFiles)) {
+      // Found via adversarial "no unhandled exception" review: a doc that
+      // successfully LISTS but can't actually be READ (permission denied,
+      // revoked between listing and reading) must not crash the whole run
+      // — `dfs.readFile` is `Effect.orDie`-wrapped, so this reaches the
+      // DEFECT channel. Skipped exactly like an untracked/ignored file
+      // already is — the pure planner then reasonably reads it as "not
+      // present" rather than the whole `cairn check` dying over one
+      // unreadable doc. (Narrower than `CheckLinks.ts`'s own fix for the
+      // identical failure mode, which additionally surfaces a distinct,
+      // exit-code-affecting `unreadable` report — deliberately not
+      // replicated here, since `SummaryPlan`'s shape is pure/IO-agnostic
+      // by design and widely consumed; named as a real, scoped-out
+      // follow-up rather than silently matched in richness.)
+      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+      if (content !== null) {
+        files.set(file, content)
       }
     }
     return files

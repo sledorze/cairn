@@ -83,6 +83,42 @@ export const isSafelyWithinBase = (
     return real !== null && isWithinBase(real, base)
   })
 
+/**
+ * Every `.md` file under `roots`, narrowed the same way every scanning
+ * checker needs: `listFiles`'s own `ignore` handling only prunes
+ * DIRECTORIES (`isPrunedDir`, above) — a file-SHAPED `ignore` pattern (e.g.
+ * `"**\/generated.md"`, matching one leaf file rather than a directory) is
+ * never excluded by `listFiles` itself, so every consumer that cares about
+ * file-level `ignore` has to re-apply `matchesAny` on the result. Optional
+ * `trackedFiles` (issue #48's `onlyGitTracked`) narrows further: a file
+ * physically present but untracked is invisible, matching a fresh CI
+ * checkout.
+ *
+ * Extracted (issue #93, closing a duplication a decoupling survey found in
+ * issue #28's PR) after this exact filter turned up hand-duplicated,
+ * byte-identical, in `CheckCoverage.ts` and `CheckRefs.ts` — and a THIRD,
+ * near-identical copy in `CheckSummaries.ts`'s `readMarkdown` that had
+ * silently drifted, omitting the file-level `ignore` re-check the other
+ * two apply. Verified this drift never actually mis-reported (the
+ * end-to-end SUMMARY pipeline `readMarkdown` feeds also re-filters by
+ * `ignore` at plan time, in `core/summaries/SummaryTree.ts`), but a
+ * consumer that reads a file's content BEFORE it's known to be in scope is
+ * still real wasted IO — and, more importantly, a divergence a future
+ * fourth copy would have no way to notice was ever meant to match.
+ */
+export const listMarkdownFiles = (
+  dfs: Pick<DocsFsService, 'listFiles'>,
+  roots: readonly string[],
+  ignore: readonly string[],
+  trackedFiles?: ReadonlySet<string>,
+): Effect.Effect<readonly string[]> =>
+  Effect.gen(function* () {
+    const all = yield* dfs.listFiles(roots, ignore)
+    return all.filter(
+      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
+    )
+  })
+
 /** Live implementation bound to the Node filesystem. */
 export const DocsFsLive = Layer.effect(
   DocsFs,
