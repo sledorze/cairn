@@ -88,17 +88,29 @@ const resolveReferenceContent = ({
   targetAbs,
 }: {
   readonly base: string
-  readonly dfs: { exists: (p: string) => Effect.Effect<boolean>; readFile: (p: string) => Effect.Effect<string> }
+  readonly dfs: {
+    readFile: (p: string) => Effect.Effect<string>
+    realPath: (p: string) => Effect.Effect<string | null>
+  }
   readonly targetAbs: string
 }): Effect.Effect<string | null> =>
   Effect.gen(function* () {
     if (!isWithinBase(targetAbs, base)) {
       return null
     }
-    const exists = yield* dfs.exists(targetAbs)
-    if (!exists) {
+    const real = yield* dfs.realPath(targetAbs)
+    if (real === null || !isWithinBase(real, base)) {
       return null
     }
+    // `realPath`, not `exists` — a symlink physically located INSIDE
+    // `base` can still point OUTSIDE it; a lexical `isWithinBase` pass
+    // above can't see that. Without this, a symlink escaping `base` had
+    // its CONTENT hashed and the hash committed into a `.cairn/refs/**`
+    // sidecar — a persisted content-fingerprint oracle for arbitrary
+    // files, worse than the existence-only oracle issue #39 was written
+    // to close (adversarial review, issue #28's PR). Doubles as the
+    // existence check `exists` previously did (a nonexistent path has no
+    // real path to resolve).
     return yield* dfs.readFile(targetAbs).pipe(Effect.catchDefect(() => Effect.succeed(null)))
   })
 

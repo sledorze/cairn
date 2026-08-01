@@ -1,4 +1,5 @@
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -109,4 +110,40 @@ describe('checkProseRefs() against the real filesystem (DocsFsLive)', () => {
       fs.chmodSync(bPath, 0o644)
     }
   })
+
+  // Adversarial finding, security-relevant (issue #28's PR, 4th review
+  // pass): a symlink physically located INSIDE `base` can still point
+  // OUTSIDE it — before this fix, a bare-backtick citation reaching such a
+  // symlink was treated as resolving (no `unverifiable`/`missing` finding),
+  // reproducing the exact filesystem-existence oracle issue #47/#39 were
+  // written to close, reached through a path that's lexically in-bounds.
+  const supportsSymlinks = process.platform !== 'win32'
+  it.skipIf(!supportsSymlinks)(
+    'never treats a citation reaching a symlink whose real target escapes `base` as resolving, even under a legitimate in-base first segment',
+    async () => {
+      // `src` (the citation's first path segment) is a REAL in-base
+      // directory — this isolates the fix to the DEEPER symlink escape,
+      // not just the already-covered first-segment case.
+      const p = project('proserefs-real-symlink', {
+        'docs/guide.md': 'See `src/escape-link` for details.',
+        'src/present.ts': 'export {}',
+      })
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proserefs-real-symlink-outside-'))
+      const secretFile = path.join(outsideDir, 'secret.txt')
+      fs.writeFileSync(secretFile, 'not part of the repo')
+      const linkPath = path.join(p.root, 'src', 'escape-link')
+      try {
+        fs.symlinkSync(secretFile, linkPath)
+        const result = await checkDocs(p)
+        // Never silently treated as resolving (which pre-fix, it was: the
+        // symlink physically "exists" at its own in-base path, and the old
+        // code never resolved what it actually points at) — reported as a
+        // real, actionable finding instead.
+        const escape = result.broken[0]?.refs.find((r) => r.text === 'src/escape-link')
+        expect(escape?.reason).toBe('missing')
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
+      }
+    },
+  )
 })

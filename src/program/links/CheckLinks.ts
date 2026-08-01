@@ -298,7 +298,17 @@ const resolvePendingCheck = ({
       if (known.has(item.targetAbs)) {
         exists = true
       } else if (isWithinBase(item.targetAbs, base)) {
-        const physical = yield* dfs.exists(item.targetAbs)
+        // `realPath`, not `exists` — adversarial review (issue #28's PR)
+        // found that a symlink physically located INSIDE `base` can still
+        // point OUTSIDE it; a lexical `isWithinBase` pass on the
+        // candidate's own path (just above) can't see that, since it
+        // never resolves the link. Re-checking containment against the
+        // CANONICAL path closes the gap `../structure/CheckCoverage.ts`
+        // already closed for its own external-path resolution — this is
+        // the same containment guarantee this file's own doc comment
+        // already claims, now actually enforced against symlinks too.
+        const real = yield* dfs.realPath(item.targetAbs)
+        const physical = real !== null && isWithinBase(real, base)
         exists = physical && (trackedUniverse === undefined || trackedUniverse.has(item.targetAbs))
       } else {
         // Outside the checkout root entirely: never touched, unconditionally

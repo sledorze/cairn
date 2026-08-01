@@ -1,4 +1,6 @@
+import * as crypto from 'node:crypto'
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -146,4 +148,42 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
       fs.chmodSync(bPath, 0o644)
     }
   })
+
+  // Adversarial finding, security-relevant (issue #28's PR, 4th review
+  // pass): a symlink physically located INSIDE `base` can still point
+  // OUTSIDE it — before this fix, `resolveReferenceContent` hashed and
+  // PERSISTED the escaped target's real content into a `.cairn/refs/**`
+  // sidecar, a content-fingerprint oracle for arbitrary files reachable
+  // via a symlink an attacker could commit inside any scanned root; worse
+  // than the plain existence oracle issue #39 was written to close.
+  const supportsSymlinks = process.platform !== 'win32'
+  it.skipIf(!supportsSymlinks)(
+    'never reads or hashes the content of a symlink escaping `base`, even though its own path is lexically in-base',
+    async () => {
+      const p = project('checkrefs-real-symlink', { 'docs/index.md': '[escape](../escape-link)' })
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'checkrefs-real-symlink-outside-'))
+      const secretFile = path.join(outsideDir, 'secret.txt')
+      fs.writeFileSync(secretFile, 'not part of the repo')
+      const linkPath = path.join(p.root, 'escape-link')
+      try {
+        fs.symlinkSync(secretFile, linkPath)
+        const args = { base: p.root, roots: [path.join(p.root, 'docs')] }
+        const stampResult = await run(stampRefs(args))
+        // The doc's only reference is the escaped symlink, which resolves
+        // to null (unverifiable) — nothing real to stamp, same as a doc
+        // whose only link targets something that never existed at all.
+        expect(stampResult.stamped).toBe(0)
+        // No sidecar entry recorded a hash for the escaped target — the
+        // reference resolves to `null` (unverifiable), same as a target
+        // that never existed at all.
+        const sidecarPath = path.join(p.root, '.cairn', 'refs', 'docs', 'index.md.json')
+        const sidecar = fs.existsSync(sidecarPath) ? fs.readFileSync(sidecarPath, 'utf8') : ''
+        expect(sidecar).not.toContain('not part of the repo')
+        const secretHash = crypto.createHash('sha256').update('not part of the repo').digest('hex')
+        expect(sidecar).not.toContain(secretHash)
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
+      }
+    },
+  )
 })

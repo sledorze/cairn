@@ -1,4 +1,5 @@
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -291,4 +292,42 @@ describe('checkLinks() against the real filesystem (DocsFsLive)', () => {
       }
     },
   )
+
+  // Adversarial finding, security-relevant (issue #28's PR, 4th review
+  // pass): a symlink physically located INSIDE `base` can still point
+  // OUTSIDE it — before this fix, a link through such a symlink reported
+  // as resolved/non-broken, reproducing the exact filesystem-existence
+  // oracle issue #39 was written to close, just reached through a path
+  // that's lexically in-bounds instead of a literal `../` traversal.
+  const supportsSymlinks = process.platform !== 'win32'
+  it.skipIf(!supportsSymlinks)(
+    'reports broken for a link through a symlink whose real target escapes `base`, even though its own path is lexically in-base',
+    async () => {
+      const p = project('checklinks-real-symlink', { 'docs/index.md': '[escape](../escape-link)' })
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'checklinks-real-symlink-outside-'))
+      const secretFile = path.join(outsideDir, 'secret.txt')
+      fs.writeFileSync(secretFile, 'not part of the repo')
+      const linkPath = path.join(p.root, 'escape-link')
+      try {
+        fs.symlinkSync(secretFile, linkPath)
+        const result = await checkDocs(p)
+        expect(result.broken[0]?.links).toEqual([{ reason: 'path', target: '../escape-link', text: 'escape' }])
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
+      }
+    },
+  )
+
+  // Positive counterpart: a symlink whose real target stays INSIDE `base`
+  // is a legitimate reference and must still resolve — proves this is a
+  // containment check, not "reject every symlink."
+  it.skipIf(!supportsSymlinks)('resolves a link through a symlink whose real target stays inside `base`', async () => {
+    const p = project('checklinks-real-symlink-inside', {
+      'docs/index.md': '[impl](../impl-link)',
+      'src/real.ts': 'export const real = 1',
+    })
+    fs.symlinkSync(path.join(p.root, 'src/real.ts'), path.join(p.root, 'impl-link'))
+    const result = await checkDocs(p)
+    expect(result.broken).toEqual([])
+  })
 })

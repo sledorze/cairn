@@ -77,15 +77,15 @@
       "target": "../src/program/summaries/CheckSummaries.ts"
     },
     {
-      "hash": "4ccafcc5cf3d4ea575b478827be6c8b0ccc477482b048cac873e64607c975ead",
+      "hash": "1b17c9b928906c2528b4a624400f5bb5c0258d9cfab22414557995ec887f1bde",
       "target": "../src/program/links/CheckLinks.ts"
     },
     {
-      "hash": "ff7aa4d6efa771325f40977bebf3630101dc6b6d23b7795afd9568d39c873d9f",
+      "hash": "669e06b152b2e973c46435d349c79b8b6a5105f65c38c9ac2adaf7ebd8370b61",
       "target": "../src/program/links/CheckRefs.ts"
     },
     {
-      "hash": "59aa707079616c12d2c7c1ece7e0f7de8f9c831ff4a17dcae38f9c090bbb37a1",
+      "hash": "1e375f11be304561d7d0a75550fb9ff8e97ddb4fa35be8badc6f5b1f602cf9bf",
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
