@@ -1,7 +1,7 @@
 import { Result } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_CONFIG, decodeConfig, formatConfigError } from './Config.ts'
+import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget } from './Config.ts'
 
 // `decodeConfig` is total and pure over its actual domain — any value JSON.parse can
 // produce — and never throws for it: `effect/Schema` already hands back a `Result`, so
@@ -338,6 +338,24 @@ describe('formatConfigError()', () => {
     expect(formatConfigError(result.failure, '/repo/.cairnrc.json')).toMatch(
       /invalid config in \/repo\/\.cairnrc\.json/,
     )
+  })
+})
+
+// Adversarial-review finding (issue #28's PR): the `typeof to === 'string'`
+// discriminant was hand-re-derived independently at 6 call sites across
+// Config.ts/Coverage.ts/CheckCoverage.ts — the same "drift silently,
+// nobody notices" shape `isSafelyWithinBase` was already extracted to fix
+// for symlink containment, just for this discriminant instead. A future
+// second `external` variant (Config.ts's own comment already anticipates
+// one) needs every one of those sites updated by hand; centralizing the
+// check here means they all stay correct by construction.
+describe('isKindTarget()', () => {
+  it('is true for a plain kind-id string', () => {
+    expect(isKindTarget('decision')).toBeTruthy()
+  })
+
+  it('is false for an external-path target', () => {
+    expect(isKindTarget({ external: 'path' })).toBeFalsy()
   })
 })
 

@@ -32,6 +32,7 @@
 import { Effect } from 'effect'
 
 import type { CoverageRule, KindDef } from '../../core/Config.ts'
+import { isKindTarget } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
@@ -137,7 +138,7 @@ export const checkCoverage = ({
     const uniqueRules = [
       ...new Map(
         rules.map((r) => [
-          `${r.name ?? ''}\u0000${r.from}\u0000${typeof r.to === 'string' ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}`,
+          `${r.name ?? ''}\u0000${r.from}\u0000${isKindTarget(r.to) ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}`,
           r,
         ]),
       ).values(),
@@ -218,7 +219,7 @@ export const checkCoverage = ({
     // `{ external: 'path' }` names no kind at all, so it's filtered out
     // here too — an external-only rule's `from` kind must never become
     // orphan-checkable just because it appears on some rule's `to` side.
-    const orphanCandidateKinds = new Set(uniqueRules.map((r) => r.to).filter((t): t is string => typeof t === 'string'))
+    const orphanCandidateKinds = new Set(uniqueRules.map((r) => r.to).filter(isKindTarget))
     const orphans: OrphanDoc[] = []
     for (const doc of docs) {
       if (matchesAny(doc.path, exempt)) {
@@ -281,7 +282,7 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       const named = rule.name === undefined ? '' : ` ("${rule.name}")`
       lines.push(
         `  ${p}`,
-        typeof rule.to === 'string'
+        isKindTarget(rule.to)
           ? pick(locale, {
               en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
               fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,

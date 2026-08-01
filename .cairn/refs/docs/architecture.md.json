@@ -41,7 +41,7 @@
       "target": "../src/core/structure/DocGraph.ts"
     },
     {
-      "hash": "fa393ab726069370c56cacb90f2d9e87fb3959f40aaf104302a77c5c8a50a6f1",
+      "hash": "85229241a3d38f7a68b0b716002022aa2d7628dd0e1f0dd6fafb94eeccf4fb75",
       "target": "../src/core/structure/Coverage.ts"
     },
     {
@@ -61,7 +61,7 @@
       "target": "../src/core/paths.ts"
     },
     {
-      "hash": "2c9ed07515383f8af1d441d0f859dea9dcd4ddbdaf6acb6cda112e1e04f50949",
+      "hash": "dbeec400e5c31fc639da52c6ca963c681cb02579aa7cecba1594af953e706ae7",
       "target": "../src/core/Config.ts"
     },
     {
@@ -89,7 +89,7 @@
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
-      "hash": "28330dcd322c5c8b05d8140525502c6837ed1b88f49a27915cbb1266a4ce6eb7",
+      "hash": "c8f499d6d2db40128df5b91b2bb7bf3f2b6505ab7a05b3237236921db35df4aa",
       "target": "../src/program/structure/CheckCoverage.ts"
     },
     {

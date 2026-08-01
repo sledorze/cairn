@@ -135,7 +135,7 @@ const CoverageInputSchema = Schema.Struct({
           }
           // `to` names no kind at all when it's `{ external: 'path' }` — the
           // undeclared-kind check only applies to the plain kind-id string shape.
-          if (typeof rule.to === 'string' && !declaredIds.has(rule.to)) {
+          if (isKindTarget(rule.to) && !declaredIds.has(rule.to)) {
             issues.push({ issue: `references undeclared kind "${rule.to}"`, path: ['rules', i, 'to'] })
           }
         })
@@ -263,6 +263,16 @@ export interface CoverageRequirement {
  * `CoverageTargetInputSchema`'s own comment for why this is a discriminated
  * union rather than a bare string. */
 export type CoverageTarget = string | { readonly external: 'path' }
+
+/** True when `target` is a declared kind id, not `{ external: 'path' }` —
+ * the ONE discriminant every `CoverageTarget` consumer needs, centralized
+ * here (adversarial review, issue #28's PR) after it turned up hand-
+ * re-derived as a bare `typeof target === 'string'` at 6 call sites across
+ * `Config.ts`/`Coverage.ts`/`CheckCoverage.ts`. A future second `external`
+ * variant (this file's own `CoverageTarget` comment already anticipates
+ * one) needs this ONE function updated, not six independent re-derivations
+ * found and fixed by hand. */
+export const isKindTarget = (target: CoverageTarget): target is string => typeof target === 'string'
 
 export interface CoverageRule {
   readonly from: string

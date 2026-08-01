@@ -31,7 +31,7 @@ export default defineConfig({
         branches: 90.27,
         functions: 98.85,
         lines: 99.24,
-        statements: 99.09,
+        statements: 99.1,
       },
     },
     include: ['src/**/*.test.ts'],

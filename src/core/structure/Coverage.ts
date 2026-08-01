@@ -17,6 +17,7 @@
 import * as nodePath from 'node:path'
 
 import type { CoverageRule } from '../Config.ts'
+import { isKindTarget } from '../Config.ts'
 import { matchesAny } from '../glob.ts'
 import type { DocMetadata, StructureNode } from './DocMetadata.ts'
 
@@ -99,10 +100,9 @@ export const resolveRuleEdges = ({
         // (resolve against the caller's pre-checked existence set — see
         // `ResolveRuleEdgesArgs.externalExists`'s own comment for why this
         // stays a lookup here, not a filesystem call).
-        const satisfied =
-          typeof rule.to === 'string'
-            ? (docsByPath.get(targetPath)?.kinds.includes(rule.to) ?? false)
-            : externalExists.has(targetPath)
+        const satisfied = isKindTarget(rule.to)
+          ? (docsByPath.get(targetPath)?.kinds.includes(rule.to) ?? false)
+          : externalExists.has(targetPath)
         if (satisfied) {
           satisfiedBy.push({ node, targetPath })
         }
@@ -125,7 +125,7 @@ export const collectExternalRefTargets = (
   exempt: readonly string[],
   rules: readonly CoverageRule[],
 ): readonly string[] => {
-  const externalFromKinds = new Set(rules.filter((r) => typeof r.to !== 'string').map((r) => r.from))
+  const externalFromKinds = new Set(rules.filter((r) => !isKindTarget(r.to)).map((r) => r.from))
   if (externalFromKinds.size === 0) {
     return []
   }
