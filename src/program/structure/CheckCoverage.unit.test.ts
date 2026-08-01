@@ -306,6 +306,32 @@ describe('checkCoverage()', () => {
     expect(result.missing).toHaveLength(2)
   })
 
+  // Adversarial-review tripwire for the dedup key's object-`to` case: two
+  // rules sharing `from` but with STRUCTURALLY DIFFERENT object `to`
+  // values must dedupe to two distinct keys, not collapse into one. Only
+  // `{ external: 'path' }` is a legal object shape today, so a second
+  // shape is simulated via cast (same technique the `via` test above
+  // uses) — this pins the dedup key's `JSON.stringify` behavior on object
+  // `to` values BEFORE a second real variant exists, so the exact
+  // silent-collapse regression this key has already suffered twice (see
+  // this file's own dedup-key comment) can't recur a third time unnoticed.
+  it('never collapses two same-`from` rules with structurally different object `to` values', async () => {
+    const layer = makeTestDocsFs({
+      '/r/specs/s1.md': { content: '# Spec, no links at all', mtimeMs: 1 },
+    })
+    const specKinds = [{ id: 'spec', select: { by: 'path' as const, glob: '/r/specs/**' } }]
+    const differingOnlyByToShape: CoverageRule[] = [
+      { from: 'spec', to: { external: 'path' } },
+      { from: 'spec', to: { external: 'url' } } as unknown as CoverageRule,
+    ]
+    const result = await Effect.runPromise(
+      checkCoverage({ base: '/r', kinds: specKinds, roots: ['/r'], rules: differingOnlyByToShape }).pipe(
+        Effect.provide(layer),
+      ),
+    )
+    expect(result.missing).toHaveLength(2)
+  })
+
   // Adversarial finding: a chain of rules (feature -> decision -> spec) —
   // 'decision' is BOTH a rule.to (orphan-checkable) AND a rule.from (must
   // itself satisfy its own outbound rule). No special-casing needed; this
@@ -396,6 +422,88 @@ describe('checkCoverage()', () => {
     // resolves (its own link target doesn't exist as a doc), which IS a real
     // missing-coverage finding, but unmatchedKinds itself never drives the
     // exit code (see coverageExitCode's own tests).
+  })
+
+  // Issue #28's third v1 check, doc→code reference resolution: a rule whose
+  // `to` is `{ external: 'path' }` is satisfied by a link resolving to a
+  // REAL FILE on disk — a non-`.md` source file the coverage scan itself
+  // never reads as a doc, confirmed via `DocsFs.exists`, not via the
+  // scanned-doc graph.
+  describe('to: { external: "path" } — doc→code reference resolution', () => {
+    const SPEC_KINDS = [{ id: 'spec', select: { by: 'path' as const, glob: '/r/specs/**' } }]
+    const EXTERNAL_RULES: CoverageRule[] = [{ from: 'spec', to: { external: 'path' } }]
+
+    it('reports nothing when a spec links to a real, existing file', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\n[impl](../../src/foo.ts)', mtimeMs: 1 },
+        '/src/foo.ts': { content: 'export const foo = 1', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: EXTERNAL_RULES }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([])
+      expect(coverageExitCode(result)).toBe(0)
+    })
+
+    it('reports missing coverage when a spec links to a path that does not exist on disk', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\n[impl](../../src/missing.ts)', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: EXTERNAL_RULES }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([{ path: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } } }])
+      expect(coverageExitCode(result)).toBe(1)
+    })
+
+    it('reports missing coverage for a spec with no links at all', async () => {
+      const layer = makeTestDocsFs({ '/r/specs/s1.md': { content: '# Spec, no links', mtimeMs: 1 } })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: EXTERNAL_RULES }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([{ path: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } } }])
+    })
+
+    // `{ external: 'path' }` names no kind at all — it must never make its
+    // rule's `from` kind eligible for orphan reporting (only a rule's `to`
+    // side is ever orphan-checkable, and here `to` isn't a kind).
+    it('never treats an external target as an orphan-candidate kind', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\n[impl](../../src/foo.ts)', mtimeMs: 1 },
+        '/src/foo.ts': { content: 'export const foo = 1', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: EXTERNAL_RULES }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.orphans).toEqual([])
+    })
+
+    // A directory existing on disk isn't a satisfying reference — `exists`
+    // is true for directories too (see DocsFs.ts), but a rule asking for a
+    // real FILE reference shouldn't be silently satisfied by a directory
+    // link. Documented here as current behavior: `resolveRuleEdges` only
+    // asks "does this path exist," matching plain link-checking's own
+    // target-existence semantics — no separate is-a-file check exists yet.
+    it('is satisfied by a link to an existing directory too, matching DocsFs.exists own semantics', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\n[impl](../../src/)', mtimeMs: 1 },
+        '/src/foo.ts': { content: 'export const foo = 1', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: EXTERNAL_RULES }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([])
+    })
   })
 
   it('never reports a kind that matched at least one doc as unmatched', async () => {

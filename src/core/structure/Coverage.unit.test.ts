@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { DocMetadata } from './DocMetadata.ts'
-import { resolveRuleEdges } from './Coverage.ts'
+import { collectExternalRefTargets, resolveRuleEdges } from './Coverage.ts'
 
 const doc = (path: string, kinds: readonly string[], nodes: DocMetadata['nodes'] = []): DocMetadata => ({
   kinds,
@@ -115,5 +115,91 @@ describe('resolveRuleEdges()', () => {
     ]
     const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'spec' }] })
     expect(edges).toEqual([{ doc: '/r/features/f1.md', rule: { from: 'feature', to: 'spec' }, satisfiedBy: [] }])
+  })
+
+  // Issue #28's third v1 check, doc→code reference resolution: a rule whose
+  // `to` is `{ external: 'path' }` is satisfied by a link resolving to a
+  // real FILE, never a scanned/kind-classified doc — `externalExists` is
+  // the caller's pre-computed IO result (this function stays pure/IO-free),
+  // exactly the same shape a real filesystem existence check would confirm.
+  describe('to: { external: "path" } — doc→code reference resolution', () => {
+    it('is satisfied when the ref resolves to a path in `externalExists`', () => {
+      const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../../src/foo.ts')])]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        externalExists: new Set(['/src/foo.ts']),
+        rules: [{ from: 'spec', to: { external: 'path' } }],
+      })
+      expect(edges).toEqual([
+        {
+          doc: '/r/specs/s1.md',
+          rule: { from: 'spec', to: { external: 'path' } },
+          satisfiedBy: [{ node: ref('../../src/foo.ts'), targetPath: '/src/foo.ts' }],
+        },
+      ])
+    })
+
+    it('is unsatisfied when the ref target is absent from `externalExists`', () => {
+      const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../../src/missing.ts')])]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        externalExists: new Set(['/src/foo.ts']),
+        rules: [{ from: 'spec', to: { external: 'path' } }],
+      })
+      expect(edges).toEqual([
+        { doc: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } }, satisfiedBy: [] },
+      ])
+    })
+
+    it('is unsatisfied when `externalExists` is omitted entirely — never silently satisfied by default', () => {
+      const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../../src/foo.ts')])]
+      const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'spec', to: { external: 'path' } }] })
+      expect(edges).toEqual([
+        { doc: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } }, satisfiedBy: [] },
+      ])
+    })
+
+    // A ref that happens to resolve to a scanned, kind-classified doc still
+    // satisfies an external-path rule — the rule only asks "does this path
+    // exist," never "is it NOT a doc."
+    it('is satisfied by a ref that resolves to a scanned doc, as long as its path is in `externalExists`', () => {
+      const docs = [
+        doc('/r/specs/s1.md', ['spec'], [ref('../decisions/d1.md')]),
+        doc('/r/decisions/d1.md', ['decision']),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        externalExists: new Set(['/r/decisions/d1.md']),
+        rules: [{ from: 'spec', to: { external: 'path' } }],
+      })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+  })
+})
+
+describe('collectExternalRefTargets()', () => {
+  it('collects the resolved target path of every ref under a from-kind doc whose rule has an external `to`', () => {
+    const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../../src/foo.ts'), ref('../../src/bar.ts', 2)])]
+    const targets = collectExternalRefTargets(docs, [], [{ from: 'spec', to: { external: 'path' } }])
+    expect([...targets].toSorted()).toEqual(['/src/bar.ts', '/src/foo.ts'])
+  })
+
+  it('never collects a ref under a doc whose kind has no external-typed rule', () => {
+    const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../../src/foo.ts')])]
+    const targets = collectExternalRefTargets(docs, [], [{ from: 'spec', to: 'decision' }])
+    expect(targets).toEqual([])
+  })
+
+  it('never collects a ref under a doc matching `exempt`', () => {
+    const docs = [doc('/r/specs/templates/blank.md', ['spec'], [ref('../../../src/foo.ts')])]
+    const targets = collectExternalRefTargets(
+      docs,
+      ['/r/specs/templates/**'],
+      [{ from: 'spec', to: { external: 'path' } }],
+    )
+    expect(targets).toEqual([])
   })
 })

@@ -33,7 +33,7 @@ import { Effect } from 'effect'
 
 import type { CoverageRule, KindDef } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
-import { resolveRuleEdges } from '../../core/structure/Coverage.ts'
+import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
 import { DocsFs } from '../../io/DocsFs.ts'
@@ -133,7 +133,12 @@ export const checkCoverage = ({
     // `CoverageRule` to distinguish otherwise-identical rules, add it here
     // too, or this exact class of silent data loss reappears a third time.
     const uniqueRules = [
-      ...new Map(rules.map((r) => [`${r.name ?? ''}\u0000${r.from}\u0000${r.to}\u0000${r.via?.by ?? ''}`, r])).values(),
+      ...new Map(
+        rules.map((r) => [
+          `${r.name ?? ''}\u0000${r.from}\u0000${typeof r.to === 'string' ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}`,
+          r,
+        ]),
+      ).values(),
     ]
 
     const allDocs = []
@@ -160,12 +165,36 @@ export const checkCoverage = ({
     // it, same as a doc `ignore`'d out of every other check.
     const docs = allDocs.filter((d) => d.kinds.length > 0)
 
+    // A rule's `to` can be `{ external: 'path' }` (issue #28's third v1
+    // check, doc→code reference resolution) instead of a declared kind id —
+    // satisfied by a link resolving to a REAL FILE, not a scanned doc.
+    // `resolveRuleEdges` stays pure/IO-free, so the actual filesystem check
+    // happens here: collect every candidate target path an external-typed
+    // rule could be satisfied by, confirm which ones really exist, and hand
+    // that confirmed set in. Bounded concurrency, same convention as every
+    // other per-file IO loop in this checker.
+    const externalCandidates = collectExternalRefTargets(docs, exempt, uniqueRules)
+    const externalExists = new Set<string>()
+    yield* Effect.forEach(
+      externalCandidates,
+      (candidate) =>
+        dfs.exists(candidate).pipe(
+          Effect.map((exists) => {
+            if (exists) {
+              externalExists.add(candidate)
+            }
+            return exists
+          }),
+        ),
+      { concurrency: 8 },
+    )
+
     // Resolution itself (kind matching, path resolution, `exempt`) lives in
     // ../../core/structure/Coverage.ts's `resolveRuleEdges` — pulled out so
     // a future consumer (e.g. a stale-coverage-link freshness check) reuses
     // the exact same logic instead of re-deriving it as a second, divergent
     // copy. `missing` here is just "which edges had zero satisfying refs."
-    const edges = resolveRuleEdges({ docs, exempt, rules: uniqueRules })
+    const edges = resolveRuleEdges({ docs, exempt, externalExists, rules: uniqueRules })
     const missing: MissingCoverage[] = edges
       .filter((e) => e.satisfiedBy.length === 0)
       .map((e) => ({ path: e.doc, rule: e.rule }))
@@ -177,7 +206,10 @@ export const checkCoverage = ({
     // `from`-only kind (e.g. "feature," which only initiates relations)
     // would otherwise be flagged just for existing, which isn't what
     // "orphan" means in any of the tools/standards this check is modeled on.
-    const orphanCandidateKinds = new Set(uniqueRules.map((r) => r.to))
+    // `{ external: 'path' }` names no kind at all, so it's filtered out
+    // here too — an external-only rule's `from` kind must never become
+    // orphan-checkable just because it appears on some rule's `to` side.
+    const orphanCandidateKinds = new Set(uniqueRules.map((r) => r.to).filter((t): t is string => typeof t === 'string'))
     const orphans: OrphanDoc[] = []
     for (const doc of docs) {
       if (matchesAny(doc.path, exempt)) {
@@ -240,10 +272,15 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       const named = rule.name === undefined ? '' : ` ("${rule.name}")`
       lines.push(
         `  ${p}`,
-        pick(locale, {
-          en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
-          fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
-        }),
+        typeof rule.to === 'string'
+          ? pick(locale, {
+              en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
+              fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
+            })
+          : pick(locale, {
+              en: `    ✗ no link${named} to an existing file (required by kind "${rule.from}")`,
+              fr: `    ✗ aucun lien${named} vers un fichier existant (requis pour le type « ${rule.from} »)`,
+            }),
       )
     }
   }
