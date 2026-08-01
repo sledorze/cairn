@@ -139,10 +139,17 @@ class CairnConfigError extends Data.TaggedError('CairnConfigError')<{ readonly m
 const toConfigError = (error: unknown): CairnConfigError => new CairnConfigError({ message: (error as Error).message })
 
 const loadConfigOrFail = (cwd: string, overrides: Overrides, explicitPath: string | undefined) =>
-  Effect.try({ catch: toConfigError, try: () => loadConfig(cwd, overrides, explicitPath) })
+  loadConfig(cwd, overrides, explicitPath).pipe(Effect.mapError(toConfigError))
 
 const loadConfigWithSourceOrFail = (cwd: string, overrides: Overrides, explicitPath: string | undefined) =>
-  Effect.try({ catch: toConfigError, try: () => loadConfigWithSource(cwd, overrides, explicitPath) })
+  loadConfigWithSource(cwd, overrides, explicitPath).pipe(Effect.mapError(toConfigError))
+
+// `expandRoots` fails (issue #92) when a `..`-free, non-absolute root
+// pattern resolves to a symlink escaping `cwd` — same "a bare failure must
+// never surface as a raw defect" discipline as `loadConfigOrFail` above, so
+// the CLI reports it as a clean one-line message + exit 1, not a stack trace.
+const expandRootsOrFail = (cwd: string, patterns: readonly string[]) =>
+  expandRoots(cwd, patterns).pipe(Effect.mapError(toConfigError))
 
 interface CheckParsed {
   readonly config: Option.Option<string>
@@ -196,7 +203,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     return
   }
 
-  const absRoots = expandRoots(cwd, config.roots)
+  const absRoots = yield* expandRootsOrFail(cwd, config.roots)
 
   // Issue #48: a hard error, never a silent fallback — someone who enabled
   // `onlyGitTracked` needs to know immediately if it isn't actually filtering
@@ -503,7 +510,7 @@ const runConfigCommand = Effect.fn('runConfig')(function* ({
   const explicitPath = Option.getOrUndefined(configFlag) ?? Option.getOrUndefined(rcPath)
   const overrides = overridesFrom(locale, threshold, [...root])
   const { config, sourceFile } = yield* loadConfigWithSourceOrFail(cwd, overrides, explicitPath)
-  const absRoots = expandRoots(cwd, config.roots)
+  const absRoots = yield* expandRootsOrFail(cwd, config.roots)
   yield* Console.log(`source: ${sourceFile}`)
   yield* Console.log(`roots (configured): ${JSON.stringify(config.roots)}`)
   yield* Console.log(`roots (expanded):   ${JSON.stringify(absRoots)}`)

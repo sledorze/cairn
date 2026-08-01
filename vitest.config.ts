@@ -28,10 +28,20 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 90.27,
-        functions: 98.85,
-        lines: 99.24,
-        statements: 99.1,
+        branches: 90.4,
+        // functions/statements: manually recalibrated (config.ts's move to
+        // Effect's FileSystem service), not auto-raised.
+        // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery
+        // callback is TOCTOU-only: `isDir` already confirmed the same path
+        // via a successful `fs.stat` moments earlier, so there's no
+        // deterministic way to make `realPath` fail on it in a test
+        // (same reasoning as this file's own prior recalibration for the
+        // pre-Effect version of this exact check). Every other new
+        // Effect-shaped branch this rewrite introduced (readDirsSafe's own
+        // real-filesystem failure path included) is now covered for real.
+        functions: 98.62,
+        lines: 99.26,
+        statements: 99.05,
       },
     },
     include: ['src/**/*.test.ts'],

@@ -177,7 +177,12 @@ summary links to every child") — is one-directional and real, not a cycle.
    - [`config.ts`](../src/config.ts) — reads `.cairnrc.json` / `package.json`'s
      `cairn` key and `extends` targets from disk, decodes each through
      `core/Config.ts`, and expands root globs to concrete directories. The
-     disk IO is the only reason this isn't in `core/`.
+     disk IO is the only reason this isn't in `core/`. Effect-based
+     (`FileSystem`/`Path` services, `Effect.gen`), matching `io/DocsFs.ts`'s
+     own convention, rather than raw `node:fs` — the one exception being
+     glob-segment directory listing, which (like `DocsFs.ts`'s own `walk()`)
+     falls back to `node:fs/promises` directly for Dirent-style type info
+     `FileSystem.readDirectory` doesn't provide.
    - [`cli.ts`](../src/cli.ts) — argument parsing and the Node/Effect bootstrap. Excluded
      from coverage measurement, historically dogfooded via real subprocess only —
      `cli.integration.test.ts` (real-subprocess, spawns the actual CLI) locks in the two
