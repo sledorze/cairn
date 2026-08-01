@@ -193,6 +193,16 @@ describe('collectExternalRefTargets()', () => {
     expect(targets).toEqual([])
   })
 
+  // Distinct from "no external-typed rule at all" above: here an
+  // external-typed rule DOES exist, just not for THIS doc's own kind —
+  // exercises the per-doc kind-match skip, not the whole-function early
+  // return short-circuit.
+  it('never collects a ref under a doc whose OWN kind has no external-typed rule, even when a DIFFERENT kind does', () => {
+    const docs = [doc('/r/notes/n1.md', ['note'], [ref('../../src/foo.ts')])]
+    const targets = collectExternalRefTargets(docs, [], [{ from: 'spec', to: { external: 'path' } }])
+    expect(targets).toEqual([])
+  })
+
   it('never collects a ref under a doc matching `exempt`', () => {
     const docs = [doc('/r/specs/templates/blank.md', ['spec'], [ref('../../../src/foo.ts')])]
     const targets = collectExternalRefTargets(

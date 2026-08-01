@@ -640,6 +640,14 @@ describe('formatCoverageReport()', () => {
     expect(lines).toContain('  /r/decisions/d1.md (decision, internal)')
   })
 
+  it('reports a `to: { external: "path" }` missing-coverage finding with its own wording, English and French', () => {
+    const missing = [{ path: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' as const } } }]
+    const enLines = formatCoverageReport({ checked: 1, missing, orphans: [], unmatchedKinds: [] })
+    expect(enLines).toContain('    ✗ no link to an existing file (required by kind "spec")')
+    const frLines = formatCoverageReport({ checked: 1, missing, orphans: [], unmatchedKinds: [] }, { locale: 'fr' })
+    expect(frLines).toContain('    ✗ aucun lien vers un fichier existant (requis pour le type « spec »)')
+  })
+
   it('lists a missing-coverage finding with no orphan section at all when orphans is empty', () => {
     const lines = formatCoverageReport({
       checked: 1,
