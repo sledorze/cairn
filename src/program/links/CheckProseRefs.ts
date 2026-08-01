@@ -23,7 +23,7 @@ import { Effect } from 'effect'
 import { extractProseRefs } from '../../core/links/ProseRefs.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { isWithinBase } from '../../core/paths.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import { withAncestors } from './CheckLinks.ts'
 import type { Locale } from '../locale.ts'
@@ -86,7 +86,7 @@ const resolveOne = ({
   trackedUniverse,
 }: {
   readonly base: string
-  readonly dfs: { exists: (p: string) => Effect.Effect<boolean> }
+  readonly dfs: { realPath: (p: string) => Effect.Effect<string | null> }
   readonly fromDir: string
   readonly text: string
   /** Same shape as `CheckLinks.ts`'s own `trackedUniverse` (files + their
@@ -117,12 +117,21 @@ const resolveOne = ({
     // this was never a real candidate — silently skip it, don't report
     // anything, same as a citation that never looked path-like at all.
     const firstSegment = text.split('/')[0] ?? ''
-    const firstSegmentExists = yield* dfs.exists(path.join(base, firstSegment))
-    if (!firstSegmentExists) {
+    // `isSafelyWithinBase` (../../io/DocsFs.ts), for both checks below — a
+    // symlink physically located INSIDE `base` (including a top-level
+    // segment like `src` itself) can still point OUTSIDE it; a lexical
+    // `isWithinBase` pass above can't see that (adversarial review, issue
+    // #28's PR — same fix already applied to `CheckLinks.ts`/
+    // `CheckRefs.ts`/`CheckCoverage.ts`). Without this, an attacker-
+    // committed symlink turns this existence-only check right back into
+    // the filesystem-existence oracle issue #39 exists to prevent, just
+    // reached through a path that's lexically in-bounds.
+    const firstSegmentSafe = yield* isSafelyWithinBase(dfs, path.join(base, firstSegment), base)
+    if (!firstSegmentSafe) {
       return null
     }
 
-    const physicallyExists = yield* dfs.exists(targetAbs)
+    const physicallyExists = yield* isSafelyWithinBase(dfs, targetAbs, base)
     const exists = physicallyExists && (trackedUniverse === undefined || trackedUniverse.has(targetAbs))
     return exists ? null : { reason: 'missing', suggestion, text }
   })

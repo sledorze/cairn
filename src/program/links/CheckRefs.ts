@@ -22,9 +22,8 @@ import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { hashContent } from '../../core/hashing.ts'
-import { isWithinBase } from '../../core/paths.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -88,15 +87,22 @@ const resolveReferenceContent = ({
   targetAbs,
 }: {
   readonly base: string
-  readonly dfs: { exists: (p: string) => Effect.Effect<boolean>; readFile: (p: string) => Effect.Effect<string> }
+  readonly dfs: {
+    readFile: (p: string) => Effect.Effect<string>
+    realPath: (p: string) => Effect.Effect<string | null>
+  }
   readonly targetAbs: string
 }): Effect.Effect<string | null> =>
   Effect.gen(function* () {
-    if (!isWithinBase(targetAbs, base)) {
-      return null
-    }
-    const exists = yield* dfs.exists(targetAbs)
-    if (!exists) {
+    // `isSafelyWithinBase` (../../io/DocsFs.ts): a symlink physically
+    // located INSIDE `base` can still point OUTSIDE it. Without this, a
+    // symlink escaping `base` had its CONTENT hashed and the hash
+    // committed into a `.cairn/refs/**` sidecar — a persisted content-
+    // fingerprint oracle for arbitrary files, worse than the existence-
+    // only oracle issue #39 was written to close (adversarial review,
+    // issue #28's PR).
+    const safe = yield* isSafelyWithinBase(dfs, targetAbs, base)
+    if (!safe) {
       return null
     }
     return yield* dfs.readFile(targetAbs).pipe(Effect.catchDefect(() => Effect.succeed(null)))

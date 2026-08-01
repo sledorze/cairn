@@ -17,6 +17,7 @@
 import * as nodePath from 'node:path'
 
 import type { CoverageRule } from '../Config.ts'
+import { isKindTarget } from '../Config.ts'
 import { matchesAny } from '../glob.ts'
 import type { DocMetadata, StructureNode } from './DocMetadata.ts'
 
@@ -51,6 +52,13 @@ export interface ResolveRuleEdgesArgs {
    * Applied here (not by the caller) so every consumer inherits the same
    * exemption semantics automatically. */
   readonly exempt: readonly string[]
+  /** Every absolute path CONFIRMED to exist on disk, for resolving a rule
+   * whose `to` is `{ external: 'path' }` — computed by the caller (real IO
+   * lives in ../../program/structure/CheckCoverage.ts, this function stays
+   * pure). Absent/omitted paths are simply unsatisfied, never assumed to
+   * exist — see `collectExternalRefTargets` for how a caller learns which
+   * paths need checking in the first place. */
+  readonly externalExists?: ReadonlySet<string>
   /** Already deduped by the caller (see CheckCoverage.ts's own dedup-key
    * comment) — this function has no opinion on what makes two rules "the
    * same," only on resolving whichever rules it's given. */
@@ -63,7 +71,12 @@ export interface ResolveRuleEdgesArgs {
  * resolution only, never transitive (a chain `feature -> decision -> spec`
  * does not by itself satisfy a direct `feature -> spec` rule; see
  * docs/adr/0002's own Decision section for why). */
-export const resolveRuleEdges = ({ docs, exempt, rules }: ResolveRuleEdgesArgs): readonly RuleEdge[] => {
+export const resolveRuleEdges = ({
+  docs,
+  exempt,
+  externalExists = new Set(),
+  rules,
+}: ResolveRuleEdgesArgs): readonly RuleEdge[] => {
   const docsByPath = new Map(docs.map((d) => [d.path, d]))
   const edges: RuleEdge[] = []
 
@@ -82,8 +95,15 @@ export const resolveRuleEdges = ({ docs, exempt, rules }: ResolveRuleEdgesArgs):
           continue
         }
         const targetPath = path.resolve(fromDir, node.target)
-        const targetDoc = docsByPath.get(targetPath)
-        if (targetDoc !== undefined && targetDoc.kinds.includes(rule.to)) {
+        // `rule.to` is either a declared kind id (resolve against the
+        // already-classified doc graph, no IO) or `{ external: 'path' }`
+        // (resolve against the caller's pre-checked existence set — see
+        // `ResolveRuleEdgesArgs.externalExists`'s own comment for why this
+        // stays a lookup here, not a filesystem call).
+        const satisfied = isKindTarget(rule.to)
+          ? (docsByPath.get(targetPath)?.kinds.includes(rule.to) ?? false)
+          : externalExists.has(targetPath)
+        if (satisfied) {
           satisfiedBy.push({ node, targetPath })
         }
       }
@@ -92,4 +112,39 @@ export const resolveRuleEdges = ({ docs, exempt, rules }: ResolveRuleEdgesArgs):
   }
 
   return edges
+}
+
+/** Every distinct resolved target path a `from`-kind doc's ref points at,
+ * for every rule whose `to` is `{ external: 'path' }` — the candidate set a
+ * caller must confirm exists on disk (via IO) before calling
+ * `resolveRuleEdges` with the result as `externalExists`. Pure: reuses the
+ * exact same kind/exempt filtering `resolveRuleEdges` applies, so a doc that
+ * would never produce an edge never produces a candidate either. */
+export const collectExternalRefTargets = (
+  docs: readonly DocMetadata[],
+  exempt: readonly string[],
+  rules: readonly CoverageRule[],
+): readonly string[] => {
+  const externalFromKinds = new Set(rules.filter((r) => !isKindTarget(r.to)).map((r) => r.from))
+  if (externalFromKinds.size === 0) {
+    return []
+  }
+
+  const targets = new Set<string>()
+  for (const doc of docs) {
+    if (matchesAny(doc.path, exempt)) {
+      continue
+    }
+    if (!doc.kinds.some((k) => externalFromKinds.has(k))) {
+      continue
+    }
+    const fromDir = path.dirname(doc.path)
+    for (const node of doc.nodes) {
+      if (node.tag !== 'ref') {
+        continue
+      }
+      targets.add(path.resolve(fromDir, node.target))
+    }
+  }
+  return [...targets]
 }

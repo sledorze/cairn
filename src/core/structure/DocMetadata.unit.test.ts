@@ -110,4 +110,34 @@ describe('extractDocMetadata()', () => {
     const meta = extractDocMetadata({ content, kinds: [], path: 'docs/x.md' })
     expect(meta.nodes).toEqual([{ anchor: null, line: 1, tag: 'ref', target: './a_(b).md' }])
   })
+
+  // Adversarial finding: a reference-style link (`[text][ref]` + a separate
+  // `[ref]: target` definition line) previously produced NO ref node at
+  // all — `extractDocMetadata` only ever called `extractLinksWithPosition`,
+  // never `extractLinkDefinitionsWithPosition`, unlike
+  // `MarkdownLinks.ts`'s own `extractReferences` (used by CheckRefs.ts),
+  // which already combines both. A doc using this real, common Markdown
+  // shape was silently invisible to `checks.coverage` — reported as
+  // missing coverage despite a correct link, and its target reported
+  // orphaned despite a real inbound reference. The ref node is emitted at
+  // the DEFINITION's line (the only place the target/position pair
+  // exists), matching `extractReferences`'s own "the definition itself is
+  // the reference" treatment.
+  it('emits a ref node for a reference-style link, at the DEFINITION line, not the usage line', () => {
+    const content = 'see [impl][ref] for details\n\n[ref]: ../src/foo.ts'
+    const meta = extractDocMetadata({ content, kinds: [], path: 'docs/x.md' })
+    expect(meta.nodes).toEqual([{ anchor: null, line: 3, tag: 'ref', target: '../src/foo.ts' }])
+  })
+
+  it('emits one ref node per reference-style definition, in document order alongside inline refs', () => {
+    const content = '[inline](./a.md)\n\n[ref]: ./b.md'
+    const meta = extractDocMetadata({ content, kinds: [], path: 'docs/x.md' })
+    expect(meta.nodes.map((n) => (n.tag === 'ref' ? n.target : null))).toEqual(['./a.md', './b.md'])
+  })
+
+  it('never emits a ref node for an unresolvable reference-style target (e.g. a bare fragment)', () => {
+    const content = 'see [x][ref]\n\n[ref]: #section'
+    const meta = extractDocMetadata({ content, kinds: [], path: 'docs/x.md' })
+    expect(meta.nodes).toEqual([])
+  })
 })

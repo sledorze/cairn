@@ -156,6 +156,62 @@ describe('DocsFsLive()', () => {
       }
     })
 
+    // Adversarial finding, security-relevant (issue #28's PR, 5th review
+    // pass): the two tests above prove a symlink resolving WITHIN the
+    // scanned root is followed — legitimate. This proves the boundary:
+    // a symlink resolving OUTSIDE every configured root must never be
+    // followed at all, whether it's a file (its content would otherwise
+    // be scanned as if it were a native repo doc, e.g. leaking a secret
+    // file's text into a broken-link/anchor report) or a directory (its
+    // entire external subtree would otherwise be recursed into and
+    // treated as part of the corpus). A malicious PR needs only to commit
+    // a symlink to an absolute path that exists on the CI runner.
+    it.skipIf(!supportsSymlinks)(
+      'a symlink to a FILE outside every configured root is excluded, not scanned as a doc',
+      async () => {
+        const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-escape-file-'))
+        const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-escape-outside-'))
+        try {
+          fs.writeFileSync(path.join(linkDir, 'ok.md'), '# ok')
+          fs.writeFileSync(path.join(outsideDir, 'secret.md'), '# not part of the repo')
+          fs.symlinkSync(path.join(outsideDir, 'secret.md'), path.join(linkDir, 'escape.md'))
+          const files = await run(
+            Effect.gen(function* () {
+              const dfs = yield* DocsFs
+              return yield* dfs.listFiles([linkDir])
+            }),
+          )
+          expect(files).toEqual([toPosix(path.join(linkDir, 'ok.md'))])
+        } finally {
+          fs.rmSync(linkDir, { force: true, recursive: true })
+          fs.rmSync(outsideDir, { force: true, recursive: true })
+        }
+      },
+    )
+
+    it.skipIf(!supportsSymlinks)(
+      'a symlink to a DIRECTORY outside every configured root is never recursed into',
+      async () => {
+        const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-escape-dir-'))
+        const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-escape-outside-dir-'))
+        try {
+          fs.writeFileSync(path.join(linkDir, 'ok.md'), '# ok')
+          fs.writeFileSync(path.join(outsideDir, 'secret.md'), '# not part of the repo')
+          fs.symlinkSync(outsideDir, path.join(linkDir, 'escaped-dir'), 'dir')
+          const files = await run(
+            Effect.gen(function* () {
+              const dfs = yield* DocsFs
+              return yield* dfs.listFiles([linkDir])
+            }),
+          )
+          expect(files).toEqual([toPosix(path.join(linkDir, 'ok.md'))])
+        } finally {
+          fs.rmSync(linkDir, { force: true, recursive: true })
+          fs.rmSync(outsideDir, { force: true, recursive: true })
+        }
+      },
+    )
+
     it.skipIf(!supportsSymlinks)('a symlink resolving to a real directory is recursed into', async () => {
       const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-dir-'))
       try {
@@ -192,6 +248,31 @@ describe('DocsFsLive()', () => {
       try {
         fs.writeFileSync(path.join(fifoDir, 'ok.md'), '# ok')
         execFileSync('mkfifo', [path.join(fifoDir, 'pipe.md')])
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([fifoDir])
+          }),
+        )
+        expect(files).toEqual([toPosix(path.join(fifoDir, 'ok.md'))])
+      } finally {
+        fs.rmSync(fifoDir, { force: true, recursive: true })
+      }
+    })
+
+    // A SYMLINK to a FIFO — distinct from the bare-FIFO case above: a
+    // symlink's own Dirent type never says what it points at, so this
+    // exercises the `info.type` neither-Directory-nor-File branch AFTER a
+    // real, link-following `stat` (the FIFO test above never reaches that
+    // code path at all, since a bare FIFO entry is excluded earlier, by
+    // its own Dirent type). Same silent-exclusion contract either way.
+    it.skipIf(!supportsMkfifo)('a symlink to a named pipe (FIFO) is silently excluded, not a crash', async () => {
+      const fifoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-fifo-symlink-'))
+      try {
+        fs.writeFileSync(path.join(fifoDir, 'ok.md'), '# ok')
+        const pipePath = path.join(fifoDir, 'real-pipe')
+        execFileSync('mkfifo', [pipePath])
+        fs.symlinkSync(pipePath, path.join(fifoDir, 'pipe-link.md'))
         const files = await run(
           Effect.gen(function* () {
             const dfs = yield* DocsFs

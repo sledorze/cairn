@@ -60,6 +60,22 @@ const CoverageRequirementInputSchema = Schema.Struct({
   identifier: 'CairnCoverageRequirement',
 })
 
+// `to` is either a declared kind id (a doc-kind target, the original shape)
+// OR `{ external: 'path' }` — issue #28's third v1 check, doc→code
+// reference resolution: the rule is satisfied by a link that resolves to a
+// REAL FILE on disk, not to another scanned/kind-classified doc. A single-
+// variant object today (matching `KindSelector`/`CoverageRequirement`'s own
+// `by`-discriminant reasoning), so a later external kind (a URL, an env var)
+// is a new `external` value, not a breaking change to `CoverageRule`'s shape.
+const CoverageTargetInputSchema = Schema.Union([
+  Schema.String,
+  Schema.Struct({ external: Schema.Literal('path') }),
+]).annotate({
+  description:
+    'A declared kind id (a doc-kind target), or `{ external: "path" }` — a link must resolve to a real file on disk, not to a scanned doc.',
+  identifier: 'CairnCoverageTarget',
+})
+
 const CoverageRuleInputSchema = Schema.Struct({
   from: Schema.String,
   // Optional discriminant, not just documentation: two rules sharing the
@@ -75,10 +91,11 @@ const CoverageRuleInputSchema = Schema.Struct({
         'Distinguishes this rule from another sharing the same from/to pair (e.g. "implements" vs "verified_by"). Two rules on the same pair with no name, or the same name, are treated as one.',
     }),
   ),
-  to: Schema.String,
+  to: CoverageTargetInputSchema,
   via: Schema.optionalKey(CoverageRequirementInputSchema),
 }).annotate({
-  description: 'Every doc of kind `from` must link somewhere to a doc of kind `to`.',
+  description:
+    'Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: "path" }`, to a real file on disk.',
   identifier: 'CairnCoverageRule',
 })
 
@@ -116,7 +133,9 @@ const CoverageInputSchema = Schema.Struct({
           if (!declaredIds.has(rule.from)) {
             issues.push({ issue: `references undeclared kind "${rule.from}"`, path: ['rules', i, 'from'] })
           }
-          if (!declaredIds.has(rule.to)) {
+          // `to` names no kind at all when it's `{ external: 'path' }` — the
+          // undeclared-kind check only applies to the plain kind-id string shape.
+          if (isKindTarget(rule.to) && !declaredIds.has(rule.to)) {
             issues.push({ issue: `references undeclared kind "${rule.to}"`, path: ['rules', i, 'to'] })
           }
         })
@@ -238,12 +257,29 @@ export interface CoverageRequirement {
   readonly by: 'link'
 }
 
+/** A rule's `to` side: a declared kind id (a doc-kind target), or
+ * `{ external: 'path' }` — the rule is satisfied by a link resolving to a
+ * real file on disk, not to a scanned/kind-classified doc. See
+ * `CoverageTargetInputSchema`'s own comment for why this is a discriminated
+ * union rather than a bare string. */
+export type CoverageTarget = string | { readonly external: 'path' }
+
+/** True when `target` is a declared kind id, not `{ external: 'path' }` —
+ * the ONE discriminant every `CoverageTarget` consumer needs, centralized
+ * here (adversarial review, issue #28's PR) after it turned up hand-
+ * re-derived as a bare `typeof target === 'string'` at 6 call sites across
+ * `Config.ts`/`Coverage.ts`/`CheckCoverage.ts`. A future second `external`
+ * variant (this file's own `CoverageTarget` comment already anticipates
+ * one) needs this ONE function updated, not six independent re-derivations
+ * found and fixed by hand. */
+export const isKindTarget = (target: CoverageTarget): target is string => typeof target === 'string'
+
 export interface CoverageRule {
   readonly from: string
   /** Distinguishes this rule from another sharing the same `from`/`to` pair
    * but a different meaning — see `CoverageRuleInputSchema`'s own comment. */
   readonly name?: string
-  readonly to: string
+  readonly to: CoverageTarget
   /** Defaults to `{ by: 'link' }` when absent — every rule written before
    * this field existed already meant that. */
   readonly via?: CoverageRequirement

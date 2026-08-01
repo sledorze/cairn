@@ -14,6 +14,18 @@
       "additionalProperties": false,
       "description": "One named document kind."
     },
+    "CairnCoverageTarget": {
+      "anyOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": { "external": { "type": "string", "enum": ["path"] } },
+          "required": ["external"],
+          "additionalProperties": false
+        }
+      ],
+      "description": "A declared kind id (a doc-kind target), or `{ external: \"path\" }` — a link must resolve to a real file on disk, not to a scanned doc."
+    },
     "CairnCoverageRequirement": {
       "type": "object",
       "properties": { "by": { "type": "string", "enum": ["link"] } },
@@ -29,12 +41,12 @@
           "type": "string",
           "description": "Distinguishes this rule from another sharing the same from/to pair (e.g. \"implements\" vs \"verified_by\"). Two rules on the same pair with no name, or the same name, are treated as one."
         },
-        "to": { "type": "string" },
+        "to": { "$ref": "#/$defs/CairnCoverageTarget" },
         "via": { "$ref": "#/$defs/CairnCoverageRequirement" }
       },
       "required": ["from", "to"],
       "additionalProperties": false,
-      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to`."
+      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk."
     },
     "CairnChecksConfig": {
       "type": "object",

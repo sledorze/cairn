@@ -84,3 +84,14 @@ alone and would surprise a future reader:
   variant); `by: 'frontmatter'` is declared in the type (room to add without a breaking
   change) but not implemented — a team whose doc kinds aren't distinguishable by directory
   structure alone can't use this check yet.
+- **Update:** a rule's `to` now also accepts `{ external: 'path' }`, closing issue #28's
+  third v1 check (doc→code reference resolution) — a `spec`-kind doc's link must resolve
+  to a real FILE on disk, confirmed via `DocsFs.exists` (`../../src/program/structure/
+CheckCoverage.ts`), rather than to another scanned/kind-classified doc. `resolveRuleEdges`
+  (`../../src/core/structure/Coverage.ts`) stays pure/IO-free: the caller collects every
+  candidate target path first (`collectExternalRefTargets`), confirms existence with real
+  IO, then hands the confirmed set in — the same "resolution is pure, IO happens once, at
+  the edge" shape the kind-based case already had for free by reusing the already-scanned
+  doc graph. An `{ external: 'path' }` target names no kind, so it's excluded from
+  `orphanCandidateKinds` — nothing about "does this file exist" implies "should something
+  link back to it."

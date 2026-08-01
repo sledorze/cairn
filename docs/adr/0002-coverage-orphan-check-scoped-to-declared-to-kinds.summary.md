@@ -31,3 +31,10 @@ than designed up front:
 
 Consequences still accepted for this increment: classification is path-glob only;
 `KindSelector`'s `by: 'frontmatter'` variant is declared but unimplemented.
+
+**Update:** a rule's `to` also accepts `{ external: 'path' }` — issue #28's third v1 check,
+doc→code reference resolution. Satisfied by a link resolving to a real FILE on disk
+(confirmed via `DocsFs.exists`), not to another scanned/kind-classified doc.
+`resolveRuleEdges` stays pure/IO-free: the caller (`CheckCoverage.ts`) collects candidate
+target paths first (`collectExternalRefTargets`), confirms existence with real IO, then
+hands the confirmed set in. Names no kind, so it's excluded from `orphanCandidateKinds`.

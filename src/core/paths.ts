@@ -15,8 +15,19 @@ export const toPosix = (p: string): string => p.replaceAll('\\', '/')
  * use for sidecar paths — non-throwing here since callers (link-checking's
  * out-of-hierarchy targets, issue #39) need a boolean to decide "cannot
  * verify" from, not a programming-error signal.
+ *
+ * Segment-aware, not a bare string-prefix check on `rel` — adversarial
+ * review found that `rel.startsWith('..')` alone misclassifies a
+ * legitimate in-base path whose FIRST SEGMENT merely starts with the two
+ * characters `..` (e.g. a real directory named `..weird` sitting inside
+ * `base`; `path.relative` produces `'..weird/file.ts'`, which starts with
+ * `'..'` as a string without being a `..`-parent-traversal segment at
+ * all). `rel === '..'` (base's own immediate parent) or `rel` starting
+ * with `'../'` (a traversal segment followed by a separator) are the only
+ * two shapes that actually mean "escapes base."
  */
 export const isWithinBase = (candidate: string, base: string): boolean => {
   const rel = path.relative(base, candidate)
-  return !rel.startsWith('..') && !path.isAbsolute(rel)
+  const escapes = rel === '..' || rel.startsWith('../')
+  return !escapes && !path.isAbsolute(rel)
 }

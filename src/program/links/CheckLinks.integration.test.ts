@@ -1,4 +1,5 @@
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -291,4 +292,101 @@ describe('checkLinks() against the real filesystem (DocsFsLive)', () => {
       }
     },
   )
+
+  // Adversarial finding, security-relevant (issue #28's PR, 4th review
+  // pass): a symlink physically located INSIDE `base` can still point
+  // OUTSIDE it — before this fix, a link through such a symlink reported
+  // as resolved/non-broken, reproducing the exact filesystem-existence
+  // oracle issue #39 was written to close, just reached through a path
+  // that's lexically in-bounds instead of a literal `../` traversal.
+  const supportsSymlinks = process.platform !== 'win32'
+  it.skipIf(!supportsSymlinks)(
+    'reports broken for a link through a symlink whose real target escapes `base`, even though its own path is lexically in-base',
+    async () => {
+      const p = project('checklinks-real-symlink', { 'docs/index.md': '[escape](../escape-link)' })
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'checklinks-real-symlink-outside-'))
+      const secretFile = path.join(outsideDir, 'secret.txt')
+      fs.writeFileSync(secretFile, 'not part of the repo')
+      const linkPath = path.join(p.root, 'escape-link')
+      try {
+        fs.symlinkSync(secretFile, linkPath)
+        const result = await checkDocs(p)
+        expect(result.broken[0]?.links).toEqual([{ reason: 'path', target: '../escape-link', text: 'escape' }])
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
+      }
+    },
+  )
+
+  // Adversarial finding (issue #28's PR, 5th review pass): `resolvePendingCheck`'s
+  // `known.has(item.targetAbs)` fast path runs BEFORE the `realPath`
+  // containment check just proven above, and used to trust it unconditionally
+  // — reachable if a symlink escaping `base` had already been swept into
+  // `known` (the scanned-doc universe) by `DocsFs.listFiles` itself. Now
+  // that `listFiles`/`walk` (`DocsFs.ts`) excludes a symlink whose real
+  // target falls outside every configured root at the SOURCE, `known` can
+  // no longer contain such a path at all — this proves the fast path is
+  // safe by construction, not by an independent second check here.
+  it.skipIf(!supportsSymlinks)(
+    'a symlinked doc escaping `roots` never enters `known` — a link targeting it is reported broken, not silently trusted',
+    async () => {
+      const p = project('checklinks-real-symlink-known', { 'docs/index.md': '[escape](./escaped.md)' })
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'checklinks-real-symlink-known-outside-'))
+      const secretDoc = path.join(outsideDir, 'secret.md')
+      fs.writeFileSync(secretDoc, '# Secret\n\n## Secret Section\n')
+      const linkPath = path.join(p.root, 'docs', 'escaped.md')
+      try {
+        fs.symlinkSync(secretDoc, linkPath)
+        const result = await checkDocs(p)
+        // Never silently trusted via `known` — reported broken, same as
+        // any other genuinely unresolvable target. If `known` had
+        // wrongly absorbed the escaped symlink, this would report clean
+        // instead (or, with an anchor, leak the secret doc's own real
+        // heading into the report — see the `#`-anchor variant below).
+        expect(result.broken[0]?.links).toEqual([{ reason: 'path', target: './escaped.md', text: 'escape' }])
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
+      }
+    },
+  )
+
+  // Sharper variant: an anchor mismatch's error `detail` names the
+  // target's REAL headings — if `known` had wrongly trusted the escaped
+  // symlink, this is exactly where the secret file's own content would
+  // leak into the JSON report.
+  it.skipIf(!supportsSymlinks)(
+    'never leaks a symlink-escaped target’s real headings into an anchor-mismatch detail',
+    async () => {
+      const p = project('checklinks-real-symlink-known-anchor', {
+        'docs/index.md': '[escape](./escaped.md#no-such-section)',
+      })
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'checklinks-real-symlink-known-anchor-outside-'))
+      const secretDoc = path.join(outsideDir, 'secret.md')
+      fs.writeFileSync(secretDoc, '# Secret\n\n## Top Secret Section\n')
+      const linkPath = path.join(p.root, 'docs', 'escaped.md')
+      try {
+        fs.symlinkSync(secretDoc, linkPath)
+        const result = await checkDocs(p)
+        const broken = result.broken[0]?.links[0]
+        expect(broken?.reason).toBe('path') // unresolvable at all, not an anchor mismatch
+        expect(broken?.detail ?? '').not.toContain('top-secret-section')
+        expect(broken?.detail ?? '').not.toContain('Top Secret')
+      } finally {
+        fs.rmSync(outsideDir, { force: true, recursive: true })
+      }
+    },
+  )
+
+  // Positive counterpart: a symlink whose real target stays INSIDE `base`
+  // is a legitimate reference and must still resolve — proves this is a
+  // containment check, not "reject every symlink."
+  it.skipIf(!supportsSymlinks)('resolves a link through a symlink whose real target stays inside `base`', async () => {
+    const p = project('checklinks-real-symlink-inside', {
+      'docs/index.md': '[impl](../impl-link)',
+      'src/real.ts': 'export const real = 1',
+    })
+    fs.symlinkSync(path.join(p.root, 'src/real.ts'), path.join(p.root, 'impl-link'))
+    const result = await checkDocs(p)
+    expect(result.broken).toEqual([])
+  })
 })

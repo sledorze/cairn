@@ -11,7 +11,13 @@
 // any collection is a `Bag` — a multiset, order carries no meaning there.
 
 import { extractHeadingsWithPosition } from '../links/Anchors.ts'
-import { extractLinksWithPosition, isCheckableTarget, parseTarget, stripCode } from '../links/MarkdownLinks.ts'
+import {
+  extractLinkDefinitionsWithPosition,
+  extractLinksWithPosition,
+  isCheckableTarget,
+  parseTarget,
+  stripCode,
+} from '../links/MarkdownLinks.ts'
 import { matchesAny } from '../glob.ts'
 
 /**
@@ -131,7 +137,20 @@ export const extractDocMetadata = ({ content, kinds, path }: ExtractDocMetadataA
   }))
 
   const refNodes: StructureNode[] = []
-  for (const link of extractLinksWithPosition(masked)) {
+  // Both inline links (`[text](target)`) AND reference-style link
+  // DEFINITIONS (`[ref]: target`) are real outbound references — a doc
+  // using `[text][ref]` + `[ref]: target` has no target at the usage site
+  // at all (only a label), so the definition line is the only place a
+  // target/position pair exists. Mirrors `MarkdownLinks.ts`'s own
+  // `extractReferences`, which already combines both for the same reason;
+  // this function used to only call the first, silently treating a
+  // reference-style link as no reference at all (found via adversarial
+  // review — see this file's own test for the concrete failure mode).
+  const candidates = [
+    ...extractLinksWithPosition(masked),
+    ...extractLinkDefinitionsWithPosition(masked).map((def) => ({ index: def.index, target: def.target })),
+  ]
+  for (const link of candidates) {
     if (!isCheckableTarget(link.target)) {
       continue
     }

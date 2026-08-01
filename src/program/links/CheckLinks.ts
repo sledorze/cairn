@@ -17,9 +17,8 @@ import {
 import type { BrokenLink, PendingCheck } from '../../core/links/MarkdownLinks.ts'
 import { buildBasenameIndex, checkContent, stripAnchor, stripCode, suggestFix } from '../../core/links/MarkdownLinks.ts'
 import { matchesAny } from '../../core/glob.ts'
-import { isWithinBase } from '../../core/paths.ts'
 import type { DocsFsService } from '../../io/DocsFs.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -297,14 +296,18 @@ const resolvePendingCheck = ({
     if (exists === undefined) {
       if (known.has(item.targetAbs)) {
         exists = true
-      } else if (isWithinBase(item.targetAbs, base)) {
-        const physical = yield* dfs.exists(item.targetAbs)
-        exists = physical && (trackedUniverse === undefined || trackedUniverse.has(item.targetAbs))
       } else {
-        // Outside the checkout root entirely: never touched, unconditionally
-        // "cannot verify" — the observable signal stays constant regardless
-        // of what's actually on disk there.
-        exists = false
+        // `isSafelyWithinBase` (../../io/DocsFs.ts): never touches the real
+        // filesystem for a target lexically outside `base` (issue #39's own
+        // guarantee — "outside the checkout root entirely: never touched,
+        // unconditionally 'cannot verify'") — and, for one lexically
+        // in-bounds, re-checks containment against its REAL (symlink-
+        // resolved) path too, since a symlink physically inside `base` can
+        // still point outside it (adversarial review, issue #28's PR) —
+        // the same containment guarantee this file's own doc comment
+        // already claims, actually enforced against symlinks too.
+        const physical = yield* isSafelyWithinBase(dfs, item.targetAbs, base)
+        exists = physical && (trackedUniverse === undefined || trackedUniverse.has(item.targetAbs))
       }
       existsCache.set(item.targetAbs, exists)
     }

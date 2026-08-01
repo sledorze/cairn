@@ -1,7 +1,7 @@
 import { Result } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_CONFIG, decodeConfig, formatConfigError } from './Config.ts'
+import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget } from './Config.ts'
 
 // `decodeConfig` is total and pure over its actual domain — any value JSON.parse can
 // produce — and never throws for it: `effect/Schema` already hands back a `Result`, so
@@ -198,6 +198,52 @@ describe('decodeConfig()', () => {
     expect(result.failure.message).toContain('to')
   })
 
+  // Issue #28's third v1 check, doc→code reference resolution: a rule's
+  // `to` can name an external (non-doc-kind) target instead of a declared
+  // kind id — `{ external: 'path' }` means "a real file on disk," not "a
+  // doc of some kind." Round-trips like every other rule shape.
+  it('decodes a rule’s `to: { external: "path" }` — doc→code reference resolution, not a doc-kind target', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          rules: [{ from: 'spec', to: { external: 'path' } }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // The undeclared-kind-id cross-field check only applies when `to` is a
+  // plain kind-id string — an `{ external: 'path' }` target names no kind
+  // at all, so it must never be rejected as "undeclared."
+  it('never rejects `to: { external: "path" }` as an undeclared kind id', () => {
+    const result = decodeConfig({
+      checks: {
+        coverage: {
+          kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          rules: [{ from: 'spec', to: { external: 'path' } }],
+        },
+      },
+    })
+    expect(Result.isSuccess(result)).toBeTruthy()
+  })
+
+  it('returns a Failure when a rule’s `to` object names an unrecognised external kind', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+              rules: [{ from: 'spec', to: { external: 'url' } }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
   it('accepts a rule whose `from`/`to` both match declared kind ids', () => {
     const raw = {
       checks: {
@@ -292,6 +338,24 @@ describe('formatConfigError()', () => {
     expect(formatConfigError(result.failure, '/repo/.cairnrc.json')).toMatch(
       /invalid config in \/repo\/\.cairnrc\.json/,
     )
+  })
+})
+
+// Adversarial-review finding (issue #28's PR): the `typeof to === 'string'`
+// discriminant was hand-re-derived independently at 6 call sites across
+// Config.ts/Coverage.ts/CheckCoverage.ts — the same "drift silently,
+// nobody notices" shape `isSafelyWithinBase` was already extracted to fix
+// for symlink containment, just for this discriminant instead. A future
+// second `external` variant (Config.ts's own comment already anticipates
+// one) needs every one of those sites updated by hand; centralizing the
+// check here means they all stay correct by construction.
+describe('isKindTarget()', () => {
+  it('is true for a plain kind-id string', () => {
+    expect(isKindTarget('decision')).toBeTruthy()
+  })
+
+  it('is false for an external-path target', () => {
+    expect(isKindTarget({ external: 'path' })).toBeFalsy()
   })
 })
 

@@ -240,6 +240,20 @@ direct link only — a chain `feature → decision → spec` does **not** by its
 direct `feature → spec` rule (matches how requirements-traceability tooling treats a trace
 link: real evidence, not an inference).
 
+A rule's `to` can also be `{ "external": "path" }` instead of a declared kind id —
+doc→code reference resolution: the rule is satisfied by a link resolving to a real FILE on
+disk (source code, a test, anything), not to another scanned/kind-classified doc:
+
+```json
+"rules": [{ "from": "spec", "to": { "external": "path" }, "name": "verified_by" }]
+```
+
+Unlike a kind-based `to`, `{ "external": "path" }` names no kind at all, so it's never
+eligible for orphan reporting — nothing about a real file existing implies anything should
+link back to it. A `spec` doc with zero outbound links still reports missing coverage even
+though plain dead-link checking has nothing to flag (there's no link to check in the first
+place) — this is the check that catches "cited nothing," not just "cited something broken."
+
 ### Upgrading from an older cairn
 
 **If you're upgrading past `0.3.0`**: link checking got stricter. Anchors and links outside
