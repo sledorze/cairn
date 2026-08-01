@@ -13,7 +13,7 @@
       "target": "../src/core/summaries/SummaryTree.ts"
     },
     {
-      "hash": "3b1220f5f3a9e74b8aa4ddae3d46c2c5ec46e49f6d52caaa5dd001abee107036",
+      "hash": "82bd0f03c710be649afe2f829962ba995b4d2daec4b0a5499ad809d5442add12",
       "target": "../src/core/links/MarkdownLinks.ts"
     },
     {
@@ -33,7 +33,7 @@
       "target": "../src/core/links/ProseRefs.ts"
     },
     {
-      "hash": "1da574743ac780e8a960f80c3574364a03e3293ed901b9ea3a2cd41923d9de2a",
+      "hash": "d6039678cc9390d2945a2e620135b7e151aced5adc43d9facea9cad60976dbdd",
       "target": "../src/core/structure/DocMetadata.ts"
     },
     {
@@ -57,7 +57,7 @@
       "target": "../src/core/glob.ts"
     },
     {
-      "hash": "83bc2a978cc5dd3fc91b2438b9654805bc08b39cd95476c6b97d84119a3cc5ff",
+      "hash": "c5e24c7f076e805e8812be1a832bf68d6fb94e70eedb363ff5a1d6251fac86d8",
       "target": "../src/core/paths.ts"
     },
     {
@@ -65,7 +65,7 @@
       "target": "../src/core/Config.ts"
     },
     {
-      "hash": "0d217777d945e1a98de336391a5a565e747fd3d4362c84859dc44f7745ed5e29",
+      "hash": "9844778c815830a3d5ff8ff60f13c0a4006d2d5bf70fbe61314445e0e2d32907",
       "target": "../src/io/DocsFs.ts"
     },
     {
@@ -89,7 +89,7 @@
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
-      "hash": "79e6d536ad1f7179d64994453c3839fe17ddc261562fe93142c082fb67b75e8b",
+      "hash": "7e5a522eae7a3a711f5d33a81f2a28abff004995cd12ba1b2d50433da0730570",
       "target": "../src/program/structure/CheckCoverage.ts"
     },
     {

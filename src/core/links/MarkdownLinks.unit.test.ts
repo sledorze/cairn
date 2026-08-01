@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildBasenameIndex,
   checkContent,
+  extractLinkDefinitionsWithPosition,
   extractLinks,
   extractLinksWithPosition,
   extractReferences,
@@ -147,6 +148,22 @@ describe('extractLinksWithPosition()', () => {
 
   it('returns an empty array when there are no links', () => {
     expect(extractLinksWithPosition('plain text, no links')).toEqual([])
+  })
+})
+
+describe('extractLinkDefinitionsWithPosition()', () => {
+  it('extracts the same label/target as extractLinkDefinitions(), plus each definition’s character offset', () => {
+    const md = 'see [impl][ref]\n\n[ref]: ../src/foo.ts'
+    expect(extractLinkDefinitionsWithPosition(md)).toEqual([{ index: 17, label: 'ref', target: '../src/foo.ts' }])
+  })
+
+  it('returns an empty array when there are no link definitions', () => {
+    expect(extractLinkDefinitionsWithPosition('plain text, no links')).toEqual([])
+  })
+
+  it('extracts every definition, in document order, when there are several', () => {
+    const md = '[a]: ./a.md\n[b]: ./b.md'
+    expect(extractLinkDefinitionsWithPosition(md).map((d) => d.label)).toEqual(['a', 'b'])
   })
 })
 

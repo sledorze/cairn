@@ -178,6 +178,27 @@ export const extractLinkDefinitions = (content: string): MarkdownLinkDef[] => {
   return defs
 }
 
+export interface PositionedLinkDef extends MarkdownLinkDef {
+  /** Same contract as `PositionedLink.index` — a caller converts this to a
+   * line number itself. */
+  readonly index: number
+}
+
+/** Like `extractLinkDefinitions`, plus each definition's character offset —
+ * additive, mirroring `extractLinksWithPosition`'s own relationship to
+ * `extractLinks`. A reference-style link (`[text][ref]` + `[ref]: target`)
+ * has no target text at its OWN usage site — the definition line is the
+ * only place a target/position pair exists, so a position-aware consumer
+ * that wants reference-style links (e.g. `../structure/DocMetadata.ts`'s
+ * `ref` nodes) needs this, not `extractLinksWithPosition` alone. */
+export const extractLinkDefinitionsWithPosition = (content: string): PositionedLinkDef[] => {
+  const defs: PositionedLinkDef[] = []
+  for (const match of content.matchAll(LINK_DEF_RE)) {
+    defs.push({ index: match.index ?? 0, label: match[1] ?? '', target: match[2] ?? '' })
+  }
+  return defs
+}
+
 /** Start offset of a regex match's first capture group, given the group's
  * own text starts right after the FIRST `[` in the whole match (true for
  * both `LINK_RE`'s text group and `LINK_DEF_RE`'s label group). */

@@ -705,6 +705,7 @@ describe('checkLinks()', () => {
       exists: (abs) => Effect.succeed(abs === '/r/lib' || abs in files),
       listFiles: () => Effect.succeed(Object.keys(files)),
       readFile: (abs) => (abs in files ? Effect.succeed(files[abs] ?? '') : Effect.die(new Error(`ENOENT: ${abs}`))),
+      realPath: (abs) => Effect.succeed(abs in files ? abs : null),
       stat: () => Effect.die('not used in this test'),
       writeFile: () => Effect.succeed(undefined),
     }
@@ -732,6 +733,7 @@ describe('checkLinks()', () => {
         readCount += 1
         return Effect.succeed(files[abs] ?? '')
       },
+      realPath: (abs) => Effect.succeed(abs in files ? abs : null),
       stat: () => Effect.die('not used in this test'),
       writeFile: () => Effect.succeed(undefined),
     }
@@ -783,6 +785,7 @@ describe('checkLinks()', () => {
         guard(abs)
         return Effect.succeed(files[abs] ?? '')
       },
+      realPath: (abs) => Effect.succeed(abs in files ? abs : null),
       stat: () => Effect.die('not used in this test'),
       writeFile: () => Effect.succeed(undefined),
     }

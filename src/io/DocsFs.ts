@@ -34,6 +34,17 @@ export interface DocsFsService {
    */
   readonly listFiles: (roots: readonly string[], ignore?: readonly string[]) => Effect.Effect<readonly string[]>
   readonly readFile: (abs: string) => Effect.Effect<string>
+  /**
+   * Resolve `abs` to its real, symlink-free canonical path — `null` if it
+   * can't be resolved (doesn't exist, a broken link, a permission error).
+   * Exists so a containment check (`../core/paths.ts`'s `isWithinBase`) can
+   * be re-run against the RESOLVED path, not just the lexical one: a
+   * symlink physically located inside a checked-out repo can still point
+   * outside it, and a lexical `isWithinBase` pass on the link's own path
+   * can't see that (adversarial review — see
+   * `../program/structure/CheckCoverage.ts`'s own use of this).
+   */
+  readonly realPath: (abs: string) => Effect.Effect<string | null>
   readonly stat: (abs: string) => Effect.Effect<FileStat>
   readonly writeFile: (abs: string, content: string) => Effect.Effect<void>
 }
@@ -217,6 +228,10 @@ export const DocsFsLive = Layer.effect(
       exists: (abs) => fs.exists(abs).pipe(Effect.orDie),
       listFiles,
       readFile: (abs) => fs.readFileString(abs).pipe(Effect.orDie),
+      // `Effect.catch` (v4's `catchAll`) to `null` — same "can't resolve,
+      // hand the caller a decidable absence, don't crash the run" discipline
+      // every sibling method here already applies to its own failure mode.
+      realPath: (abs) => fs.realPath(abs).pipe(Effect.catch(() => Effect.succeed(null))),
       stat,
       writeFile,
     }
@@ -278,6 +293,12 @@ export const makeTestDocsFs = (files: Record<string, TestFile>): Layer.Layer<Doc
         }
         return f.content
       }),
+    // No symlink concept in this in-memory double — a path present in the
+    // store (file or directory) resolves to itself; anything else is
+    // unresolvable. A symlink-escape scenario needs a real filesystem (see
+    // CheckCoverage.integration.test.ts), the same way this double already
+    // can't model an unreadable-but-listed file.
+    realPath: (abs) => Effect.sync(() => (store.has(abs) || dirsOf().has(abs) ? abs : null)),
     stat: (abs) =>
       Effect.sync(() => {
         const f = store.get(abs)

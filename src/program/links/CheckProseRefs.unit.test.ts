@@ -62,6 +62,7 @@ describe('checkProseRefs()', () => {
       },
       listFiles: () => Effect.succeed(Object.keys(files)),
       readFile: (abs) => Effect.succeed(files[abs] ?? ''),
+      realPath: (abs) => Effect.succeed(abs in files ? abs : null),
       stat: () => Effect.succeed({ mtimeMs: 0, sizeBytes: 0 }),
       writeFile: () => Effect.succeed(undefined),
     }
