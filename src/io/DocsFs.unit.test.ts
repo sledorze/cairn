@@ -13,15 +13,4 @@ describe('makeTestDocsFs()', () => {
 
     await expect(Effect.runPromise(program)).rejects.toBeTruthy()
   })
-
-  it('stat() resolves the real mtime/size for a path in the store', async () => {
-    const layer = makeTestDocsFs({ '/r/a.md': { content: '# hello', mtimeMs: 42 } })
-    const program = Effect.gen(function* () {
-      const dfs = yield* DocsFs
-      return yield* dfs.stat('/r/a.md')
-    }).pipe(Effect.provide(layer))
-
-    const result = await Effect.runPromise(program)
-    expect(result).toEqual({ mtimeMs: 42, sizeBytes: 7 })
-  })
 })

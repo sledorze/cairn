@@ -88,12 +88,11 @@ export const coverageExitCode = (result: CoverageResult): number =>
 const listMdFiles = (
   roots: readonly string[],
   ignore: readonly string[],
-  base: string,
   trackedFiles?: ReadonlySet<string>,
 ): Effect.Effect<readonly string[], never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore, base)
+    const allFiles = yield* dfs.listFiles(roots, ignore)
     return allFiles.filter(
       (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
     )
@@ -116,7 +115,7 @@ export const checkCoverage = ({
 }: CheckCoverageArgs): Effect.Effect<CoverageResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const mdFiles = yield* listMdFiles(roots, ignore, base, trackedFiles)
+    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
 
     // Deduped by every field that can distinguish two rules on the same
     // kind pair — found via adversarial review, in three rounds so far.
