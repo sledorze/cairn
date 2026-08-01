@@ -33,11 +33,10 @@ import { Effect } from 'effect'
 
 import type { CoverageRule, KindDef } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
-import { isWithinBase } from '../../core/paths.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -180,36 +179,22 @@ export const checkCoverage = ({
     const externalExists = new Set<string>()
     yield* Effect.forEach(
       externalCandidates,
-      (candidate) => {
-        // A candidate resolving OUTSIDE `base` is never stat'd on the real
-        // filesystem at all — same guarantee `CheckLinks.ts`'s own
-        // `isWithinBase` bound gives broken-link checking (issue #39):
-        // without it, a doc could "satisfy" a required coverage rule by
-        // linking to any file that happens to exist outside the repo
-        // entirely (`../../../etc/hostname`), turning cairn into a
-        // filesystem-existence oracle for an untrusted PR's link target.
-        if (!isWithinBase(candidate, base)) {
-          return Effect.succeed(false)
-        }
-        // `realPath`, not `exists` — adversarial review found that a
-        // symlink physically located INSIDE `base` can still point OUTSIDE
-        // it; a lexical `isWithinBase` pass on the candidate's own path
-        // can't see that, since it never resolves the link. Re-running
-        // `isWithinBase` against the CANONICAL (symlink-resolved) path
-        // closes that gap — a null `realPath` (unresolvable: missing,
-        // broken link, permission error) is treated the same as
-        // not-satisfied, and doubles as the existence check `exists`
-        // previously did (a nonexistent path has no real path to resolve).
-        return dfs.realPath(candidate).pipe(
-          Effect.map((real) => {
-            const satisfiesWithinBase = real !== null && isWithinBase(real, base)
-            if (satisfiesWithinBase) {
+      // `isSafelyWithinBase` (../../io/DocsFs.ts): never stat'd on the real
+      // filesystem when lexically outside `base` (issue #39's own
+      // guarantee) or when a symlink resolves outside `base` even though
+      // its own path is lexically in-bounds (adversarial review) — without
+      // it, a doc could "satisfy" a required coverage rule by linking to
+      // any file reachable outside the repo, turning cairn into a
+      // filesystem-existence oracle for an untrusted PR's link target.
+      (candidate) =>
+        isSafelyWithinBase(dfs, candidate, base).pipe(
+          Effect.map((safe) => {
+            if (safe) {
               externalExists.add(candidate)
             }
-            return satisfiesWithinBase
+            return safe
           }),
-        )
-      },
+        ),
       { concurrency: 8 },
     )
 

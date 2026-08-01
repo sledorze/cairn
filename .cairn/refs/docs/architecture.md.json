@@ -65,7 +65,7 @@
       "target": "../src/core/Config.ts"
     },
     {
-      "hash": "f89bd5053dd51d3c86d91bc0387972ceee63a29359353cf4aedc29f1735607f7",
+      "hash": "444a4c1ebfc7176a40b9460edac300a04be11a3edc7191eb92c444b4825d8ca5",
       "target": "../src/io/DocsFs.ts"
     },
     {
@@ -77,19 +77,19 @@
       "target": "../src/program/summaries/CheckSummaries.ts"
     },
     {
-      "hash": "1b17c9b928906c2528b4a624400f5bb5c0258d9cfab22414557995ec887f1bde",
+      "hash": "69e127f7aeba7475152be4ffa5bd86851c2c839cf3fceceb99451d2c88e963ca",
       "target": "../src/program/links/CheckLinks.ts"
     },
     {
-      "hash": "aa589a825a6444a8f835b9a0ff88987504f91637f6ecfddea196139b36483567",
+      "hash": "e6b86fb117f88c08b9f449adb8604cff8855980ffcc6044e45a7a179e01aa2be",
       "target": "../src/program/links/CheckRefs.ts"
     },
     {
-      "hash": "1e375f11be304561d7d0a75550fb9ff8e97ddb4fa35be8badc6f5b1f602cf9bf",
+      "hash": "e0a231652504083cd624eac5f58cf2a7ad91f5f976b75695cc176ddfef705b60",
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
-      "hash": "7e5a522eae7a3a711f5d33a81f2a28abff004995cd12ba1b2d50433da0730570",
+      "hash": "28330dcd322c5c8b05d8140525502c6837ed1b88f49a27915cbb1266a4ce6eb7",
       "target": "../src/program/structure/CheckCoverage.ts"
     },
     {

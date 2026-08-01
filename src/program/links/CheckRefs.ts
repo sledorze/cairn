@@ -22,9 +22,8 @@ import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { hashContent } from '../../core/hashing.ts'
-import { isWithinBase } from '../../core/paths.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -95,22 +94,17 @@ const resolveReferenceContent = ({
   readonly targetAbs: string
 }): Effect.Effect<string | null> =>
   Effect.gen(function* () {
-    if (!isWithinBase(targetAbs, base)) {
+    // `isSafelyWithinBase` (../../io/DocsFs.ts): a symlink physically
+    // located INSIDE `base` can still point OUTSIDE it. Without this, a
+    // symlink escaping `base` had its CONTENT hashed and the hash
+    // committed into a `.cairn/refs/**` sidecar — a persisted content-
+    // fingerprint oracle for arbitrary files, worse than the existence-
+    // only oracle issue #39 was written to close (adversarial review,
+    // issue #28's PR).
+    const safe = yield* isSafelyWithinBase(dfs, targetAbs, base)
+    if (!safe) {
       return null
     }
-    const real = yield* dfs.realPath(targetAbs)
-    if (real === null || !isWithinBase(real, base)) {
-      return null
-    }
-    // `realPath`, not `exists` — a symlink physically located INSIDE
-    // `base` can still point OUTSIDE it; a lexical `isWithinBase` pass
-    // above can't see that. Without this, a symlink escaping `base` had
-    // its CONTENT hashed and the hash committed into a `.cairn/refs/**`
-    // sidecar — a persisted content-fingerprint oracle for arbitrary
-    // files, worse than the existence-only oracle issue #39 was written
-    // to close (adversarial review, issue #28's PR). Doubles as the
-    // existence check `exists` previously did (a nonexistent path has no
-    // real path to resolve).
     return yield* dfs.readFile(targetAbs).pipe(Effect.catchDefect(() => Effect.succeed(null)))
   })
 
