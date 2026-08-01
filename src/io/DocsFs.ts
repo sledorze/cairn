@@ -9,7 +9,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
 import { matchesAny } from '../core/glob.ts'
-import { toPosix } from '../core/paths.ts'
+import { isWithinBase, toPosix } from '../core/paths.ts'
 
 export interface FileStat {
   readonly mtimeMs: number
@@ -112,6 +112,7 @@ export const DocsFsLive = Layer.effect(
       dir: string,
       atRoot: boolean,
       ignore: readonly string[],
+      roots: readonly string[],
     ): Effect.Effect<readonly string[], PlatformError> =>
       Effect.gen(function* () {
         // `withFileTypes: true` gets file-vs-directory type from the SAME
@@ -141,7 +142,7 @@ export const DocsFsLive = Layer.effect(
             // `readDirectory`'d/`stat`'d at all, not merely excluded from
             // the final list after being fully walked.
             const recurseIntoDir = (): Effect.Effect<readonly string[], PlatformError> =>
-              isPrunedDir(abs, ignore) ? Effect.succeed<readonly string[]>([]) : walk(abs, false, ignore)
+              isPrunedDir(abs, ignore) ? Effect.succeed<readonly string[]>([]) : walk(abs, false, ignore, roots)
             if (entry.isDirectory()) {
               return recurseIntoDir()
             }
@@ -163,20 +164,49 @@ export const DocsFsLive = Layer.effect(
             // pruned), a file is collected, anything else is excluded —
             // deliberately NOT collapsed into "not a directory therefore
             // excluded," which would silently drop every symlink-to-file.
+            //
+            // Adversarial finding, security-relevant (issue #28's PR, 5th
+            // review pass): a symlink can resolve to a REAL path OUTSIDE
+            // every configured root — a malicious PR needs only to commit
+            // one pointing at an absolute path that exists on the CI
+            // runner (a secret file, an SSH key). Following it unbounded
+            // would scan that external content as if it were a native
+            // repo doc (a file symlink) or recurse an entire external
+            // subtree into the corpus (a directory symlink) — the same
+            // filesystem-escape class the link-target `isWithinBase`/
+            // `realPath` fixes elsewhere in this PR close, but for
+            // DISCOVERY itself, upstream of every one of those fixes.
+            // `fs.realPath` resolves the canonical target; a symlink
+            // whose real path falls outside every root is excluded/never
+            // recursed into, exactly like a `node_modules`-shaped
+            // `isPrunedDir` match — no `base` concept needed here, since
+            // "outside every configured root" is self-contained within
+            // what `listFiles` was already asked to scan.
             return fs.stat(abs).pipe(
-              Effect.flatMap((info) =>
-                info.type === 'Directory' ? recurseIntoDir() : Effect.succeed(info.type === 'File' ? [abs] : []),
-              ),
-              // `fs.stat`'s failure is a typed `PlatformError` (ENOENT on a
-              // broken symlink, EACCES, ENAMETOOLONG, ...), not a defect —
-              // `Effect.catch` (v4's `catchAll`) is the right combinator
-              // here, not `catchDefect`. Confirmed by construction: a
-              // `catchDefect`-only version still crashed on a real broken
-              // symlink, because the failure never reaches the defect
-              // channel at all. Entries found by recursing (never the
-              // caller-named root itself) always get this lenient
-              // treatment — a bad FILE stat inside an otherwise-readable
-              // root is excluded, never treated as root-level failure.
+              Effect.flatMap((info) => {
+                if (info.type !== 'Directory' && info.type !== 'File') {
+                  return Effect.succeed<readonly string[]>([])
+                }
+                return fs.realPath(abs).pipe(
+                  Effect.flatMap((real) => {
+                    if (!roots.some((r) => isWithinBase(real, r))) {
+                      return Effect.succeed<readonly string[]>([])
+                    }
+                    return info.type === 'Directory' ? recurseIntoDir() : Effect.succeed([abs])
+                  }),
+                )
+              }),
+              // `fs.stat`/`fs.realPath`'s failure is a typed `PlatformError`
+              // (ENOENT on a broken symlink, EACCES, ENAMETOOLONG, ...), not
+              // a defect — `Effect.catch` (v4's `catchAll`) is the right
+              // combinator here, not `catchDefect`. Confirmed by
+              // construction: a `catchDefect`-only version still crashed on
+              // a real broken symlink, because the failure never reaches
+              // the defect channel at all. Entries found by recursing
+              // (never the caller-named root itself) always get this
+              // lenient treatment — a bad FILE stat inside an otherwise-
+              // readable root is excluded, never treated as root-level
+              // failure.
               Effect.catch(() => Effect.succeed<readonly string[]>([])),
             )
           },
@@ -193,7 +223,7 @@ export const DocsFsLive = Layer.effect(
           if (!present) {
             continue
           }
-          for (const abs of yield* walk(root, true, ignore)) {
+          for (const abs of yield* walk(root, true, ignore, roots)) {
             // Normalise to POSIX so the pure planners see `/` paths on every OS.
             out.push(toPosix(abs))
           }
