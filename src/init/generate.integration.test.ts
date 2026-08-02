@@ -2,11 +2,19 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { Result } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import type { Effect, FileSystem } from 'effect'
+import { Effect as Eff, Result } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { decodeConfig } from '../core/Config.ts'
 import { runInit } from './generate.ts'
+
+// Exercises real-filesystem scaffolding writes. `generate.ts` is Effect-based
+// (`FileSystem` service, matching `io/DocsFs.ts`'s own convention), so every
+// call here runs through the real Node binding.
+const run = <A>(eff: Effect.Effect<A, unknown, FileSystem.FileSystem>): Promise<A> =>
+  Eff.runPromise(eff.pipe(Eff.provide(NodeServices.layer)))
 
 // `--agent claude` must leave Claude Code able to actually discover the convention:
 // CLAUDE.md is what Claude Code auto-loads at session start (AGENTS.md is not read on
@@ -22,37 +30,48 @@ describe('runInit(--agent claude)', () => {
     fs.rmSync(cwd, { force: true, recursive: true })
   })
 
-  it('creates CLAUDE.md importing AGENTS.md when absent', () => {
-    runInit({ agent: 'claude', cwd, roots: ['docs'] })
+  it('creates CLAUDE.md importing AGENTS.md when absent', async () => {
+    await run(runInit({ agent: 'claude', cwd, roots: ['docs'] }))
     const claudeMd = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8')
     expect(claudeMd).toContain('@AGENTS.md')
   })
 
-  it('appends the import to an existing CLAUDE.md without touching prior content', () => {
+  it('appends the import to an existing CLAUDE.md without touching prior content', async () => {
     fs.writeFileSync(path.join(cwd, 'CLAUDE.md'), '# Project notes\n\nSome hand-written guidance.\n')
-    runInit({ agent: 'claude', cwd, roots: ['docs'] })
+    await run(runInit({ agent: 'claude', cwd, roots: ['docs'] }))
     const claudeMd = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8')
     expect(claudeMd).toContain('Some hand-written guidance.')
     expect(claudeMd).toContain('@AGENTS.md')
   })
 
-  it('is idempotent: re-running does not duplicate the import block', () => {
-    runInit({ agent: 'claude', cwd, roots: ['docs'] })
-    runInit({ agent: 'claude', cwd, roots: ['docs'] })
+  it('is idempotent: re-running does not duplicate the import block', async () => {
+    await run(runInit({ agent: 'claude', cwd, roots: ['docs'] }))
+    await run(runInit({ agent: 'claude', cwd, roots: ['docs'] }))
     const claudeMd = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8')
     expect(claudeMd.match(/@AGENTS\.md/g)).toHaveLength(1)
   })
 
-  it('leaves a hand-written `@AGENTS.md` import untouched and reports it as skipped', () => {
+  it('leaves a hand-written `@AGENTS.md` import untouched and reports it as skipped', async () => {
     fs.writeFileSync(path.join(cwd, 'CLAUDE.md'), '@AGENTS.md\n')
-    const result = runInit({ agent: 'claude', cwd, roots: ['docs'] })
+    const result = await run(runInit({ agent: 'claude', cwd, roots: ['docs'] }))
     expect(fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n')
     expect(result.skipped).toContain(path.join(cwd, 'CLAUDE.md'))
   })
 
-  it('does not write CLAUDE.md for --agent copilot or --agent agents', () => {
-    runInit({ agent: 'copilot', cwd, roots: ['docs'] })
+  it('does not write CLAUDE.md for --agent copilot or --agent agents', async () => {
+    await run(runInit({ agent: 'copilot', cwd, roots: ['docs'] }))
     expect(fs.existsSync(path.join(cwd, 'CLAUDE.md'))).toBeFalsy()
+  })
+
+  // A `roots` entry with a trailing slash (e.g. copy-pasted from a shell
+  // completion, or just a habit) must not produce a doubled `//**` glob —
+  // `stripTrailingSlashes` exists specifically to normalise this before the
+  // `/**` suffix is appended.
+  it('strips a trailing slash from a root before appending the glob suffix', async () => {
+    await run(runInit({ agent: 'claude', cwd, roots: ['docs/'] }))
+    const rule = fs.readFileSync(path.join(cwd, '.claude/rules/docs-summaries.md'), 'utf8')
+    expect(rule).toContain("'docs/**'")
+    expect(rule).not.toContain('docs//**')
   })
 })
 
@@ -70,14 +89,14 @@ describe('runInit(--agent opencode)', () => {
     fs.rmSync(cwd, { force: true, recursive: true })
   })
 
-  it('writes the AGENTS.md block', () => {
-    runInit({ agent: 'opencode', cwd, roots: ['docs'] })
+  it('writes the AGENTS.md block', async () => {
+    await run(runInit({ agent: 'opencode', cwd, roots: ['docs'] }))
     const agentsMd = fs.readFileSync(path.join(cwd, 'AGENTS.md'), 'utf8')
     expect(agentsMd).toContain('<!-- cairn:start -->')
   })
 
-  it('does not write CLAUDE.md, Claude rules, or Copilot instructions', () => {
-    runInit({ agent: 'opencode', cwd, roots: ['docs'] })
+  it('does not write CLAUDE.md, Claude rules, or Copilot instructions', async () => {
+    await run(runInit({ agent: 'opencode', cwd, roots: ['docs'] }))
     expect(fs.existsSync(path.join(cwd, 'CLAUDE.md'))).toBeFalsy()
     expect(fs.existsSync(path.join(cwd, '.claude/rules/docs-summaries.md'))).toBeFalsy()
     expect(fs.existsSync(path.join(cwd, '.github/instructions/docs-summaries.instructions.md'))).toBeFalsy()
@@ -93,8 +112,8 @@ describe('runInit(--agent opencode)', () => {
   // does. Every opt-in check must at least be NAMED so an agent knows to
   // investigate further when relevant, even if the full mechanical
   // workflow for each stays in the README, not this lean rule file.
-  it('mentions every opt-in check by name, not just the summaries+links baseline', () => {
-    runInit({ agent: 'opencode', cwd, roots: ['docs'] })
+  it('mentions every opt-in check by name, not just the summaries+links baseline', async () => {
+    await run(runInit({ agent: 'opencode', cwd, roots: ['docs'] }))
     const agentsMd = fs.readFileSync(path.join(cwd, 'AGENTS.md'), 'utf8')
     expect(agentsMd).toContain('checks.coverage')
     expect(agentsMd).toContain('--refs')
@@ -117,17 +136,17 @@ describe('runInit() — starter .cairnrc.json', () => {
     fs.rmSync(cwd, { force: true, recursive: true })
   })
 
-  it('scaffolds a $schema pointer into node_modules, and the result decodes cleanly', () => {
-    runInit({ agent: 'all', cwd, roots: ['docs'] })
+  it('scaffolds a $schema pointer into node_modules, and the result decodes cleanly', async () => {
+    await run(runInit({ agent: 'all', cwd, roots: ['docs'] }))
     const rc = fs.readFileSync(path.join(cwd, '.cairnrc.json'), 'utf8')
     const parsed: unknown = JSON.parse(rc)
     expect(parsed).toMatchObject({ $schema: './node_modules/@sledorze/cairn/schema/cairn.schema.json' })
     expect(Result.isSuccess(decodeConfig(parsed))).toBeTruthy()
   })
 
-  it('leaves an existing .cairnrc.json untouched and reports it as skipped', () => {
+  it('leaves an existing .cairnrc.json untouched and reports it as skipped', async () => {
     fs.writeFileSync(path.join(cwd, '.cairnrc.json'), '{}\n')
-    const result = runInit({ agent: 'all', cwd, roots: ['docs'] })
+    const result = await run(runInit({ agent: 'all', cwd, roots: ['docs'] }))
     expect(fs.readFileSync(path.join(cwd, '.cairnrc.json'), 'utf8')).toBe('{}\n')
     expect(result.skipped).toContain(path.join(cwd, '.cairnrc.json'))
   })
