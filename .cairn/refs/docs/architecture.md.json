@@ -101,11 +101,11 @@
       "target": "../src/program/locale.ts"
     },
     {
-      "hash": "c6d56b7c57d5f572f704916b6bf7ab09d6ce71586d5d8acd6bf08a20540b3dde",
+      "hash": "c19933e4edc95d29fa1dc17fe9129ea3feeda2520c496aa1dad8ab45bbbafbc6",
       "target": "../src/config.ts"
     },
     {
-      "hash": "c6a5450654025a35af3dededf3f5c21a17b64d808280dca8f465e3a4b888f9dd",
+      "hash": "9fd34a56c5e149bd7a2d198a1fdd5dad354a6b3d81afb0424b43ee50693ed56d",
       "target": "../src/cli.ts"
     }
   ]
