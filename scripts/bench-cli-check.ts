@@ -45,7 +45,7 @@ const RUNS = 10
 
 const timeCliCheck = (cliPath: string): Effect.Effect<number, unknown, NodeServices.NodeServices> =>
   Effect.acquireUseRelease(
-    Effect.sync(() => buildCheckFixture()),
+    buildCheckFixture(),
     (fixture) =>
       Effect.gen(function* () {
         // One untimed warm-up run so filesystem/module caches are hot before

@@ -1,14 +1,20 @@
-import * as fs from 'node:fs'
+import * as nodeFs from 'node:fs'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { expect, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, FileSystem } from 'effect'
 import type * as Scope from 'effect/Scope'
 
 import type { TempProject } from '../testSupport/tempProject.ts'
 import { makeTempProject } from '../testSupport/tempProject.ts'
-import { CliCheckFailedError, runCliCheckOnce } from './BenchCliCheck.ts'
+import {
+  buildCheckFixture,
+  CliCheckFailedError,
+  DECISION_COUNT,
+  FEATURE_COUNT,
+  runCliCheckOnce,
+} from './BenchCliCheck.ts'
 
 // Exercises the REAL `node` binary (via effect's own ChildProcessSpawner, wired
 // through @effect/platform-node's NodeServices.layer) — the exact bug this
@@ -25,6 +31,51 @@ const acquireTempProject = (
     Effect.sync(() => makeTempProject(prefix, files)),
     (project) => Effect.sync(() => project.dispose()),
   )
+
+it.layer(NodeServices.layer)('the bench-check fixture', (layerIt) => {
+  layerIt.effect('writes a self-consistent fixture: every feature links to a real decision, none orphaned', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* Effect.acquireRelease(buildCheckFixture(), (r) =>
+        fs.remove(r, { recursive: true }).pipe(Effect.orDie),
+      )
+      const decisionIds = new Set(Array.from({ length: DECISION_COUNT }, (_, i) => i))
+      for (let i = 0; i < FEATURE_COUNT; i++) {
+        const body = yield* fs.readFileString(path.join(root, `product/features/${i}.md`))
+        const match = /docs\/adr\/(\d+)\.md/.exec(body)
+        expect(match).not.toBeNull()
+        const decisionId = match ? Number(match[1]) : Number.NaN
+        expect(decisionIds.has(decisionId)).toBeTruthy()
+      }
+      for (let i = 0; i < DECISION_COUNT; i++) {
+        expect(yield* fs.exists(path.join(root, `docs/adr/${i}.md`))).toBeTruthy()
+        expect(yield* fs.readFileString(path.join(root, `docs/adr/${i}.md`))).toContain(`# Decision ${i}`)
+      }
+      // Exactly DECISION_COUNT/FEATURE_COUNT files, not off-by-one in either
+      // direction — a `<` -> `<=` mutation in the fixture's own build loop would
+      // silently write one extra (orphan-free-by-luck) doc past either range.
+      expect(yield* fs.readDirectory(path.join(root, 'docs/adr'))).toHaveLength(DECISION_COUNT)
+      expect(yield* fs.readDirectory(path.join(root, 'product/features'))).toHaveLength(FEATURE_COUNT)
+      const config = JSON.parse(yield* fs.readFileString(path.join(root, '.cairnrc.json'))) as {
+        checks: {
+          coverage: {
+            kinds: { id: string; select: { by: string; glob: string } }[]
+            rules: { from: string; to: string }[]
+          }
+        }
+        requireDirSummaries: boolean
+        roots: string[]
+      }
+      expect(config.checks.coverage.kinds).toEqual([
+        { id: 'feature', select: { by: 'path', glob: '**/product/features/**' } },
+        { id: 'decision', select: { by: 'path', glob: '**/docs/adr/**' } },
+      ])
+      expect(config.checks.coverage.rules).toEqual([{ from: 'feature', to: 'decision' }])
+      expect(config.requireDirSummaries).toBeFalsy()
+      expect(config.roots).toEqual(['docs', 'product'])
+    }),
+  )
+})
 
 it.layer(NodeServices.layer)('runCliCheckOnce', (layerIt) => {
   layerIt.effect('succeeds when the target script exits 0', () =>
@@ -65,9 +116,9 @@ it.layer(NodeServices.layer)('runCliCheckOnce', (layerIt) => {
         const fixtureDir = yield* acquireTempProject('bench-cli-check-fixture-')
         try {
           yield* runCliCheckOnce(path.join(cli.root, 'cli.js'), fixtureDir.root)
-          const observed = JSON.parse(fs.readFileSync(markerFile, 'utf8')) as { argv: string[]; cwd: string }
+          const observed = JSON.parse(nodeFs.readFileSync(markerFile, 'utf8')) as { argv: string[]; cwd: string }
           expect(observed.argv).toEqual([path.join(cli.root, 'cli.js'), 'check'])
-          expect(fs.realpathSync(observed.cwd)).toBe(fs.realpathSync(fixtureDir.root))
+          expect(nodeFs.realpathSync(observed.cwd)).toBe(nodeFs.realpathSync(fixtureDir.root))
         } finally {
           marker.dispose()
         }
