@@ -9,18 +9,20 @@
 // convention: real filesystem access goes through the `FileSystem`/`Path`
 // services, so this module is exercised against the same real Node binding
 // (`NodeServices.layer`) every other IO-touching module in this codebase
-// already is. `readDirsSafe` is the one exception (`Effect.tryPromise`
-// wrapping `node:fs/promises` directly): `FileSystem.readDirectory` returns
-// bare names with no Dirent-style type info, the exact reason `DocsFs.ts`'s
-// own `walk()` falls back to raw `NodeFsPromises.readdir` too. Pure
-// path-string manipulation (`path.join`/`path.dirname`/`path.isAbsolute`)
-// stays on `node:path` directly — those are deterministic string operations
-// with no IO, same as every other pure module in this codebase (e.g.
-// `Coverage.ts`) that reasons in `node:path` without going through Effect's
-// `Path` service for it.
+// already is — no raw `node:fs`/`node:fs/promises` call anywhere in this
+// file, including directory listing (`readDirsSafe`, below): unlike
+// `io/DocsFs.ts`'s `walk()`, which recursively visits every directory of a
+// real doc tree and so cares about the extra `fs.stat` per entry that
+// `FileSystem.readDirectory`'s lack of Dirent-style type info would cost,
+// this module's directory listing only ever fires on one glob SEGMENT at a
+// time (one path level of a `roots` pattern) — a small, bounded fan-out
+// where the same extra `stat` per entry is negligible. Pure path-string
+// manipulation (`path.join`/`path.dirname`/`path.isAbsolute`) stays on
+// `node:path` directly — those are deterministic string operations with no
+// IO, same as every other pure module in this codebase (e.g. `Coverage.ts`)
+// that reasons in `node:path` without going through Effect's `Path` service
+// for it.
 
-import type { Dirent } from 'node:fs'
-import * as NodeFsPromises from 'node:fs/promises'
 import * as path from 'node:path'
 
 import { Effect, FileSystem, Result } from 'effect'
@@ -275,19 +277,31 @@ const assertNoRootEscape = (
 // pathologically slow on real repositories.
 const PRUNED_DIRS = new Set(['.git', 'node_modules'])
 
-/** `FileSystem.readDirectory` returns bare names (no Dirent-style type info)
- * — the same gap `io/DocsFs.ts`'s own `walk()` works around — so this falls
- * back to raw `node:fs/promises` directly, wrapped in `Effect.tryPromise`. */
-const readDirsSafe = (dir: string): Effect.Effect<string[], never, never> =>
-  Effect.tryPromise({
-    catch: (cause) => cause,
-    try: () => NodeFsPromises.readdir(dir, { withFileTypes: true }),
-  }).pipe(
-    Effect.catch(() => Effect.succeed<Dirent[]>([])),
-    Effect.map((entries) => entries.filter((e) => e.isDirectory() && !PRUNED_DIRS.has(e.name)).map((e) => e.name)),
-  )
+/** List the immediate sub-DIRECTORIES of `dir` (never files), pruning
+ * `PRUNED_DIRS` and swallowing any read failure (permission denied, `dir`
+ * doesn't exist) as an empty list — a glob segment matching nothing is a
+ * normal, silent no-match, not an error. `FileSystem.readDirectory` returns
+ * bare names with no Dirent-style type info, so each entry gets its own
+ * `fs.stat` to tell directories from files; see the module-level comment
+ * above for why that per-entry cost is fine here (unlike `io/DocsFs.ts`'s
+ * `walk()`, which avoids it for a whole-tree recursive walk). */
+const readDirsSafe = (dir: string): Effect.Effect<string[], never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const names = yield* fs.readDirectory(dir).pipe(Effect.catch(() => Effect.succeed<string[]>([])))
+    const dirs: string[] = []
+    for (const name of names) {
+      if (PRUNED_DIRS.has(name)) {
+        continue
+      }
+      if (yield* isDir(path.join(dir, name))) {
+        dirs.push(name)
+      }
+    }
+    return dirs
+  })
 
-const descendantDirs = (dir: string): Effect.Effect<string[], never, never> =>
+const descendantDirs = (dir: string): Effect.Effect<string[], never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const out: string[] = []
     for (const name of yield* readDirsSafe(dir)) {

@@ -24,6 +24,10 @@ beforeAll(() => {
   for (const dir of ['packages/alpha/docs', 'packages/beta/docs', 'node_modules/pkg/docs', '.git/docs']) {
     fs.mkdirSync(path.join(root, dir), { recursive: true })
   }
+  // A plain FILE sitting alongside the glob-matched directories: `readDirsSafe`
+  // must filter it out via its own `fs.stat`-based directory check (Effect's
+  // `FileSystem.readDirectory` returns bare names, not Dirent-style type info).
+  fs.writeFileSync(path.join(root, 'packages', 'README.md'), 'not a directory')
 })
 
 afterAll(() => {
@@ -47,6 +51,12 @@ describe('expandRoots()', () => {
     expect(dirs.some((d) => d.includes('/node_modules/'))).toBeFalsy()
     expect(dirs.some((d) => d.includes('/.git/'))).toBeFalsy()
     expect(dirs.some((d) => d.endsWith('/packages/alpha/docs'))).toBeTruthy()
+  })
+
+  it('ignores plain files sitting alongside directories when expanding a glob segment', async () => {
+    const dirs = await run(expandRoots(root, ['packages/*']))
+    expect(dirs.some((d) => d.endsWith('/packages/README.md'))).toBeFalsy()
+    expect(dirs.some((d) => d.endsWith('/packages/alpha'))).toBeTruthy()
   })
 
   it('returns POSIX-separated paths', async () => {

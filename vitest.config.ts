@@ -28,7 +28,7 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 90.4,
+        branches: 90.43,
         // functions/statements: manually recalibrated (config.ts's move to
         // Effect's FileSystem service), not auto-raised.
         // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery
@@ -39,7 +39,16 @@ export default defineConfig({
         // pre-Effect version of this exact check). Every other new
         // Effect-shaped branch this rewrite introduced (readDirsSafe's own
         // real-filesystem failure path included) is now covered for real.
-        functions: 98.62,
+        // 98.61 (down from 98.62): `readDirsSafe` dropped its last raw
+        // `node:fs/promises` call (now `FileSystem.readDirectory` + a
+        // per-entry `isDir`, closing the one remaining non-Effect gap in
+        // this file) — that removed a handful of anonymous callback
+        // functions (the old `Effect.tryPromise`/`Array.filter`/`.map`
+        // lambdas) from the denominator along with the numerator, a pure
+        // ratio shift with no coverage lost: every real branch this
+        // rewrite touches (the mixed file/directory glob-segment case
+        // included) has its own real-filesystem test.
+        functions: 98.61,
         lines: 99.26,
         statements: 99.05,
       },
