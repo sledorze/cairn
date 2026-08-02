@@ -4,10 +4,9 @@
 // "and also check the index." This is real IO (shells out to the `git` binary),
 // so it lives beside `DocsFs.ts` in `io/`, not `core/`.
 
-import * as nodeFs from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { Context, Data, Effect, Layer, Stream } from 'effect'
+import { Context, Data, Effect, FileSystem, Layer, Stream } from 'effect'
 import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 
 import { toPosix } from '../core/paths.ts'
@@ -135,30 +134,27 @@ const runGit = (
 const toAbsPosix = (base: string, relOrAbs: string): string =>
   toPosix(nodePath.isAbsolute(relOrAbs) ? relOrAbs : nodePath.join(base, relOrAbs))
 
-/** Resolves symlinks (e.g. a `base` reached through a symlinked `/tmp`, common on
- * macOS where it points at `/private/tmp`) so path-equality comparisons aren't fooled
- * by two different-looking paths that name the same directory. `git worktree list`
- * reports its own realpath-resolved form regardless of the literal path a worktree was
- * created through — confirmed empirically: creating a worktree via a symlinked path
- * still gets reported under the symlink's target. Falls back to the original path if
- * it doesn't exist (or `realpath` fails for any other reason) rather than throwing —
- * this is a best-effort comparison aid, not a correctness-critical resolution. */
-const realpathOrSelf = (p: string): string => {
-  try {
-    return nodeFs.realpathSync(p)
-  } catch {
-    return p
-  }
-}
-
 /** Live implementation: shells out to the real `git` binary. Requires
- * `ChildProcessSpawner` — provide the Node implementation alongside this layer
- * (e.g. `Effect.provide(GitFsLive), Effect.provide(NodeServices.layer)`, as
- * `src/cli.ts` already does). */
+ * `ChildProcessSpawner` and `FileSystem.FileSystem` — provide the Node
+ * implementations alongside this layer (e.g. `Effect.provide(GitFsLive),
+ * Effect.provide(NodeServices.layer)`, as `src/cli.ts` already does). */
 export const GitFsLive = Layer.effect(
   GitFs,
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const fs = yield* FileSystem.FileSystem
+    /** Resolves symlinks (e.g. a `base` reached through a symlinked `/tmp`,
+     * common on macOS where it points at `/private/tmp`) so path-equality
+     * comparisons aren't fooled by two different-looking paths that name the
+     * same directory. `git worktree list` reports its own realpath-resolved
+     * form regardless of the literal path a worktree was created through —
+     * confirmed empirically: creating a worktree via a symlinked path still
+     * gets reported under the symlink's target. Falls back to the original
+     * path if it doesn't exist (or `realPath` fails for any other reason)
+     * rather than failing — this is a best-effort comparison aid, not a
+     * correctness-critical resolution. */
+    const realpathOrSelf = (p: string): Effect.Effect<string> =>
+      fs.realPath(p).pipe(Effect.catch(() => Effect.succeed(p)))
     return GitFs.of({
       listIgnoredDirs: (base) =>
         Effect.provideService(
@@ -186,47 +182,51 @@ export const GitFsLive = Layer.effect(
           ChildProcessSpawner.ChildProcessSpawner,
           spawner,
         ).pipe(
-          Effect.map((stdout) => {
-            // `--porcelain` emits one `worktree <path>` line per worktree, the
-            // PRIMARY worktree always first — not necessarily `base` itself.
-            // Bug found by dogfooding this repo's own multi-worktree dev setup:
-            // when `base` is a linked (non-primary) worktree, blindly dropping
-            // "whichever entry comes first" leaves `base` itself in the
-            // result, which callers (`cli.ts`) then add to `ignore` as
-            // `${base}/**` — silently excluding the ENTIRE scan root. Filter
-            // by equality to `base`, not by position — and by realpath, not
-            // literal string equality: `git worktree list` always reports its
-            // own realpath-resolved form, so a `base` reached through a
-            // symlink (e.g. macOS's `/tmp` -> `/private/tmp`) would otherwise
-            // still leak through under its resolved name, reproducing the
-            // exact same bug for symlinked paths specifically (confirmed
-            // empirically, its own regression test below).
-            //
-            // A second, distinct shape of the same bug (real bug report,
-            // reproduced with just 2 worktrees): a linked worktree can ALSO
-            // be nested INSIDE another worktree's own directory — e.g.
-            // `<primary>/.claude/worktrees/<name>`, exactly what an
-            // agentic dev workflow creates — rather than living as a
-            // sibling under some shared parent. If `base` is such a nested
-            // worktree, the primary worktree (or any other worktree that
-            // is an ANCESTOR of `base`, not just equal to it) must ALSO be
-            // excluded here: `cli.ts` turns every reported dir into
-            // `${dir}/**`, and an ancestor's `${ancestor}/**` pattern
-            // matches every file under `base` too, since `base`'s own real
-            // path literally starts with the ancestor's — pruning the scan
-            // root by a different route than the exact-equality case
-            // above, but with the identical "0 files, all clean" result.
-            const baseReal = toPosix(realpathOrSelf(base))
-            const paths = stdout
-              .split('\n')
-              .filter((line) => line.startsWith('worktree '))
-              .map((line) => line.slice('worktree '.length).trim())
-              .map((p) => toAbsPosix(base, p))
-            return paths.filter((p) => {
-              const pReal = toPosix(realpathOrSelf(p))
-              return pReal !== baseReal && !baseReal.startsWith(`${pReal}/`)
-            })
-          }),
+          Effect.flatMap((stdout) =>
+            Effect.gen(function* () {
+              // `--porcelain` emits one `worktree <path>` line per worktree, the
+              // PRIMARY worktree always first — not necessarily `base` itself.
+              // Bug found by dogfooding this repo's own multi-worktree dev setup:
+              // when `base` is a linked (non-primary) worktree, blindly dropping
+              // "whichever entry comes first" leaves `base` itself in the
+              // result, which callers (`cli.ts`) then add to `ignore` as
+              // `${base}/**` — silently excluding the ENTIRE scan root. Filter
+              // by equality to `base`, not by position — and by realpath, not
+              // literal string equality: `git worktree list` always reports its
+              // own realpath-resolved form, so a `base` reached through a
+              // symlink (e.g. macOS's `/tmp` -> `/private/tmp`) would otherwise
+              // still leak through under its resolved name, reproducing the
+              // exact same bug for symlinked paths specifically (confirmed
+              // empirically, its own regression test below).
+              //
+              // A second, distinct shape of the same bug (real bug report,
+              // reproduced with just 2 worktrees): a linked worktree can ALSO
+              // be nested INSIDE another worktree's own directory — e.g.
+              // `<primary>/.claude/worktrees/<name>`, exactly what an
+              // agentic dev workflow creates — rather than living as a
+              // sibling under some shared parent. If `base` is such a nested
+              // worktree, the primary worktree (or any other worktree that
+              // is an ANCESTOR of `base`, not just equal to it) must ALSO be
+              // excluded here: `cli.ts` turns every reported dir into
+              // `${dir}/**`, and an ancestor's `${ancestor}/**` pattern
+              // matches every file under `base` too, since `base`'s own real
+              // path literally starts with the ancestor's — pruning the scan
+              // root by a different route than the exact-equality case
+              // above, but with the identical "0 files, all clean" result.
+              const baseReal = toPosix(yield* realpathOrSelf(base))
+              const paths = stdout
+                .split('\n')
+                .filter((line) => line.startsWith('worktree '))
+                .map((line) => line.slice('worktree '.length).trim())
+                .map((p) => toAbsPosix(base, p))
+              const withReal = yield* Effect.all(
+                paths.map((p) => realpathOrSelf(p).pipe(Effect.map((real) => [p, toPosix(real)] as const))),
+              )
+              return withReal
+                .filter(([, pReal]) => pReal !== baseReal && !baseReal.startsWith(`${pReal}/`))
+                .map(([p]) => p)
+            }),
+          ),
         ),
     })
   }),
