@@ -353,6 +353,35 @@ describe('cli.ts (real subprocess) — flags with no prior CLI-level test covera
     expect(result.stdout).toContain('totally-bogus-ref')
   })
 
+  // Issue #106 "best value defaults" audit, round 6: every OTHER real
+  // report string in this file has a matching `--locale fr` real-subprocess
+  // proof (see the "--locale fr switches real report output" test below) —
+  // the --report-deletions skip warning (a cli.ts-level string, not
+  // formatDeletionsReport's own — that one's fr branch is separately unit-
+  // tested in CheckDeletions.unit.test.ts) had none.
+  it('--report-deletions skip warning localises to French too', () => {
+    const p = project('cli-deletions-since-bad-ref-fr', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': '# A\n\nShort.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+
+    const result = runCli(p.root, [
+      'check',
+      '--locale',
+      'fr',
+      '--report-deletions',
+      '--deletions-since',
+      'totally-bogus-ref',
+    ])
+    expect(result.stdout).toContain('--report-deletions ignoré :')
+    expect(result.stdout).not.toContain('git indisponible')
+  })
+
   // Issue #106 "best value defaults" audit, round 5: --fix physically
   // rewrites doc content BEFORE --report-deletions used to re-read the
   // corpus — an unrelated doc's broken link, once --fix repairs it to

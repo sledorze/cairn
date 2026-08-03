@@ -230,6 +230,51 @@ describe('formatDeletionsReport() / deletionsExitCode()', () => {
     expect(lines).toEqual(['✅ No orphaned content found (3 deletion(s) checked).'])
   })
 
+  // Issue #106 "best value defaults" audit, round 6: every sibling
+  // formatter (formatLinkReport, formatSummaryReport, formatCoverageReport)
+  // has an explicit `locale: 'fr'` test — formatDeletionsReport was the
+  // only one that didn't, across ALL of its branches (success, "nothing to
+  // check", findings, skipped).
+  it('localises every branch to French when asked', () => {
+    expect(formatDeletionsReport({ checked: 3, findings: [], skipped: [] }, { locale: 'fr' })).toEqual([
+      '✅ Aucun contenu orphelin trouvé (3 suppression(s) vérifiée(s)).',
+    ])
+
+    expect(formatDeletionsReport({ checked: 0, findings: [], skipped: [] }, { locale: 'fr' })).toEqual([
+      "ℹ️  Rien n'a été supprimé depuis la référence comparée — rien à vérifier. Passez --deletions-since <ref> (par ex. une branche de base de PR) pour vérifier les suppressions déjà commises sur cette branche.",
+    ])
+
+    expect(
+      formatDeletionsReport(
+        {
+          checked: 1,
+          findings: [
+            {
+              orphanedHeadings: ['### Section unique'],
+              orphanedLinkTargets: ['/r/src/program/links/CheckRefs.ts'],
+              path: '/r/docs/old.md',
+            },
+          ],
+          skipped: [],
+        },
+        { locale: 'fr' },
+      ),
+    ).toEqual([
+      '⚠️  1 document(s) supprimé(s) ont emporté du contenu introuvable ailleurs :',
+      '  /r/docs/old.md',
+      '    titre introuvable ailleurs: ### Section unique',
+      '    cible de lien introuvable ailleurs: /r/src/program/links/CheckRefs.ts',
+    ])
+
+    expect(
+      formatDeletionsReport({ checked: 1, findings: [], skipped: ['/r/docs/corrupt.md'] }, { locale: 'fr' }),
+    ).toEqual([
+      '✅ Aucun contenu orphelin trouvé (1 suppression(s) vérifiée(s)).',
+      "⚠️  1 document(s) supprimé(s) n'ont pas pu être relus à cette référence (peut-être corrompus) — non vérifiés :",
+      '  /r/docs/corrupt.md',
+    ])
+  })
+
   // Issue #106 "best value defaults" audit: `checked: 0` (nothing deleted
   // since the compared ref at all — the common case for a bare local run
   // against the default HEAD) must read differently from `checked: 3` (3
