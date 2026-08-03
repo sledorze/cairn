@@ -10,9 +10,14 @@
 //    CLAUDE.md at session start but never reads AGENTS.md on its own, so without this
 //    pointer the cross-tool block in AGENTS.md is invisible to it.
 // Plus a starter .cairnrc.json (only when absent).
+//
+// Effect-based (`FileSystem` service), matching `io/DocsFs.ts`/`config.ts`'s own
+// convention — disk IO is the only reason this isn't pure. `path` stays on
+// `node:path` directly (deterministic string manipulation, no IO).
 
-import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import { Effect, FileSystem } from 'effect'
 
 import { CONVENTION_BODY, SKILL_BODY } from './content.ts'
 
@@ -35,17 +40,28 @@ export interface InitResult {
 const AGENTS_START = '<!-- cairn:start -->'
 const AGENTS_END = '<!-- cairn:end -->'
 
-const rootsToGlobs = (roots: readonly string[]): string[] => roots.map((r) => `${r.replace(/\/+$/, '')}/**`)
-
-const ensureDir = (file: string): void => {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
+/** Strips trailing `/` characters without a regex — `r.replace(/\/+$/, '')`
+ * previously did this, but CodeQL flags an unanchored trailing `+$` as a
+ * polynomial-time ReDoS shape on attacker-controlled input; `roots` values
+ * ultimately come from a project's own `.cairnrc.json`, not untrusted input,
+ * but a plain loop is just as clear and closes the finding for good. */
+const stripTrailingSlashes = (s: string): string => {
+  let end = s.length
+  while (end > 0 && s[end - 1] === '/') {
+    end--
+  }
+  return s.slice(0, end)
 }
 
-const write = (file: string, content: string, written: string[]): void => {
-  ensureDir(file)
-  fs.writeFileSync(file, content.endsWith('\n') ? content : `${content}\n`)
-  written.push(file)
-}
+const rootsToGlobs = (roots: readonly string[]): string[] => roots.map((r) => `${stripTrailingSlashes(r)}/**`)
+
+const write = (file: string, content: string, written: string[]): Effect.Effect<void, unknown, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* fs.makeDirectory(path.dirname(file), { recursive: true })
+    yield* fs.writeFileString(file, content.endsWith('\n') ? content : `${content}\n`)
+    written.push(file)
+  })
 
 const claudeRule = (globs: readonly string[]): string => {
   const paths = globs.map((g) => `  - '${g}'`).join('\n')
@@ -66,47 +82,55 @@ const skillFile = (): string =>
   ].join('\n')
 
 /** Insert or replace the cairn block in AGENTS.md, leaving other content intact. */
-const upsertAgentsBlock = (cwd: string, written: string[]): void => {
-  const file = path.join(cwd, 'AGENTS.md')
-  const block = `${AGENTS_START}\n\n${CONVENTION_BODY.trimEnd()}\n\n${AGENTS_END}`
-  let next: string
-  if (fs.existsSync(file)) {
-    const existing = fs.readFileSync(file, 'utf8')
-    if (existing.includes(AGENTS_START) && existing.includes(AGENTS_END)) {
-      next = existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
+const upsertAgentsBlock = (cwd: string, written: string[]): Effect.Effect<void, unknown, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const file = path.join(cwd, 'AGENTS.md')
+    const block = `${AGENTS_START}\n\n${CONVENTION_BODY.trimEnd()}\n\n${AGENTS_END}`
+    let next: string
+    if (yield* fs.exists(file)) {
+      const existing = yield* fs.readFileString(file)
+      if (existing.includes(AGENTS_START) && existing.includes(AGENTS_END)) {
+        next = existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
+      } else {
+        next = `${existing.trimEnd()}\n\n${block}\n`
+      }
     } else {
-      next = `${existing.trimEnd()}\n\n${block}\n`
+      next = `# AGENTS.md\n\n${block}\n`
     }
-  } else {
-    next = `# AGENTS.md\n\n${block}\n`
-  }
-  fs.writeFileSync(file, next.endsWith('\n') ? next : `${next}\n`)
-  written.push(file)
-}
+    yield* fs.writeFileString(file, next.endsWith('\n') ? next : `${next}\n`)
+    written.push(file)
+  })
 
 /** Ensure CLAUDE.md imports AGENTS.md. Claude Code auto-loads CLAUDE.md (not AGENTS.md)
  * at session start, so without this the AGENTS.md block cairn writes is never read. Leaves
  * other CLAUDE.md content intact, and no-ops if an `@AGENTS.md` import is already present
  * (hand-written or from a previous run). */
-const upsertClaudeMdImport = (cwd: string, written: string[], skipped: string[]): void => {
-  const file = path.join(cwd, 'CLAUDE.md')
-  const block = `${AGENTS_START}\n@AGENTS.md\n${AGENTS_END}`
-  if (fs.existsSync(file)) {
-    const existing = fs.readFileSync(file, 'utf8')
-    if (existing.includes('@AGENTS.md')) {
-      skipped.push(file)
-      return
+const upsertClaudeMdImport = (
+  cwd: string,
+  written: string[],
+  skipped: string[],
+): Effect.Effect<void, unknown, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const file = path.join(cwd, 'CLAUDE.md')
+    const block = `${AGENTS_START}\n@AGENTS.md\n${AGENTS_END}`
+    if (yield* fs.exists(file)) {
+      const existing = yield* fs.readFileString(file)
+      if (existing.includes('@AGENTS.md')) {
+        skipped.push(file)
+        return
+      }
+      const next =
+        existing.includes(AGENTS_START) && existing.includes(AGENTS_END)
+          ? existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
+          : `${existing.trimEnd()}\n\n${block}\n`
+      yield* fs.writeFileString(file, next.endsWith('\n') ? next : `${next}\n`)
+    } else {
+      yield* fs.writeFileString(file, `${block}\n`)
     }
-    const next =
-      existing.includes(AGENTS_START) && existing.includes(AGENTS_END)
-        ? existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
-        : `${existing.trimEnd()}\n\n${block}\n`
-    fs.writeFileSync(file, next.endsWith('\n') ? next : `${next}\n`)
-  } else {
-    fs.writeFileSync(file, `${block}\n`)
-  }
-  written.push(file)
-}
+    written.push(file)
+  })
 
 const starterConfig = (roots: readonly string[]): string =>
   `${JSON.stringify(
@@ -122,33 +146,39 @@ const starterConfig = (roots: readonly string[]): string =>
   )}\n`
 
 /** Run the scaffold. Returns which files were written vs left untouched. */
-export const runInit = ({ agent, cwd, roots }: InitArgs): InitResult => {
-  const globs = rootsToGlobs(roots)
-  const written: string[] = []
-  const skipped: string[] = []
+export const runInit = ({ agent, cwd, roots }: InitArgs): Effect.Effect<InitResult, unknown, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const globs = rootsToGlobs(roots)
+    const written: string[] = []
+    const skipped: string[] = []
 
-  const doClaude = agent === 'claude' || agent === 'all'
-  const doCopilot = agent === 'copilot' || agent === 'all'
-  const doAgents = agent === 'agents' || agent === 'opencode' || agent === 'all'
+    const doClaude = agent === 'claude' || agent === 'all'
+    const doCopilot = agent === 'copilot' || agent === 'all'
+    const doAgents = agent === 'agents' || agent === 'opencode' || agent === 'all'
 
-  if (doClaude) {
-    write(path.join(cwd, '.claude/rules/docs-summaries.md'), claudeRule(globs), written)
-    write(path.join(cwd, '.claude/skills/cairn/SKILL.md'), skillFile(), written)
-    upsertClaudeMdImport(cwd, written, skipped)
-  }
-  if (doCopilot) {
-    write(path.join(cwd, '.github/instructions/docs-summaries.instructions.md'), copilotInstructions(globs), written)
-  }
-  if (doAgents || doClaude || doCopilot) {
-    upsertAgentsBlock(cwd, written)
-  }
+    if (doClaude) {
+      yield* write(path.join(cwd, '.claude/rules/docs-summaries.md'), claudeRule(globs), written)
+      yield* write(path.join(cwd, '.claude/skills/cairn/SKILL.md'), skillFile(), written)
+      yield* upsertClaudeMdImport(cwd, written, skipped)
+    }
+    if (doCopilot) {
+      yield* write(
+        path.join(cwd, '.github/instructions/docs-summaries.instructions.md'),
+        copilotInstructions(globs),
+        written,
+      )
+    }
+    if (doAgents || doClaude || doCopilot) {
+      yield* upsertAgentsBlock(cwd, written)
+    }
 
-  const rc = path.join(cwd, '.cairnrc.json')
-  if (fs.existsSync(rc)) {
-    skipped.push(rc)
-  } else {
-    write(rc, starterConfig(roots), written)
-  }
+    const rc = path.join(cwd, '.cairnrc.json')
+    if (yield* fs.exists(rc)) {
+      skipped.push(rc)
+    } else {
+      yield* write(rc, starterConfig(roots), written)
+    }
 
-  return { skipped, written }
-}
+    return { skipped, written }
+  })

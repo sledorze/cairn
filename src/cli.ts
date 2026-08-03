@@ -468,7 +468,7 @@ interface InitParsed {
 const runInitCommand = Effect.fn('runInit')(function* ({ agent, config: configPath, root }: InitParsed) {
   const cwd = process.cwd()
   const config = yield* loadConfigOrFail(cwd, { roots: [...root] }, Option.getOrUndefined(configPath))
-  const result = runInit({ agent, cwd, roots: config.roots })
+  const result = yield* runInit({ agent, cwd, roots: config.roots }).pipe(Effect.mapError(toConfigError))
   for (const file of result.written) {
     yield* Console.log(`✍️  wrote ${file}`)
   }
