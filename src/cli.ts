@@ -331,50 +331,40 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   // warning keeps every other section's result and exit code intact
   // regardless of whether this one succeeds.
   //
-  // Placed BEFORE `linksOutcome`/`--fix` runs, deliberately — found via a
-  // SECOND adversarial review: `--fix` physically rewrites doc content
-  // (`CheckLinks.ts`'s `dfs.writeFile`) before `checkDeletions` re-reads
-  // the corpus from disk. `findDeletedDocContent`'s "does this heading/
-  // link target survive ANYWHERE else" check is coarse by design (a
-  // structural match, not a semantic one) — an unrelated doc's broken link
-  // that `--fix` just repaired to coincidentally point at the SAME target
-  // a deleted doc used to link to would silently count as "surviving,"
-  // making `cairn check --fix --report-deletions` systematically
-  // under-report real orphaned link targets compared to running the two
-  // separately. Reading the corpus before `--fix` mutates anything closes
-  // that gap; reproduced directly (a real scratch repo, both flag orders)
-  // before this reordering, confirmed fixed after.
-  if (parsed.reportDeletions) {
-    const deletionsOutcome = yield* checkDeletions({
-      base: cwd,
-      ignore: effectiveIgnore,
-      naming: config.naming,
-      ref: Option.getOrElse(parsed.deletionsSince, () => 'HEAD'),
-      roots: absRoots,
-      ...(trackedFiles === undefined ? {} : { trackedFiles }),
-    }).pipe(
-      Effect.map((result) => ({ error: null, result })),
-      Effect.catch((error) => Effect.succeed({ error, result: null })),
-    )
-    if (deletionsOutcome.error !== null) {
-      // Deliberately NOT "git unavailable at X" — `GitUnavailableError` is
-      // also what an unresolvable REF raises (e.g. `--deletions-since
-      // origin/main` under a shallow CI checkout that never fetched
-      // `main`), and asserting "git unavailable" for that case is actively
-      // misleading: git is fine, the ref just isn't there (issue #106
-      // "best value defaults" audit — this is the single most likely
-      // real-world failure mode of this flag, per its own README section).
-      // The underlying message already names the real cause either way.
-      yield* Console.log(
-        pick(locale, {
-          en: `⚠️  --report-deletions skipped: ${deletionsOutcome.error.message}`,
-          fr: `⚠️  --report-deletions ignoré : ${deletionsOutcome.error.message}`,
-        }),
+  // COMPUTED here, BEFORE `linksOutcome`/`--fix` runs, deliberately — found
+  // via a SECOND adversarial review: `--fix` physically rewrites doc
+  // content (`CheckLinks.ts`'s `dfs.writeFile`) before `checkDeletions`
+  // re-reads the corpus from disk. `findDeletedDocContent`'s "does this
+  // heading/link target survive ANYWHERE else" check is coarse by design
+  // (a structural match, not a semantic one) — an unrelated doc's broken
+  // link that `--fix` just repaired to coincidentally point at the SAME
+  // target a deleted doc used to link to would silently count as
+  // "surviving," making `cairn check --fix --report-deletions`
+  // systematically under-report real orphaned link targets compared to
+  // running the two separately. Reading the corpus before `--fix` mutates
+  // anything closes that gap; reproduced directly (a real scratch repo,
+  // both flag orders) before this reordering, confirmed fixed after.
+  //
+  // PRINTED later, right before the `--json` block (its ORIGINAL position,
+  // after every other check's own output) — deliberately NOT moved
+  // alongside the computation above: this repo's established output order
+  // puts every other check's (potentially blocking) findings before this
+  // one's (always informational) report, and there's no correctness
+  // reason to disturb that just because the computation itself needed to
+  // move earlier.
+  const deletionsOutcome = parsed.reportDeletions
+    ? yield* checkDeletions({
+        base: cwd,
+        ignore: effectiveIgnore,
+        naming: config.naming,
+        ref: Option.getOrElse(parsed.deletionsSince, () => 'HEAD'),
+        roots: absRoots,
+        ...(trackedFiles === undefined ? {} : { trackedFiles }),
+      }).pipe(
+        Effect.map((result) => ({ error: null, result })),
+        Effect.catch((error) => Effect.succeed({ error, result: null })),
       )
-    } else {
-      yield* Console.log(formatDeletionsReport(deletionsOutcome.result, { locale }).join('\n'))
-    }
-  }
+    : null
 
   const linksOutcome = yield* runCheckPlugin(linksPlugin, pluginArgs)
   if (linksOutcome.ran) {
@@ -486,6 +476,27 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
       yield* Console.log(coverageOutcome.lines.join('\n'))
     }
     code = Math.max(code, coverageOutcome.code)
+  }
+
+  if (deletionsOutcome !== null) {
+    if (deletionsOutcome.error !== null) {
+      // Deliberately NOT "git unavailable at X" — `GitUnavailableError` is
+      // also what an unresolvable REF raises (e.g. `--deletions-since
+      // origin/main` under a shallow CI checkout that never fetched
+      // `main`), and asserting "git unavailable" for that case is actively
+      // misleading: git is fine, the ref just isn't there (issue #106
+      // "best value defaults" audit — this is the single most likely
+      // real-world failure mode of this flag, per its own README section).
+      // The underlying message already names the real cause either way.
+      yield* Console.log(
+        pick(locale, {
+          en: `⚠️  --report-deletions skipped: ${deletionsOutcome.error.message}`,
+          fr: `⚠️  --report-deletions ignoré : ${deletionsOutcome.error.message}`,
+        }),
+      )
+    } else {
+      yield* Console.log(formatDeletionsReport(deletionsOutcome.result, { locale }).join('\n'))
+    }
   }
 
   if (parsed.json) {
