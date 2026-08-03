@@ -166,6 +166,27 @@ describe('planSummaries() — stamp/source lifecycle (S2, S3, S4)', () => {
     expect(plan.orphanStamps).not.toContain('/r/docs/a.summary.md')
   })
 
+  // Issue #102: a root-relative pattern with no leading `**/` (the form
+  // anyone actually writes, as opposed to the absolute-path pattern used
+  // above) must suppress a deleted-source stamp just as reliably —
+  // regression coverage exercised through the real planner, not just
+  // `isIgnored`'s own unit tests.
+  it('S3b: a root-relative ignore pattern with no leading **/ also suppresses a deleted-source stamp (issue #102)', () => {
+    const files = tree()
+    const stamps = stampsFor(files, ['/r/docs'])
+    const withoutSource = new Map(files)
+    withoutSource.delete('/r/docs/a.md')
+    withoutSource.delete('/r/docs/a.summary.md')
+    const plan = planSummaries({
+      files: withoutSource,
+      ignore: ['a.summary.md'],
+      roots: ['/r/docs'],
+      stamps,
+      thresholdLines: 30,
+    })
+    expect(plan.orphanStamps).not.toContain('/r/docs/a.summary.md')
+  })
+
   it('S4: reverting a child edit back to identical bytes leaves the parent manifest hash unchanged', () => {
     const fresh = freshTree()
     const stamps = stampsFor(fresh, ['/r/docs'])
