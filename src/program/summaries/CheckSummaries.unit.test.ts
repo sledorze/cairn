@@ -1,3 +1,4 @@
+import { it as effectIt } from '@effect/vitest'
 import { Effect } from 'effect'
 import type { Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
@@ -147,6 +148,24 @@ describe('checkSummaries()', () => {
       expect(withUndefined.todo).toEqual(withoutField.todo)
     })
   })
+
+  // No test in this file's own suite ever passed `ignore` to `checkSummaries`
+  // before (grep confirms it) — `CheckSummariesArgs.ignore` reaching
+  // `readMarkdown`/`toPlanArgs`/`planSummaries` at all was untested from
+  // this entry point, even though `SummaryTree.unit.test.ts` covers
+  // `isIgnored`'s own matching logic directly. Closes that gap.
+  effectIt.layer(makeTestDocsFs({ '/r/docs/SKIP.md': tf(big) }))(
+    'excludes a file matched by a root-relative ignore pattern with no leading **/',
+    (layerIt) => {
+      layerIt.effect('excludes it', () =>
+        Effect.gen(function* () {
+          const plan = yield* checkSummaries({ base, ignore: ['SKIP.md'], roots: ['/r/docs'], thresholdLines: 30 })
+          expect(plan.todo).toEqual([])
+          expect(summaryExitCode(plan)).toBe(0)
+        }),
+      )
+    },
+  )
 
   it('fails with orphans even when nothing is missing/stale', async () => {
     const layer = makeTestDocsFs({ '/r/docs/gone.summary.md': tf('# stale') })

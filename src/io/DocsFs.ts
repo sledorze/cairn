@@ -9,7 +9,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
 import { matchesAny } from '../core/glob.ts'
-import { isWithinBase, relativeToBase, toPosix } from '../core/paths.ts'
+import { isIgnored, isWithinBase, relativeToBase, toPosix } from '../core/paths.ts'
 
 export interface FileStat {
   readonly mtimeMs: number
@@ -81,6 +81,60 @@ export const isSafelyWithinBase = (
     }
     const real = yield* dfs.realPath(candidate)
     return real !== null && isWithinBase(real, base)
+  })
+
+/**
+ * Every in-scope `.md` doc's content, as a `path -> content` map — issue
+ * #48's `trackedFiles` narrowing (an untracked doc is invisible to a fresh
+ * CI checkout, so a local run with `onlyGitTracked` on must be too) applied
+ * BEFORE reading, and a file-level `ignore` re-check (`isIgnored`, issue
+ * #102) since `listFiles`'s own `ignore` handling only prunes DIRECTORIES,
+ * never a file-shaped pattern. A doc that lists fine but can't actually be
+ * READ (permission denied, revoked between listing and reading) is
+ * silently excluded, not a crash — `dfs.readFile` is `Effect.orDie`-wrapped,
+ * so this reaches the DEFECT channel; skipped the same way an untracked/
+ * ignored doc already is.
+ *
+ * Extracted (issue #106's own PR) after this exact shape turned up
+ * hand-duplicated between `CheckSummaries.ts`'s own `readMarkdown` and
+ * `CheckDeletions.ts`'s `readMarkdownCorpus` — the latter freshly written
+ * WITH this file-level `isIgnored` re-check. For `CheckSummaries.ts` this
+ * re-check is redundant today (verified by disabling it locally and
+ * re-running the full suite: nothing failed, because `SummaryTree.ts`'s
+ * `planSummaries` already filters every node it builds by the same
+ * `isIgnored` — see `SummaryTree.unit.test.ts`'s own root-relative-ignore
+ * coverage, the one place this behavior is actually pinned for that
+ * caller). For `CheckDeletions.ts` it is NOT redundant — `remainingFiles`
+ * is read directly, with no `planSummaries`-style filter downstream — so
+ * without this check here, an ignored file's content would wrongly count
+ * as "content survives" for an orphaned-heading/link comparison; see
+ * `CheckDeletions.unit.test.ts` for that regression coverage. One shared
+ * definition means a future caller gets the correct (CheckDeletions-shaped)
+ * behavior by default, without needing to know which of the two existing
+ * callers happened to need it.
+ */
+export const readMarkdownCorpus = (
+  dfs: Pick<DocsFsService, 'listFiles' | 'readFile'>,
+  roots: readonly string[],
+  ignore: readonly string[],
+  trackedFiles?: ReadonlySet<string>,
+): Effect.Effect<Map<string, string>> =>
+  Effect.gen(function* () {
+    const all = yield* dfs.listFiles(roots, ignore)
+    const files = new Map<string, string>()
+    for (const file of all) {
+      if (!file.endsWith('.md') || isIgnored(file, ignore, roots)) {
+        continue
+      }
+      if (trackedFiles !== undefined && !trackedFiles.has(file)) {
+        continue
+      }
+      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+      if (content !== null) {
+        files.set(file, content)
+      }
+    }
+    return files
   })
 
 /** Live implementation bound to the Node filesystem. */

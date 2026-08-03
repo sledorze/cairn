@@ -19,7 +19,7 @@ import type { PlanArgs, PlanNode, SummaryPlan } from '../../core/summaries/Summa
 import { isDirSummary, nodeExpectedHash, planSummaries } from '../../core/summaries/SummaryTree.ts'
 import type { MetaLayout } from '../../core/sidecar.ts'
 import { metaRootFor, nodePathForSidecar, sidecarPathFor } from '../../core/sidecar.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, readMarkdownCorpus } from '../../io/DocsFs.ts'
 import type { Locale } from '../locale.ts'
 import { enOnly, pick } from '../locale.ts'
 
@@ -85,6 +85,17 @@ const toPlanArgs = (
   ...(args.thresholdLines === undefined ? {} : { thresholdLines: args.thresholdLines }),
 })
 
+// Thin wrapper over `io/DocsFs.ts`'s shared `readMarkdownCorpus` (extracted,
+// issue #106, after this exact shape turned up hand-duplicated between here
+// and `CheckDeletions.ts`'s own copy). The shared helper's file-level
+// `ignore` re-check is a no-op here specifically — `planSummaries` (below)
+// already filters every node it builds by the same `isIgnored`, so this
+// doesn't change `SummaryPlan`'s output; it matters for `CheckDeletions.ts`,
+// which reads the map directly with no such downstream filter. `SummaryPlan`
+// stays pure/IO-agnostic by design and is widely consumed, so this
+// deliberately does NOT surface `CheckLinks.ts`'s richer, distinct,
+// exit-code-affecting `unreadable` report for the identical unreadable-doc
+// failure mode — a real, scoped-out follow-up, not silently matched.
 const readMarkdown = (
   roots: readonly string[],
   ignore: readonly string[],
@@ -92,35 +103,7 @@ const readMarkdown = (
 ): Effect.Effect<Map<string, string>, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const all = yield* dfs.listFiles(roots, ignore)
-    const files = new Map<string, string>()
-    for (const file of all) {
-      // Issue #48: an untracked doc is invisible to a fresh CI checkout, so a
-      // local run with `onlyGitTracked` on must be too — restricting the file
-      // set BEFORE reading (not filtering the plan afterward) means an
-      // untracked-only directory also never becomes "in scope, needs a
-      // `_SUMMARY.md`" in the first place.
-      if (file.endsWith('.md') && (trackedFiles === undefined || trackedFiles.has(file))) {
-        // Found via adversarial "no unhandled exception" review: a doc that
-        // successfully LISTS but can't actually be READ (permission denied,
-        // revoked between listing and reading) must not crash the whole run
-        // — `dfs.readFile` is `Effect.orDie`-wrapped, so this reaches the
-        // DEFECT channel. Skipped exactly like an untracked/ignored file
-        // already is — the pure planner then reasonably reads it as "not
-        // present" rather than the whole `cairn check` dying over one
-        // unreadable doc. (Narrower than `CheckLinks.ts`'s own fix for the
-        // identical failure mode, which additionally surfaces a distinct,
-        // exit-code-affecting `unreadable` report — deliberately not
-        // replicated here, since `SummaryPlan`'s shape is pure/IO-agnostic
-        // by design and widely consumed; named as a real, scoped-out
-        // follow-up rather than silently matched in richness.)
-        const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
-        if (content !== null) {
-          files.set(file, content)
-        }
-      }
-    }
-    return files
+    return yield* readMarkdownCorpus(dfs, roots, ignore, trackedFiles)
   })
 
 /**
