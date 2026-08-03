@@ -75,9 +75,10 @@ When you create or edit any doc:
 - \`--refs\` (with \`--stamp\`) — tracks the *content* of what a link points to, not
   just whether it resolves: \`--refs --stamp\` records a hash of every reference
   target; a later \`--refs\` run reports any that changed since.
-- \`--prose-refs\` — migration aid: flags a bare-backtick file citation in prose
-  (e.g. a citation with no \`[text](path)\` syntax) whose target has moved or been
-  deleted. Silent for anything that still resolves.
+- \`--prose-refs\` — safe for permanent, ongoing use (not just a one-time migration
+  step): flags a bare-backtick file citation in prose (e.g. a citation with no
+  \`[text](path)\` syntax) whose target has moved or been deleted. Silent for
+  anything that still resolves.
 - \`checks.coverage\` (config only, no CLI flag) — for docs beyond code reference
   (PRDs, specs, decision logs): declares doc **kinds** by path glob and **rules**
   ("every \`feature\` doc must link to a \`decision\` doc"), then reports missing

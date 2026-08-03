@@ -48,9 +48,9 @@ Separation of concerns: pure decisions, IO at the edges.
     `--migrate-stamps` is only an optional named alias, never required).
   - **`links/`**: `CheckLinks` (dead links/anchors/line-anchors, `--fix`), `CheckRefs`
     (opt-in `--refs`: reference content-hash drift, independent of summary stamping),
-    `CheckProseRefs` (opt-in `--prose-refs`, issue #47: migration aid — resolves prose
-    citations rooted at `base`; a resolving one is always silent, only a drifted one is
-    reported, with the link syntax to convert it).
+    `CheckProseRefs` (opt-in `--prose-refs`, issue #47, safe for permanent use per
+    issue #105 — resolves prose citations rooted at `base`; a resolving one is always
+    silent, only a drifted one is reported, with the link syntax to convert it).
   - **`structure/`**: `CheckCoverage` — opt-in (`checks.coverage`'s mere presence)
     missing-coverage/orphan/unmatched-kind reporting over a declared doc-kind graph.
   - **Shared by more than one check**: `JsonReport` (`--json`'s combined shape — only

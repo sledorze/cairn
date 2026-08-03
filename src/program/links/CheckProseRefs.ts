@@ -2,10 +2,12 @@
 // (`` `src/services/auth.ts` ``, no `[text](path)` syntax at all) whose
 // target has ACTUALLY drifted (moved, renamed, or deleted) — never one that
 // still resolves (that's silent, always; see `looksLikeRootedPath`'s own
-// header and issue #47's criterion 1). This is deliberately a migration aid,
-// not a permanent second link checker: the report doesn't just say "broken,"
-// it names the exact `[text](path)` syntax that would make the reference
-// structurally checkable by `CheckLinks.ts` going forward.
+// header and issue #47's criterion 1). Always-silent-unless-drifted is what
+// makes this safe for PERMANENT/ongoing use, not just a one-time migration
+// step (issue #105) — the report doesn't just say "broken," it names the
+// exact `[text](path)` syntax that would make the reference structurally
+// checkable by `CheckLinks.ts` going forward, encouraging (not requiring)
+// conversion to a real link over time.
 //
 // Candidates are resolved rooted at `base` (the repo checkout root) — a bare
 // citation like `src/services/auth.ts` is read the way a person would type

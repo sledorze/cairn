@@ -156,10 +156,11 @@ summary links to every child") — is one-directional and real, not a cycle.
      - [`CheckProseRefs.ts`](../src/program/links/CheckProseRefs.ts) —
        opt-in (`--prose-refs`, issue #47): resolves `core/links/ProseRefs.ts`'s
        candidates rooted at `base`, bounded by the same `isWithinBase`
-       security boundary as `CheckLinks.ts`. A migration aid, not a
-       permanent second checker — a resolving citation is always silent;
-       only a genuinely drifted one is reported, with the exact
-       `[text](path)` syntax that would make it structurally checkable.
+       security boundary as `CheckLinks.ts`. Safe for permanent, ongoing
+       use (issue #105), not just a one-time migration step — a resolving
+       citation is always silent; only a genuinely drifted one is
+       reported, with the exact `[text](path)` syntax that would make it
+       structurally checkable.
    - **[`structure/`](../src/program/structure/)**
      - [`CheckCoverage.ts`](../src/program/structure/CheckCoverage.ts) — the
        first check built on `core/structure/`: opt-in (`checks.coverage`'s

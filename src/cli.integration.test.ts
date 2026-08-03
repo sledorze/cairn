@@ -217,6 +217,17 @@ describe('cli.ts (real subprocess) — every documented flag is exercised by nam
     expect(runCli(p.root, ['check', '--help']).stdout).toContain('checks.coverage')
     expect(runCli(p.root, ['--help']).stdout).toContain('checks.coverage')
   })
+
+  // Issue #105: --prose-refs's help text used to call it a "migration aid,"
+  // discouraging exactly the permanent/ongoing use it was actually safe for
+  // (always silent unless a citation genuinely drifted). Pins the wording
+  // fix so it can't silently regress back to that framing.
+  it('documents --prose-refs as safe for permanent use, not a one-time migration aid (issue #105)', () => {
+    const p = project('cli-prose-refs-wording')
+    const helpText = runCli(p.root, ['check', '--help']).stdout
+    expect(helpText).toContain('--prose-refs')
+    expect(helpText.toLowerCase()).not.toContain('migration aid')
+  })
 })
 
 describe('cli.ts (real subprocess) — flags with no prior CLI-level test coverage', () => {
