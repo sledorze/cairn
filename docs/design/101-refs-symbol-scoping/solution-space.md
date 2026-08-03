@@ -49,7 +49,7 @@ hash; an exported declaration's ADDITION or REMOVAL always does.
 
 **Open question this option does NOT settle** (resolved neither here nor by this design —
 see `implementation-details.md`'s own explicit "not decided speculatively" section and
-`docs/adr/0004`'s "Explicitly NOT decided" list): whether the hash covers just the exported
+`docs/adr/0004-refs-scoped-hashing-granularity.md`'s "Explicitly NOT decided" list): whether the hash covers just the exported
 SIGNATURE (name + type, no body) or the WHOLE exported declaration including its body.
 Signature-only is the narrower, more-precise-sounding framing and is what first comes to
 mind reading the issue's own suggestion — but it would MISS "the exported function's

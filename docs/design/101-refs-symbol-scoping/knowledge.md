@@ -2,8 +2,9 @@
 
 A distilled how-to for whoever (human or agent) picks up Release 1/2/3 from
 `roadmap.md` — the reusable technique this design surfaced, not a restatement of the
-other docs. Read `problem-space.md` → `solution-space.md` → `docs/adr/0004-...` first for
-WHY; this doc is HOW to keep extending it correctly.
+other docs. Read `problem-space.md` → `solution-space.md` →
+`docs/adr/0004-refs-scoped-hashing-granularity.md` first for WHY; this doc is HOW to keep
+extending it correctly.
 
 ## The one invariant every release must preserve
 
@@ -12,7 +13,7 @@ would expect from reading their own config.** Concretely: a target that WOULD ha
 reported drift under `whole-file` must still report drift under `exports-only` if the
 drift touches an exported declaration. The failure mode to fear isn't "too noisy" (that's
 the bug this design fixes) — it's "quietly stopped catching real drift," which is worse and
-harder to notice (mirrors `docs/adr/0002`'s own orphan-scoping discipline: precision errors
+harder to notice (mirrors `docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`'s own orphan-scoping discipline: precision errors
 toward "still catches the real thing"). Any new `unit` value added after this design must
 be checked against this invariant with a real integration test BEFORE it ships, not
 inferred from the implementation looking plausible.

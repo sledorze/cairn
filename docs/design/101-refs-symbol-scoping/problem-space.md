@@ -9,7 +9,7 @@ it." `--refs --stamp` hashes the **entire content** of every reference target a 
 and records it in a `.cairn/refs/**` sidecar; a later `--refs` run recomputes the hash and
 reports a mismatch as `stale`.
 
-`RefRecord` already carries an optional `anchor` field (`src/core/links/RefStore.ts:39`),
+`RefRecord` already carries an optional `anchor` field (`RefStore.ts:39`),
 populated whenever a link includes a `#fragment` — but `stampRefs`/`checkRefs` never
 branch on it. `resolveReferenceContent` (`CheckRefs.ts:83`) reads and hashes the **whole
 target file** regardless of whether the link was `../src/engine.ts` or
@@ -114,7 +114,7 @@ CAN say and what `--refs` currently MEASURES.
 
 1. **Never a false negative that hides a real, relevant drift.** A check nobody trusts is
    worse than a noisy one — trust, once lost to a missed drift, doesn't come back by
-   tightening later. (Mirrors `docs/adr/0002`'s own orphan-scoping discipline: precision
+   tightening later. (Mirrors `docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`'s own orphan-scoping discipline: precision
    errors on the side of "still catches the real thing," never the side of "quietly stops
    catching it.")
 2. **No language-specific parser as a hard dependency for the common case.** Cairn's own

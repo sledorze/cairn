@@ -11,7 +11,7 @@ usable `{target, anchor}` pair through `extractReferences`, or would symbol-scop
 citations (solution-space option A) need new parsing in `core/links/MarkdownLinks.ts`
 first?
 
-**Method:** read `extractReferences`/`parseTarget` (`src/core/links/MarkdownLinks.ts:300`)
+**Method:** read `extractReferences`/`parseTarget` in `src/core/links/MarkdownLinks.ts`
 directly — no code needed to run, the split is a plain `target.split('#')` with no
 Markdown-target-only restriction.
 
