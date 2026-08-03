@@ -143,6 +143,49 @@ describe('check-changeset.sh', () => {
     expect(result.code).toBe(1)
   })
 
+  // Second adversarial review finding: `--diff-filter=A` alone (added-only)
+  // excludes a RENAME — git reports "delete old name, create new name" as a
+  // rename (R) whenever the content is similar enough, not an add, by
+  // default. A legitimate "I renamed my changeset file" edit must still
+  // count as present.
+  it('counts a RENAMED changeset (not just a freshly-added one) as satisfying the requirement', () => {
+    const root = makeRepo()
+    fs.writeFileSync(
+      path.join(root, '.changeset/existing.md'),
+      '---\n---\nPre-existing content, long enough that git detects a rename rather than a delete+add pair when only the filename changes.\n',
+    )
+    runGit(root, 'add', '-A')
+    runGit(root, 'commit', '-q', '-m', 'seed an existing changeset on main')
+    runGit(root, 'checkout', '-q', '-b', 'feature')
+    fs.writeFileSync(path.join(root, 'src/foo.ts'), 'export const x = 2\n')
+    runGit(root, 'mv', '.changeset/existing.md', '.changeset/renamed.md')
+    runGit(root, 'add', '-A')
+    runGit(root, 'commit', '-q', '-m', 'rename the changeset, bump src too')
+    expect(runGit(root, 'diff', '--name-status', 'main', 'HEAD')).toMatch(/^R/m)
+    const result = run(root)
+    expect(result.code).toBe(0)
+  })
+
+  it('falls back to origin/main when origin/HEAD has no symref set locally', () => {
+    const root = makeRepo()
+    const bareRemote = fs.mkdtempSync(path.join(os.tmpdir(), 'check-changeset-remote-'))
+    repos.push(bareRemote)
+    runGit(bareRemote, 'init', '-q', '--bare', '-b', 'main')
+    runGit(root, 'remote', 'add', 'origin', bareRemote)
+    runGit(root, 'push', '-q', 'origin', 'main')
+    // Deliberately no `git remote set-head` — proves the origin/main
+    // fallback itself, not just the origin/HEAD symref path the other
+    // auto-detection test already covers.
+    runGit(root, 'checkout', '-q', '-b', 'feature')
+    fs.writeFileSync(path.join(root, 'src/foo.ts'), 'export const x = 2\n')
+    runGit(root, 'add', '-A')
+    runGit(root, 'commit', '-q', '-m', 'change foo, no changeset')
+    runGit(root, 'push', '-q', '-u', 'origin', 'feature')
+    const result = run(root, '')
+    expect(result.code).toBe(1)
+    expect(result.stdout).toContain('src/foo.ts')
+  })
+
   // Adversarial review's critical finding: `@{u}` (the branch's own
   // remote-tracking ref) is the WRONG default — it compares against wherever
   // this branch was last pushed, not the branch it will merge into, so a

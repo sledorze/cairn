@@ -74,13 +74,16 @@ if [ -z "$USER_FACING" ]; then
   exit 0
 fi
 
-# `--diff-filter=A` (added only), not a plain path match against
-# `--name-only` — the changesets bot's own "Version Packages" PR touches
-# `package.json` (now itself a required path, so this check runs there too)
-# while DELETING every consumed changeset, and `--name-only` lists a
-# deletion the same as an addition; matching either would make deleting a
-# changeset look identical to adding one.
-if git diff --name-only --diff-filter=A "$MERGE_BASE" HEAD | grep -Eq '^\.changeset/[^/]+\.md$'; then
+# `--diff-filter=AR` (added or renamed), not a plain path match against
+# `--name-only` — the changesets bot's own "Version Packages" PR DELETES
+# every consumed changeset, and `--name-only` lists a deletion the same as
+# an addition; matching either would make deleting a changeset look
+# identical to adding one. `R` (not just `A`) matters too — adversarial
+# review found `--diff-filter=A` alone excludes a legitimate "renamed my
+# changeset file" edit (git reports that as a rename, not an add, by
+# default whenever the content is similar enough), which would otherwise
+# make a genuinely-present changeset register as missing.
+if git diff --name-only --diff-filter=AR "$MERGE_BASE" HEAD | grep -Eq '^\.changeset/[^/]+\.md$'; then
   echo "check-changeset: user-facing change(s) found, and a changeset is present. OK."
   exit 0
 fi
