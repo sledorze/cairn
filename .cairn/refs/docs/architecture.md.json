@@ -13,10 +13,6 @@
       "target": "../src/core/summaries/SummaryTree.ts"
     },
     {
-      "hash": "b47e2a71602f963ea26ecbe5f3c0563a8178bb50899d00b4da0525f4541e79b8",
-      "target": "../src/core/summaries/DeletionReport.ts"
-    },
-    {
       "hash": "9f8d79407832f12a715e215c313663b272e9341fe3acbc06457354db89462e34",
       "target": "../src/core/links/MarkdownLinks.ts"
     },
@@ -61,7 +57,7 @@
       "target": "../src/core/glob.ts"
     },
     {
-      "hash": "2367457f2f4a4ccdc2a087bc6039908bc133f36da8f44ee6a10feae07e773d41",
+      "hash": "8f96fa2aa3ccf26a7b677c2c8dee6f387ee8443f78d83aa50b93640f16962b5c",
       "target": "../src/core/paths.ts"
     },
     {
@@ -69,20 +65,16 @@
       "target": "../src/core/Config.ts"
     },
     {
-      "hash": "ac471723251889efe6ce7ac342c4aa5cb2070fae43483ac2e3b9cf28100a0bec",
+      "hash": "d6aa32a42cb21bdb198c2a81ee2f0e50c17f9f483d865aaedf6288cb894dec7b",
       "target": "../src/io/DocsFs.ts"
     },
     {
-      "hash": "c63a6c35a84f754052507d2258ea3038d217cb424a6d52ab1ab221b83ee35ccd",
+      "hash": "aedabc8cd14baf7340272b32959816c0f8fbce634d7aab2f39f014470c097b6c",
       "target": "../src/io/Git.ts"
     },
     {
-      "hash": "fb150588775c6e7a40656f1980a641614cc5b40de8eff0c10b2a8c8cf76e3cd2",
+      "hash": "514b361e5ba63c83cb900991099a0eb2396ab92b9fb25f4cd2fce9bbb88a1e8c",
       "target": "../src/program/summaries/CheckSummaries.ts"
-    },
-    {
-      "hash": "c820084ef07627f37d02113a916e89a017ea5765bbc09691daea51792077459c",
-      "target": "../src/program/summaries/CheckDeletions.ts"
     },
     {
       "hash": "bd7476c34ee8f3b6dbbc6049590504a5577490434725fe9da01ab986ea46fc7e",
@@ -93,7 +85,7 @@
       "target": "../src/program/links/CheckRefs.ts"
     },
     {
-      "hash": "17ee0448e861c6e74f05d38a1cd01e468ee4c210a2f88b577e64ecf73046e8c2",
+      "hash": "7d20936ffe3a00eb7bc1668cbd07c4c243efdb94e663051fa1bf0e7b95f5db6c",
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
@@ -113,7 +105,7 @@
       "target": "../src/config.ts"
     },
     {
-      "hash": "7f16489eb077afa73615215b582ae5755ed5dd3c1bbb76642b751c6bf5ec5fb9",
+      "hash": "8c6cc82f532a957449352899aa126b1202544324e9f1a9a5b9e3066fcb8cfe6d",
       "target": "../src/cli.ts"
     }
   ]

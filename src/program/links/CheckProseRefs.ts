@@ -145,7 +145,7 @@ export const checkProseRefs = ({
 }: CheckProseRefsArgs): Effect.Effect<ProseRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    // `listMarkdownFiles` (io/DocsFs.ts, issue #106 DRY audit) shares the
+    // `listMarkdownFiles` (io/DocsFs.ts, issue #93 DRY audit) shares the
     // filter this used to hand-roll — `readMarkdownCorpus`'s Map isn't
     // used here since `checked` (below) must count every LISTED file, not
     // just the ones that turn out readable (adversarial review: an

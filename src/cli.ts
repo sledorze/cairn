@@ -188,7 +188,7 @@ interface CheckParsed {
 /**
  * Run a `GitFs` list method, falling back to `[]` when git is unavailable
  * or `cwd` isn't a repository — both ordinary, expected situations for a
- * tool that also works outside git entirely. Extracted (issue #106 DRY
+ * tool that also works outside git entirely. Extracted (issue #93 DRY
  * audit) after `gitIgnoredDirs`/`gitWorktreeDirs` below turned up as the
  * exact same "call a GitFs method, swallow to `[]`" shape twice.
  */
@@ -297,7 +297,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
 
   // Every `runCheckPlugin` call site (links/refs/proseRefs/coverage) prints
   // its lines (if any) and folds its exit code into the running `code` the
-  // exact same way — extracted (issue #106 DRY audit) after this shape
+  // exact same way — extracted (issue #93 DRY audit) after this shape
   // turned up identically 4 times. Links additionally captures its own
   // `result` for `--json`'s report, kept as separate glue at that one call
   // site rather than folded in here.

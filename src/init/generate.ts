@@ -87,7 +87,7 @@ const skillFile = (): string =>
  * else append `block` as a new section — never touching the rest of
  * `existing`'s content either way.
  *
- * Extracted (issue #106 DRY audit) after this exact insert-or-replace
+ * Extracted (issue #93 DRY audit) after this exact insert-or-replace
  * shape turned up hand-duplicated between `upsertAgentsBlock` and
  * `upsertClaudeMdImport` below — each still owns its own existence check,
  * seed text for a brand-new file, and (for CLAUDE.md) the extra

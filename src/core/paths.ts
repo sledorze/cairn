@@ -52,9 +52,10 @@ export const relativeToBase = (candidate: string, base: string): string =>
  * logic), correct here because `roots`/`p` are always absolute POSIX paths
  * already, never a `..`-relative string that check exists to disambiguate.
  *
- * Extracted (issue #106's own PR, DRY audit) after this exact one-liner
- * turned up hand-duplicated, verbatim, between `SummaryTree.ts`'s own
- * `inScope` and `CheckDeletions.ts`'s own `inScope` — same risk class as
+ * Extracted (issue #93's own PR, DRY audit) after this exact one-liner
+ * turned up hand-duplicated, verbatim, across `SummaryTree.ts`'s own
+ * `inScope`, `CheckLinks.ts`'s own `inRoots`, and `DocsFs.ts`'s in-memory
+ * test double's equivalent-but-operand-swapped copy — same risk class as
  * `readMarkdownCorpus`'s extraction, just for a much smaller function.
  */
 export const isInScope = (p: string, roots: readonly string[]): boolean =>

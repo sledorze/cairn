@@ -86,16 +86,21 @@ const toPlanArgs = (
 })
 
 // Thin wrapper over `io/DocsFs.ts`'s shared `readMarkdownCorpus` (extracted,
-// issue #106, after this exact shape turned up hand-duplicated between here
-// and `CheckDeletions.ts`'s own copy). The shared helper's file-level
-// `ignore` re-check is a no-op here specifically — `planSummaries` (below)
-// already filters every node it builds by the same `isIgnored`, so this
-// doesn't change `SummaryPlan`'s output; it matters for `CheckDeletions.ts`,
-// which reads the map directly with no such downstream filter. `SummaryPlan`
-// stays pure/IO-agnostic by design and is widely consumed, so this
-// deliberately does NOT surface `CheckLinks.ts`'s richer, distinct,
-// exit-code-affecting `unreadable` report for the identical unreadable-doc
-// failure mode — a real, scoped-out follow-up, not silently matched.
+// issue #93, after this exact shape turned up hand-duplicated across this
+// file's own `readMarkdown`, `CheckRefs.ts`, `CheckProseRefs.ts`, and
+// `CheckCoverage.ts`). The shared helper's file-level `ignore` re-check is
+// a no-op for THIS caller specifically — `planSummaries` (below) already
+// filters every node it builds by the same `isIgnored`, so this doesn't
+// change `SummaryPlan`'s output — but it's a real, previously-missing fix
+// for the other three callers, which read the map/list directly with no
+// such downstream filter (issue #93's own title: this file's prior
+// hand-rolled copy silently skipped the file-level ignore filter, only
+// ever getting the right answer via `planSummaries`' own downstream
+// filtering, not by its own construction). `SummaryPlan` stays pure/
+// IO-agnostic by design and is widely consumed, so this deliberately does
+// NOT surface `CheckLinks.ts`'s richer, distinct, exit-code-affecting
+// `unreadable` report for the identical unreadable-doc failure mode — a
+// real, scoped-out follow-up, not silently matched.
 const readMarkdown = (
   roots: readonly string[],
   ignore: readonly string[],
