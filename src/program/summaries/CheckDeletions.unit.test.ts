@@ -174,6 +174,56 @@ it.layer(
   )
 })
 
+// Issue #106 "best value defaults" audit: every sibling check
+// (CheckSummaries.ts, CheckLinks.ts, CheckRefs.ts, CheckProseRefs.ts,
+// CheckCoverage.ts) narrows its scanned-doc universe to `trackedFiles`
+// when `onlyGitTracked` is on, for CI parity — a fresh checkout never
+// sees an untracked scratch file. `checkDeletions` didn't, which is a
+// real CI-parity gap in the opposite direction from every other check's
+// own bug class: an UNTRACKED scratch doc could make a genuinely-orphaned
+// heading look like it "survives" (via the untracked file), producing a
+// FALSE NEGATIVE that a real CI run (which never sees that file) would
+// not reproduce.
+it.layer(
+  layers(
+    {
+      // Untracked (not in `trackedFiles` below) — a fresh CI checkout
+      // would never see this, so it must NOT count as "surviving"
+      // content once `onlyGitTracked` is respected.
+      '/r/docs/scratch.md': { content: '### Unique Section', mtimeMs: 1 },
+    },
+    ['/r/docs/old.md'],
+    new Map([['/r/docs/old.md', '### Unique Section\n\nSome prose.']]),
+  ),
+)('checkDeletions() — onlyGitTracked / trackedFiles narrowing (CI parity)', (layerIt) => {
+  layerIt.effect(
+    'an untracked scratch doc does not count as "surviving" content when trackedFiles narrows the corpus',
+    () =>
+      Effect.gen(function* () {
+        const result = yield* checkDeletions({
+          base: '/r',
+          ref: 'HEAD',
+          roots: ['/r/docs'],
+          trackedFiles: new Set(), // scratch.md is untracked — excluded
+        })
+        expect(result.findings).toEqual([
+          {
+            orphanedHeadings: ['### Unique Section'],
+            orphanedLinkTargets: [],
+            path: '/r/docs/old.md',
+          },
+        ])
+      }),
+  )
+
+  layerIt.effect('without trackedFiles narrowing (default), the untracked scratch doc masks the same finding', () =>
+    Effect.gen(function* () {
+      const result = yield* checkDeletions({ base: '/r', ref: 'HEAD', roots: ['/r/docs'] })
+      expect(result.findings).toEqual([])
+    }),
+  )
+})
+
 describe('formatDeletionsReport() / deletionsExitCode()', () => {
   it('formatDeletionsReport() reports success when nothing is orphaned', () => {
     const lines = formatDeletionsReport({ checked: 3, findings: [], skipped: [] })

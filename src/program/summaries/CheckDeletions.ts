@@ -43,6 +43,13 @@ export interface CheckDeletionsArgs {
    * including already-committed ones. */
   readonly ref?: string
   readonly roots: readonly string[]
+  /** Issue #48 CI parity, same as every sibling check (CheckSummaries.ts,
+   * CheckLinks.ts, CheckRefs.ts, CheckProseRefs.ts, CheckCoverage.ts): when
+   * `onlyGitTracked` is on, narrows the REMAINING corpus to tracked/staged
+   * paths only. Without this, an untracked scratch doc could make a
+   * genuinely-orphaned heading look like it "survives" — a false negative
+   * a real CI checkout (which never sees that file) wouldn't reproduce. */
+  readonly trackedFiles?: ReadonlySet<string>
 }
 
 export interface DeletionsResult {
@@ -71,6 +78,7 @@ const inScope = (p: string, roots: readonly string[]): boolean => roots.some((r)
 const readMarkdownCorpus = (
   roots: readonly string[],
   ignore: readonly string[],
+  trackedFiles: ReadonlySet<string> | undefined,
 ): Effect.Effect<Map<string, string>, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
@@ -78,6 +86,9 @@ const readMarkdownCorpus = (
     const files = new Map<string, string>()
     for (const file of all) {
       if (!file.endsWith('.md') || isIgnored(file, ignore, roots)) {
+        continue
+      }
+      if (trackedFiles !== undefined && !trackedFiles.has(file)) {
         continue
       }
       const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
@@ -94,10 +105,11 @@ export const checkDeletions = ({
   naming = DEFAULT_NAMING,
   ref = 'HEAD',
   roots,
+  trackedFiles,
 }: CheckDeletionsArgs): Effect.Effect<DeletionsResult, GitUnavailableError, DocsFs | GitFs> =>
   Effect.gen(function* () {
     const gitFs = yield* GitFs
-    const remainingFiles = yield* readMarkdownCorpus(roots, ignore)
+    const remainingFiles = yield* readMarkdownCorpus(roots, ignore, trackedFiles)
     const deletedPaths = yield* gitFs.listDeletedSince(base, ref)
 
     // Excludes summary artifacts (`.summary.md`/`_SUMMARY.md`) themselves —

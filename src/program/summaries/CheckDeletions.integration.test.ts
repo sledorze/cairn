@@ -7,7 +7,7 @@ import { Effect, Layer } from 'effect'
 import { afterEach } from 'vitest'
 
 import { DocsFsLive } from '../../io/DocsFs.ts'
-import { GitFsLive } from '../../io/Git.ts'
+import { GitFs, GitFsLive } from '../../io/Git.ts'
 import type { TempProject } from '../../testSupport/tempProject.ts'
 import { makeTempProject } from '../../testSupport/tempProject.ts'
 import { runGit as git } from '../../testSupport/testGit.ts'
@@ -133,5 +133,51 @@ it.layer(CheckDeletionsLive)('checkDeletions() against a real git repository', (
       ])
       expect(result.skipped).toEqual([old2Abs])
     }),
+  )
+
+  // Issue #106 "best value defaults" audit: `onlyGitTracked` CI parity,
+  // matching every sibling check (CheckSummaries.ts etc.) — a real,
+  // untracked scratch doc in the REMAINING corpus must not mask a
+  // genuinely-orphaned heading once `trackedFiles` narrows the scan,
+  // exactly the false negative a fresh CI checkout would never reproduce
+  // (an untracked file simply isn't there).
+  layerIt.effect(
+    'onlyGitTracked (trackedFiles) excludes an untracked scratch doc from the remaining corpus, unmasking the real finding',
+    () =>
+      Effect.gen(function* () {
+        const p = project('deletions-tracked-files', {
+          'docs/old.md': '### Unique Section\n\nOnly description of this feature anywhere.',
+        })
+        git(p.root, 'init', '-q')
+        git(p.root, 'config', 'user.email', 'test@example.com')
+        git(p.root, 'config', 'user.name', 'Test')
+        git(p.root, 'add', '.')
+        git(p.root, 'commit', '-q', '-m', 'initial')
+        fs.rmSync(path.join(p.root, 'docs', 'old.md'))
+
+        // Untracked — never `git add`-ed. Would otherwise coincidentally
+        // "carry" the same heading and mask the real finding.
+        fs.writeFileSync(path.join(p.root, 'docs', 'scratch.md'), '### Unique Section')
+
+        const gitFs = yield* GitFs
+        const trackedFiles = yield* gitFs.listTrackedFiles(p.root)
+
+        const withoutTracking = yield* checkDeletions({ base: p.root, ref: 'HEAD', roots: [path.join(p.root, 'docs')] })
+        expect(withoutTracking.findings).toEqual([])
+
+        const withTracking = yield* checkDeletions({
+          base: p.root,
+          ref: 'HEAD',
+          roots: [path.join(p.root, 'docs')],
+          trackedFiles,
+        })
+        expect(withTracking.findings).toEqual([
+          {
+            orphanedHeadings: ['### Unique Section'],
+            orphanedLinkTargets: [],
+            path: path.join(p.root, 'docs', 'old.md'),
+          },
+        ])
+      }),
   )
 })

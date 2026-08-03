@@ -449,6 +449,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
       naming: config.naming,
       ref: Option.getOrElse(parsed.deletionsSince, () => 'HEAD'),
       roots: absRoots,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
     }).pipe(
       Effect.map((result) => ({ error: null, result })),
       Effect.catch((error) => Effect.succeed({ error, result: null })),
