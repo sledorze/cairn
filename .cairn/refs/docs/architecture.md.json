@@ -13,6 +13,10 @@
       "target": "../src/core/summaries/SummaryTree.ts"
     },
     {
+      "hash": "b47e2a71602f963ea26ecbe5f3c0563a8178bb50899d00b4da0525f4541e79b8",
+      "target": "../src/core/summaries/DeletionReport.ts"
+    },
+    {
       "hash": "9f8d79407832f12a715e215c313663b272e9341fe3acbc06457354db89462e34",
       "target": "../src/core/links/MarkdownLinks.ts"
     },
@@ -57,7 +61,7 @@
       "target": "../src/core/glob.ts"
     },
     {
-      "hash": "8f96fa2aa3ccf26a7b677c2c8dee6f387ee8443f78d83aa50b93640f16962b5c",
+      "hash": "6c08dbc48babe8f3a585e53360512fc92b8fa700f005786b1d04d396e91379cc",
       "target": "../src/core/paths.ts"
     },
     {
@@ -65,16 +69,20 @@
       "target": "../src/core/Config.ts"
     },
     {
-      "hash": "d6aa32a42cb21bdb198c2a81ee2f0e50c17f9f483d865aaedf6288cb894dec7b",
+      "hash": "dd3f938ee16a56d75e161a800edc4228f3e5972fe541dcb6638517aafd93c681",
       "target": "../src/io/DocsFs.ts"
     },
     {
-      "hash": "aedabc8cd14baf7340272b32959816c0f8fbce634d7aab2f39f014470c097b6c",
+      "hash": "c63a6c35a84f754052507d2258ea3038d217cb424a6d52ab1ab221b83ee35ccd",
       "target": "../src/io/Git.ts"
     },
     {
       "hash": "514b361e5ba63c83cb900991099a0eb2396ab92b9fb25f4cd2fce9bbb88a1e8c",
       "target": "../src/program/summaries/CheckSummaries.ts"
+    },
+    {
+      "hash": "c820084ef07627f37d02113a916e89a017ea5765bbc09691daea51792077459c",
+      "target": "../src/program/summaries/CheckDeletions.ts"
     },
     {
       "hash": "bd7476c34ee8f3b6dbbc6049590504a5577490434725fe9da01ab986ea46fc7e",
@@ -105,7 +113,7 @@
       "target": "../src/config.ts"
     },
     {
-      "hash": "8c6cc82f532a957449352899aa126b1202544324e9f1a9a5b9e3066fcb8cfe6d",
+      "hash": "f2d36b23e36361727f16ed070ec6ed94f0fdda5c89fb997088c6d351663846bc",
       "target": "../src/cli.ts"
     }
   ]

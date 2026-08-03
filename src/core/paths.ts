@@ -54,9 +54,10 @@ export const relativeToBase = (candidate: string, base: string): string =>
  *
  * Extracted (issue #93's own PR, DRY audit) after this exact one-liner
  * turned up hand-duplicated, verbatim, across `SummaryTree.ts`'s own
- * `inScope`, `CheckLinks.ts`'s own `inRoots`, and `DocsFs.ts`'s in-memory
- * test double's equivalent-but-operand-swapped copy — same risk class as
- * `readMarkdownCorpus`'s extraction, just for a much smaller function.
+ * `inScope`, `CheckLinks.ts`'s own `inRoots`, `DocsFs.ts`'s in-memory test
+ * double's equivalent-but-operand-swapped copy, and (once issue #106's PR
+ * merged to `main`) `CheckDeletions.ts`'s own `inScope` — same risk class
+ * as `readMarkdownCorpus`'s extraction, just for a much smaller function.
  */
 export const isInScope = (p: string, roots: readonly string[]): boolean =>
   roots.some((r) => p === r || p.startsWith(`${r}/`))

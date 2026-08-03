@@ -26,8 +26,8 @@ import { findDeletedDocContent } from '../../core/summaries/DeletionReport.ts'
 import { DEFAULT_NAMING, isSummaryFile } from '../../core/summaries/DocSummaries.ts'
 import type { Naming } from '../../core/summaries/DocSummaries.ts'
 import { isDirSummary } from '../../core/summaries/SummaryTree.ts'
-import { isIgnored } from '../../core/paths.ts'
-import { DocsFs } from '../../io/DocsFs.ts'
+import { isIgnored, isInScope } from '../../core/paths.ts'
+import { DocsFs, readMarkdownCorpus } from '../../io/DocsFs.ts'
 import type { GitUnavailableError } from '../../io/Git.ts'
 import { GitFs } from '../../io/Git.ts'
 import type { Locale } from '../locale.ts'
@@ -73,32 +73,6 @@ export interface DeletionsResult {
 /** Always 0 — informational only, by design (see this module's own header). */
 export const deletionsExitCode = (_result: DeletionsResult): number => 0
 
-const inScope = (p: string, roots: readonly string[]): boolean => roots.some((r) => p === r || p.startsWith(`${r}/`))
-
-const readMarkdownCorpus = (
-  roots: readonly string[],
-  ignore: readonly string[],
-  trackedFiles: ReadonlySet<string> | undefined,
-): Effect.Effect<Map<string, string>, never, DocsFs> =>
-  Effect.gen(function* () {
-    const dfs = yield* DocsFs
-    const all = yield* dfs.listFiles(roots, ignore)
-    const files = new Map<string, string>()
-    for (const file of all) {
-      if (!file.endsWith('.md') || isIgnored(file, ignore, roots)) {
-        continue
-      }
-      if (trackedFiles !== undefined && !trackedFiles.has(file)) {
-        continue
-      }
-      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
-      if (content !== null) {
-        files.set(file, content)
-      }
-    }
-    return files
-  })
-
 export const checkDeletions = ({
   base,
   ignore = [],
@@ -108,8 +82,9 @@ export const checkDeletions = ({
   trackedFiles,
 }: CheckDeletionsArgs): Effect.Effect<DeletionsResult, GitUnavailableError, DocsFs | GitFs> =>
   Effect.gen(function* () {
+    const dfs = yield* DocsFs
     const gitFs = yield* GitFs
-    const remainingFiles = yield* readMarkdownCorpus(roots, ignore, trackedFiles)
+    const remainingFiles = yield* readMarkdownCorpus(dfs, roots, ignore, trackedFiles)
     const deletedPaths = yield* gitFs.listDeletedSince(base, ref)
 
     // Excludes summary artifacts (`.summary.md`/`_SUMMARY.md`) themselves —
@@ -125,7 +100,7 @@ export const checkDeletions = ({
     const inScopeDeleted = deletedPaths.filter(
       (p) =>
         p.endsWith('.md') &&
-        inScope(p, roots) &&
+        isInScope(p, roots) &&
         !isIgnored(p, ignore, roots) &&
         !isSummaryFile(p, naming) &&
         !isDirSummary(p, naming),

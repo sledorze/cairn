@@ -146,6 +146,38 @@ it.layer(
   },
 )
 
+// Issue #93 DRY audit: `readMarkdownCorpus` (io/DocsFs.ts, shared with
+// CheckSummaries.ts/CheckRefs.ts/CheckProseRefs.ts/CheckCoverage.ts)
+// re-checks `ignore` at the file level (issue #102's fix) when building
+// `remainingFiles` — necessary here specifically, unlike for
+// CheckSummaries.ts, since nothing downstream re-filters this map. A bare
+// filename pattern with no leading `**/`/no `/` at all only matches a file
+// directly, never a directory ancestor, so `dfs.listFiles`'s own
+// directory-based ignore pruning can't be the one doing the work here.
+it.layer(
+  layers(
+    { '/r/docs/SKIP.md': { content: '### Unique Section\n\nOnly here, but ignored.', mtimeMs: 1 } },
+    ['/r/docs/old.md'],
+    new Map([['/r/docs/old.md', '### Unique Section\n\nSame heading, ignored doc must not count as survival.']]),
+  ),
+)(
+  'checkDeletions() — an ignored remaining file (bare filename pattern) does not count as "content survives"',
+  (layerIt) => {
+    layerIt.effect('still reports the deleted content as orphaned', () =>
+      Effect.gen(function* () {
+        const result = yield* checkDeletions({ base: '/r', ignore: ['SKIP.md'], ref: 'HEAD', roots: ['/r/docs'] })
+        expect(result.findings).toEqual([
+          {
+            orphanedHeadings: ['### Unique Section'],
+            orphanedLinkTargets: [],
+            path: '/r/docs/old.md',
+          },
+        ])
+      }),
+    )
+  },
+)
+
 it.layer(layers({}, new GitUnavailableError({ base: '/r', message: 'boom' })))(
   'checkDeletions() — git unavailable',
   (layerIt) => {

@@ -93,9 +93,12 @@ export const isSafelyWithinBase = (
  * Extracted (issue #93's own PR, DRY audit) after this exact filter turned
  * up hand-duplicated, verbatim, across `CheckSummaries.ts`'s own
  * `readMarkdown`, `CheckRefs.ts`'s own `listMdFiles`, `CheckProseRefs.ts`'s
- * inline filter, and `CheckCoverage.ts`'s own `listMdFiles` — four
- * independent copies of the same "list files, filter by `.md`/`ignore`/
- * `trackedFiles`" logic, already existing to drift apart.
+ * inline filter, `CheckCoverage.ts`'s own `listMdFiles`, and
+ * `CheckDeletions.ts`'s own `readMarkdownCorpus` (issue #106's PR, merged
+ * to `main` in the meantime — migrated onto this shared definition too,
+ * closing the loop rather than leaving a fifth copy the moment it landed)
+ * — five independent copies of the same "list files, filter by `.md`/
+ * `ignore`/`trackedFiles`" logic, already existing to drift apart.
  */
 export const listMarkdownFiles = (
   dfs: Pick<DocsFsService, 'listFiles'>,
@@ -120,16 +123,20 @@ export const listMarkdownFiles = (
  *
  * Built directly on `listMarkdownFiles` above — its file-level `isIgnored`
  * re-check is genuinely load-bearing for `CheckRefs.ts`/`CheckProseRefs.ts`/
- * `CheckCoverage.ts` (each reads the resulting map/list directly, with no
- * downstream filter of its own), and is the actual fix for the second half
- * of issue #93's own title: `CheckSummaries.ts`'s prior hand-rolled copy
- * silently lacked this re-check, only ever producing the right answer by
- * coincidence — `SummaryTree.ts`'s `planSummaries` happens to apply the
- * same `isIgnored` filter again downstream when building its plan (see
- * `SummaryTree.unit.test.ts`'s own root-relative-ignore coverage) — but
- * nothing guaranteed that would keep holding for a future change to either
- * side. One shared definition means every caller gets the correct behavior
- * by construction, not by coincidence.
+ * `CheckCoverage.ts`/`CheckDeletions.ts` (each reads the resulting map
+ * directly, with no downstream filter of its own — `CheckDeletions.ts`'s
+ * own `remainingFiles` in particular: an ignored file's content wrongly
+ * counting as "content survives" for its orphaned-heading/link comparison
+ * would be a real false negative, not just cosmetic), and is the actual
+ * fix for the second half of issue #93's own title: `CheckSummaries.ts`'s
+ * prior hand-rolled copy silently lacked this re-check, only ever
+ * producing the right answer by coincidence — `SummaryTree.ts`'s
+ * `planSummaries` happens to apply the same `isIgnored` filter again
+ * downstream when building its plan (see `SummaryTree.unit.test.ts`'s own
+ * root-relative-ignore coverage) — but nothing guaranteed that would keep
+ * holding for a future change to either side. One shared definition means
+ * every caller gets the correct behavior by construction, not by
+ * coincidence.
  */
 export const readMarkdownCorpus = (
   dfs: Pick<DocsFsService, 'listFiles' | 'readFile'>,
