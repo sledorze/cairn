@@ -4,6 +4,8 @@
 
 import * as nodePath from 'node:path'
 
+import { matchesAny } from './glob.ts'
+
 const path = nodePath.posix
 
 /** Convert an OS path to POSIX form (`\` -> `/`). */
@@ -43,3 +45,28 @@ export const isWithinBase = (candidate: string, base: string): boolean => {
  */
 export const relativeToBase = (candidate: string, base: string): string =>
   isWithinBase(candidate, base) ? toPosix(path.relative(base, candidate)) : toPosix(candidate)
+
+/**
+ * True when `candidate` (absolute) matches any of `ignore`'s glob patterns —
+ * tested both as its absolute POSIX path (the pre-existing contract: a
+ * pattern that IS the absolute path, or is `**`-prefixed so it can absorb
+ * one, already worked) and, additionally, relative to whichever of `roots`
+ * actually contains it (the issue #102 fix: a pattern with no leading `**`
+ * segment, the form anyone writes for a top-level file or directory — e.g.
+ * `docs/SKIP.md` — is authored root-relative and previously could never
+ * match an absolute path at all). Every call site across the checkers that
+ * filters a scanned file against `ignore` shares this exact match rule, so
+ * it lives here once rather than re-deriving `matchesAny(f, ignore)`
+ * against an absolute path at each site.
+ */
+export const isIgnored = (candidate: string, ignore: readonly string[], roots: readonly string[]): boolean => {
+  if (ignore.length === 0) {
+    return false
+  }
+  const absPosix = toPosix(candidate)
+  if (matchesAny(absPosix, ignore)) {
+    return true
+  }
+  const root = roots.find((r) => isWithinBase(candidate, r))
+  return root !== undefined && matchesAny(relativeToBase(candidate, root), ignore)
+}

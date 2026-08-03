@@ -34,6 +34,7 @@ import { Effect } from 'effect'
 import type { CoverageRule, KindDef } from '../../core/Config.ts'
 import { isKindTarget } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
+import { isIgnored } from '../../core/paths.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
@@ -94,7 +95,7 @@ const listMdFiles = (
     const dfs = yield* DocsFs
     const allFiles = yield* dfs.listFiles(roots, ignore)
     return allFiles.filter(
-      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
+      (f) => f.endsWith('.md') && !isIgnored(f, ignore, roots) && (trackedFiles === undefined || trackedFiles.has(f)),
     )
   })
 
