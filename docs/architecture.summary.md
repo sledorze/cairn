@@ -11,7 +11,10 @@ Separation of concerns: pure decisions, IO at the edges.
   - **`summaries/`**: `DocSummaries` (line-count/classify; legacy stamp helpers kept for
     migration only), `StampStore` (`StampRecord` shape + lenient (de)serialisation),
     `SummaryTree` (hierarchical planner + manifest hashes compared against an
-    externally-supplied `stamps` map + deleted-source detection + order).
+    externally-supplied `stamps` map + deleted-source detection + order),
+    `DeletionReport` (opt-in `--report-deletions`, issue #106: given a deleted doc's
+    last content + the current corpus, which headings/link targets survive nowhere
+    else — informational only).
   - **`links/`**: `MarkdownLinks` (extract/check/fix/references), `Anchors`
     (heading/HTML-anchor extraction + slugging, line-anchor validation, exact-case-insensitive
     anchor-fix suggestions — issue #49, deliberately not fuzzy), `markdownFences`
@@ -32,11 +35,12 @@ Separation of concerns: pure decisions, IO at the edges.
     (schema/decode/`extends` merge/defaults — depends on `summaries/DocSummaries` for the
     configurable `Naming` type; also owns `Locale`, since `core/` can't depend on `program/`).
 - **`io/`**: `DocsFs` (Effect service — `DocsFsLive` (Node) + `makeTestDocsFs` in-memory) and
-  `Git` (`onlyGitTracked`'s real `git ls-files` capability, plus gitignore/worktree
-  pruning — `GitFsLive` + `makeTestGitFs`, `GitUnavailableError` its one named failure
-  mode; shells out via `effect`'s own `ChildProcess`/`ChildProcessSpawner`, requiring the
-  Node platform layer like `DocsFsLive` does, never baked in; every call scrubs
-  repository-pinning env vars and sets `GIT_CEILING_DIRECTORIES`, `gitEnv.ts`).
+  `Git` (`onlyGitTracked`'s real `git ls-files` capability, gitignore/worktree pruning,
+  plus issue #106's `listDeletedSince`/`readFileAtRef` (`git diff --diff-filter=D`/
+  `show <ref>:<path>`) — `GitFsLive` + `makeTestGitFs`, `GitUnavailableError` its one named
+  failure mode; shells out via `effect`'s own `ChildProcess`/`ChildProcessSpawner`,
+  requiring the Node platform layer like `DocsFsLive` does, never baked in; every call
+  scrubs repository-pinning env vars and sets `GIT_CEILING_DIRECTORIES`, `gitEnv.ts`).
 - **`program/`**, same two-subdomain split, plus a `checks/` abstraction (docs/adr/0003):
   - **`checks/`**: the `CheckPlugin` interface (`isEnabled`/`run`/`format`/`exitCode`,
     optional `jsonUnsupportedMessage`/`stamp`) and its generic runner
@@ -45,7 +49,9 @@ Separation of concerns: pure decisions, IO at the edges.
     hand-wired (four CLI verbs — check/stamp/prune/migrate-stamps — don't fit the shape).
   - **`summaries/`**: `CheckSummaries` (reads/writes the `.cairn/**` sidecar tree;
     `stampFiles` self-heals a legacy in-content stamp on every ordinary `--stamp`, so
-    `--migrate-stamps` is only an optional named alias, never required).
+    `--migrate-stamps` is only an optional named alias, never required), `CheckDeletions`
+    (opt-in `--report-deletions`, issue #106 — hand-wired, not a `CheckPlugin`, since it
+    needs live `GitFs`; `deletionsExitCode` always 0).
   - **`links/`**: `CheckLinks` (dead links/anchors/line-anchors, `--fix`), `CheckRefs`
     (opt-in `--refs`: reference content-hash drift, independent of summary stamping),
     `CheckProseRefs` (opt-in `--prose-refs`, issue #47, safe for permanent use per

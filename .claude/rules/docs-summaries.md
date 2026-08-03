@@ -86,5 +86,11 @@ When you create or edit any doc:
   zero broken links and still have unrelated feature/decision docs that were never
   actually connected. Worth checking for if you're asked to organize product
   knowledge, not just code docs.
+- `--report-deletions` (with `--deletions-since <ref>`, default `HEAD`) —
+  informational only, never affects exit code: when a doc has disappeared since
+  that ref, reports which of its headings/outbound links appear in NO remaining
+  doc — a lossy deletion or consolidation the checks above can't see, since
+  everything that remains stays internally consistent. Worth running before
+  deleting a doc you believe is pure duplication.
 
 You author the prose. The tool only verifies and stamps — and it never touches your prose to do it.

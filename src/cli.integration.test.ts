@@ -45,6 +45,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { TempProject } from './testSupport/tempProject.ts'
 import { makeTempProject } from './testSupport/tempProject.ts'
+import { runGit } from './testSupport/testGit.ts'
 
 const CLI = path.join(import.meta.dirname, 'cli.ts')
 const TSX = path.join(import.meta.dirname, '..', 'node_modules', '.bin', 'tsx')
@@ -97,6 +98,19 @@ describe('cli.ts (real subprocess) — --json incompatibility gate', () => {
     const result = runCli(p.root, ['check', '--json', '--prose-refs'])
     expect(result.exitCode).toBe(1)
     expect(JSON.parse(result.stdout)).toEqual({ error: '--json cannot be combined with --prose-refs yet' })
+  })
+
+  // Issue #106: --report-deletions isn't part of the CheckPlugin registry
+  // (it needs live GitFs, which the registry deliberately keeps out), so
+  // its --json guard is a hand-written `if`, not the generic
+  // `rejectedJsonMessage` mechanism the three tests above share — this is
+  // its own, previously-untested code path (the only prior verification
+  // was a human/agent reading cli.ts, never actually executed).
+  it('rejects --json --report-deletions with a clear message, before running anything', () => {
+    const p = project('cli-json-report-deletions', { 'docs/index.md': '# Index\n\nShort.\n' })
+    const result = runCli(p.root, ['check', '--json', '--report-deletions'])
+    expect(result.exitCode).toBe(1)
+    expect(JSON.parse(result.stdout)).toEqual({ error: '--json cannot be combined with --report-deletions' })
   })
 
   it('rejects --json when checks.coverage is configured, even without any coverage-specific flag', () => {
@@ -266,6 +280,144 @@ describe('cli.ts (real subprocess) — flags with no prior CLI-level test covera
     const result = runCli(p.root, ['check', '--prune'])
     expect(result.stdout).toContain('removed 1 orphan summary')
     expect(fs.existsSync(path.join(p.root, 'docs/a.summary.md'))).toBeFalsy()
+  })
+
+  // Issue #106: --report-deletions needs a REAL git repo (it compares the
+  // working tree against a ref) — `project()`'s temp dir isn't one on its
+  // own, so this git-inits it directly, matching Git.integration.test.ts's
+  // own real-git fixture convention.
+  it("--report-deletions reports a deleted doc's orphaned heading, and never affects the exit code", () => {
+    const p = project('cli-report-deletions', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/kept.md': '# Kept\n\nUnrelated content.\n',
+      'docs/old.md': '# Old\n\n### Unique Section\n\nOnly description of this feature anywhere.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+    fs.rmSync(path.join(p.root, 'docs/old.md'))
+
+    const result = runCli(p.root, ['check', '--report-deletions', '--links-only'])
+    expect(result.stdout).toContain('docs/old.md')
+    expect(result.stdout).toContain('### Unique Section')
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('--deletions-since compares against an explicit ref, catching an already-committed deletion', () => {
+    const p = project('cli-deletions-since', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/old.md': '# Old\n\n### Unique Section\n\nOnly description of this feature anywhere.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+    const baseSha = runGit(p.root, 'rev-parse', 'HEAD').trim()
+    fs.rmSync(path.join(p.root, 'docs/old.md'))
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'delete old.md')
+
+    // Against HEAD (the default), the deletion is already committed — nothing to compare.
+    const againstHead = runCli(p.root, ['check', '--report-deletions', '--links-only'])
+    expect(againstHead.stdout).not.toContain('### Unique Section')
+
+    // Against the base commit (before the deletion), it's caught.
+    const againstBase = runCli(p.root, ['check', '--report-deletions', '--deletions-since', baseSha, '--links-only'])
+    expect(againstBase.stdout).toContain('### Unique Section')
+  })
+
+  // Issue #106 "best value defaults" audit: an unresolvable `--deletions-since`
+  // ref (the single most likely real-world failure mode of this flag — a
+  // shallow CI checkout that never fetched the base branch) must not be
+  // mislabeled "git unavailable," which falsely implies git itself is
+  // broken when it's the REF that doesn't exist. Previously untested via
+  // real subprocess at all.
+  it('--deletions-since with an unresolvable ref is skipped with a message naming the real cause, not "git unavailable"', () => {
+    const p = project('cli-deletions-since-bad-ref', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': '# A\n\nShort.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+
+    const result = runCli(p.root, ['check', '--report-deletions', '--deletions-since', 'totally-bogus-ref'])
+    expect(result.exitCode).toBe(0) // links/summaries pass; --report-deletions is informational only
+    expect(result.stdout).toContain('--report-deletions skipped:')
+    expect(result.stdout).not.toContain('git unavailable')
+    expect(result.stdout).toContain('totally-bogus-ref')
+  })
+
+  // Issue #106 "best value defaults" audit, round 6: every OTHER real
+  // report string in this file has a matching `--locale fr` real-subprocess
+  // proof (see the "--locale fr switches real report output" test below) —
+  // the --report-deletions skip warning (a cli.ts-level string, not
+  // formatDeletionsReport's own — that one's fr branch is separately unit-
+  // tested in CheckDeletions.unit.test.ts) had none.
+  it('--report-deletions skip warning localises to French too', () => {
+    const p = project('cli-deletions-since-bad-ref-fr', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': '# A\n\nShort.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+
+    const result = runCli(p.root, [
+      'check',
+      '--locale',
+      'fr',
+      '--report-deletions',
+      '--deletions-since',
+      'totally-bogus-ref',
+    ])
+    expect(result.stdout).toContain('--report-deletions ignoré :')
+    expect(result.stdout).not.toContain('git indisponible')
+  })
+
+  // Issue #106 "best value defaults" audit, round 5: --fix physically
+  // rewrites doc content BEFORE --report-deletions used to re-read the
+  // corpus — an unrelated doc's broken link, once --fix repairs it to
+  // coincidentally point at the SAME target a deleted doc used to link
+  // to, silently counted as "surviving," under-reporting a real orphaned
+  // link target. --report-deletions must now report the SAME finding
+  // whether or not --fix ran alongside it in the same invocation.
+  it('--report-deletions reports the same finding whether or not --fix ran in the same invocation', () => {
+    const p = project('cli-report-deletions-fix-interaction', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/deleted.md': '# Deleted\n\n[guide](sub/guide.md)\n',
+      // An unrelated, unambiguous --fix candidate: same basename, wrong
+      // relative path — --fix will repair it to point at sub/guide.md,
+      // the exact target docs/deleted.md (about to be removed) used.
+      'docs/keeper.md': '# Keeper\n\n[guide](guide.md)\n',
+      'docs/sub/guide.md': '# Guide\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+    fs.rmSync(path.join(p.root, 'docs/deleted.md'))
+
+    const withoutFix = runCli(p.root, ['check', '--report-deletions', '--deletions-since', 'HEAD', '--links-only'])
+    expect(withoutFix.stdout).toContain('link target nowhere else')
+
+    const withFix = runCli(p.root, [
+      'check',
+      '--fix',
+      '--report-deletions',
+      '--deletions-since',
+      'HEAD',
+      '--links-only',
+    ])
+    expect(withFix.stdout).toContain('link target nowhere else')
   })
 
   it('--config points at an explicit config file instead of the default lookup', () => {

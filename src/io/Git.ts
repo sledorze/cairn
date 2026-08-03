@@ -80,6 +80,36 @@ export interface GitFsService {
    * feed the same `ignore`-pruning path in `DocsFs.listFiles`.
    */
   readonly listWorktreeDirs: (base: string) => Effect.Effect<readonly string[], GitUnavailableError>
+  /**
+   * Every path present at `ref` that's gone from the CURRENT working tree
+   * (`git diff --name-status --diff-filter=D -z <ref>`, one-sided — `ref`
+   * compared against the worktree, staged or not, exactly like `git diff
+   * <ref>` on its own) — issue #106's actual detection surface. Comparing
+   * against `HEAD` catches an uncommitted `rm`, run as a pre-commit hook;
+   * comparing against a PR's base branch (e.g. `origin/main`) catches every
+   * deletion the PR itself introduces, including ones already committed —
+   * the real reported scenario ("deleted a doc, only noticed hours later").
+   * Returns absolute, POSIX-normalised paths.
+   */
+  readonly listDeletedSince: (base: string, ref: string) => Effect.Effect<readonly string[], GitUnavailableError>
+  /**
+   * `git show <ref>:<path>` — the content `path` (absolute, resolved
+   * relative to `base`) carried at `ref` (issue #106: reading a deleted
+   * doc's last-known content so `--report-deletions` has something to
+   * extract headings/links from). Meant to be called only for a path
+   * `listDeletedSince` already reported present at that exact `ref` — by
+   * that method's own diff-based contract, such a path always genuinely
+   * existed there, so a failure here is a real problem (a corrupt object,
+   * an invalid `ref`), not a benign absence. Propagates `GitUnavailableError`
+   * rather than swallowing it into `null` — a caller-supplied `ref` (e.g.
+   * `--deletions-since` from CI config) failing silently would be exactly
+   * the "believe it's working when it isn't" failure mode `onlyGitTracked`'s
+   * own `GitUnavailableError` contract elsewhere in this file exists to
+   * prevent (found via adversarial review: the original `null`-on-any-
+   * failure version conflated "not at this ref" with a genuinely corrupt
+   * git object, confirmed by reproducing the latter directly).
+   */
+  readonly readFileAtRef: (base: string, ref: string, absPath: string) => Effect.Effect<string, GitUnavailableError>
 }
 
 export class GitFs extends Context.Service<GitFs, GitFsService>()('GitFs') {}
@@ -156,6 +186,34 @@ export const GitFsLive = Layer.effect(
     const realpathOrSelf = (p: string): Effect.Effect<string> =>
       fs.realPath(p).pipe(Effect.catch(() => Effect.succeed(p)))
     return GitFs.of({
+      listDeletedSince: (base, ref) =>
+        Effect.provideService(
+          // `--` disambiguates `ref` from a pathspec — without it, a `ref`
+          // that ISN'T a valid revision but happens to match a real path in
+          // the repo is silently reinterpreted by git as a path filter
+          // (scoped worktree-vs-index diff) instead of erroring, exactly
+          // the kind of silent wrong-thing this repo's own `onlyGitTracked`
+          // philosophy (never a quiet fallback) exists to prevent.
+          // Confirmed by reproducing it directly in a scratch repo.
+          runGit(base, ['diff', '--name-status', '--diff-filter=D', '-z', ref, '--']),
+          ChildProcessSpawner.ChildProcessSpawner,
+          spawner,
+        ).pipe(
+          Effect.map((stdout) => {
+            // `-z`-terminated pairs: "D\0<path>\0D\0<path2>\0..." — every
+            // entry here is already filtered to `D` (deleted) by
+            // `--diff-filter=D`, so every second element (odd index) is a
+            // deleted path; the interleaved status letters (index 0, 2, 4…)
+            // are dropped. `--name-status -z`'s pairing is a fixed git
+            // format guarantee, not something to defensively re-validate.
+            const entries = stdout.split('\0').filter((entry) => entry.length > 0)
+            const paths: string[] = []
+            for (let i = 1; i < entries.length; i += 2) {
+              paths.push(toAbsPosix(base, entries[i] as string))
+            }
+            return paths
+          }),
+        ),
       listIgnoredDirs: (base) =>
         Effect.provideService(
           runGit(base, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z']),
@@ -228,6 +286,14 @@ export const GitFsLive = Layer.effect(
             }),
           ),
         ),
+      readFileAtRef: (base, ref, absPath) => {
+        const rel = toPosix(nodePath.relative(base, absPath))
+        return Effect.provideService(
+          runGit(base, ['show', `${ref}:${rel}`]),
+          ChildProcessSpawner.ChildProcessSpawner,
+          spawner,
+        )
+      },
     })
   }),
 )
@@ -242,11 +308,25 @@ export const makeTestGitFs = (
   tracked: ReadonlySet<string> | GitUnavailableError,
   ignoredDirs: readonly string[] | GitUnavailableError = [],
   worktreeDirs: readonly string[] | GitUnavailableError = [],
+  atRef: ReadonlyMap<string, string> = new Map(),
+  deletedSince: readonly string[] | GitUnavailableError = [],
 ): Layer.Layer<GitFs> =>
   Layer.succeed(GitFs, {
+    listDeletedSince: () =>
+      deletedSince instanceof GitUnavailableError ? Effect.fail(deletedSince) : Effect.succeed(deletedSince),
     listIgnoredDirs: () =>
       ignoredDirs instanceof GitUnavailableError ? Effect.fail(ignoredDirs) : Effect.succeed(ignoredDirs),
     listTrackedFiles: () => (tracked instanceof GitUnavailableError ? Effect.fail(tracked) : Effect.succeed(tracked)),
     listWorktreeDirs: () =>
       worktreeDirs instanceof GitUnavailableError ? Effect.fail(worktreeDirs) : Effect.succeed(worktreeDirs),
+    // No entry in `atRef` fails, matching the real implementation's
+    // contract (propagates, never a silent `null`) — a test double that
+    // silently succeeded with some default would misrepresent that
+    // contract to every test built on it.
+    readFileAtRef: (base, _ref, absPath) => {
+      const content = atRef.get(absPath)
+      return content === undefined
+        ? Effect.fail(new GitUnavailableError({ base, message: `no content recorded in test double for ${absPath}` }))
+        : Effect.succeed(content)
+    },
   })

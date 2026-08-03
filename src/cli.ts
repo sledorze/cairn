@@ -26,6 +26,7 @@ import type { LinkCheckResult } from './program/links/CheckLinks.ts'
 import { linksPlugin } from './program/links/CheckLinks.ts'
 import { proseRefsPlugin } from './program/links/CheckProseRefs.ts'
 import { refsPlugin } from './program/links/CheckRefs.ts'
+import { checkDeletions, formatDeletionsReport } from './program/summaries/CheckDeletions.ts'
 import { coveragePlugin } from './program/structure/CheckCoverage.ts'
 import {
   checkSummaries,
@@ -100,6 +101,17 @@ const proseRefsOption = Flag.boolean('prose-refs').pipe(
     'Opt-in, safe for permanent use (issue #47, #105): report a bare-backtick prose file citation (e.g. `src/x.ts`, no [text](path) syntax) whose target has actually moved or been deleted — a citation that still resolves is always silent. Reported with the Markdown link syntax that would make it checkable going forward.',
   ),
 )
+const reportDeletionsOption = Flag.boolean('report-deletions').pipe(
+  Flag.withDescription(
+    'Opt-in, informational only, never affects exit code (issue #106): a doc deleted since --deletions-since (default HEAD) may have carried a heading or outbound link found nowhere else in the remaining corpus — report which, so a lossy deletion/consolidation is at least visible, not silently gone.',
+  ),
+)
+const deletionsSinceOption = Flag.string('deletions-since').pipe(
+  Flag.withDescription(
+    'Git ref --report-deletions compares the working tree against. Default HEAD (catches an uncommitted deletion); pass a PR base branch (e.g. origin/main) in CI to catch deletions already committed.',
+  ),
+  Flag.optional,
+)
 const configPathOption = Flag.string('config').pipe(
   Flag.withDescription('Path to a config file (default: .cairnrc.json / .cairnrc / package.json#cairn).'),
   Flag.optional,
@@ -153,6 +165,7 @@ const expandRootsOrFail = (cwd: string, patterns: readonly string[]) =>
 
 interface CheckParsed {
   readonly config: Option.Option<string>
+  readonly deletionsSince: Option.Option<string>
   readonly explain: boolean
   readonly fix: boolean
   readonly json: boolean
@@ -162,6 +175,7 @@ interface CheckParsed {
   readonly prose: boolean
   readonly prune: boolean
   readonly refs: boolean
+  readonly reportDeletions: boolean
   readonly root: readonly string[]
   readonly roots: readonly string[]
   readonly stamp: boolean
@@ -188,6 +202,15 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
 
   if (parsed.json && (parsed.stamp || parsed.migrateStamps)) {
     yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp/--migrate-stamps' }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+  // --report-deletions isn't part of the CheckPlugin registry (it needs
+  // live GitFs, which the registry deliberately keeps out — see its own
+  // wiring below), so it can't share `rejectedJsonMessage`'s generic check;
+  // one hand-written guard, same shape the registry replaced 3 of.
+  if (parsed.json && parsed.reportDeletions) {
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --report-deletions' }))
     yield* Effect.sync(() => (process.exitCode = 1))
     return
   }
@@ -294,6 +317,54 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     roots: absRoots,
     ...(trackedFiles === undefined ? {} : { trackedFiles }),
   }
+
+  // Hand-wired, not a CheckPlugin (needs live GitFs — see the --json guard
+  // above). Never contributes to `code` (issue #106: informational only,
+  // `deletionsExitCode` always 0) — a report, not a verdict. A
+  // `GitUnavailableError` here is caught LOCALLY, never mapped to a
+  // `CairnConfigError` that would propagate — found via adversarial
+  // review: an earlier version did exactly that, which aborted the ENTIRE
+  // `runCheck` generator on failure, silently skipping every later step
+  // (the --json report, and critically the final `if (code !== 0)`
+  // exit-code assignment) — a purely informational, opt-in flag was able
+  // to make a real links/summaries failure exit 0. Degrading to a printed
+  // warning keeps every other section's result and exit code intact
+  // regardless of whether this one succeeds.
+  //
+  // COMPUTED here, BEFORE `linksOutcome`/`--fix` runs, deliberately — found
+  // via a SECOND adversarial review: `--fix` physically rewrites doc
+  // content (`CheckLinks.ts`'s `dfs.writeFile`) before `checkDeletions`
+  // re-reads the corpus from disk. `findDeletedDocContent`'s "does this
+  // heading/link target survive ANYWHERE else" check is coarse by design
+  // (a structural match, not a semantic one) — an unrelated doc's broken
+  // link that `--fix` just repaired to coincidentally point at the SAME
+  // target a deleted doc used to link to would silently count as
+  // "surviving," making `cairn check --fix --report-deletions`
+  // systematically under-report real orphaned link targets compared to
+  // running the two separately. Reading the corpus before `--fix` mutates
+  // anything closes that gap; reproduced directly (a real scratch repo,
+  // both flag orders) before this reordering, confirmed fixed after.
+  //
+  // PRINTED later, right before the `--json` block (its ORIGINAL position,
+  // after every other check's own output) — deliberately NOT moved
+  // alongside the computation above: this repo's established output order
+  // puts every other check's (potentially blocking) findings before this
+  // one's (always informational) report, and there's no correctness
+  // reason to disturb that just because the computation itself needed to
+  // move earlier.
+  const deletionsOutcome = parsed.reportDeletions
+    ? yield* checkDeletions({
+        base: cwd,
+        ignore: effectiveIgnore,
+        naming: config.naming,
+        ref: Option.getOrElse(parsed.deletionsSince, () => 'HEAD'),
+        roots: absRoots,
+        ...(trackedFiles === undefined ? {} : { trackedFiles }),
+      }).pipe(
+        Effect.map((result) => ({ error: null, result })),
+        Effect.catch((error) => Effect.succeed({ error, result: null })),
+      )
+    : null
 
   const linksOutcome = yield* runCheckPlugin(linksPlugin, pluginArgs)
   if (linksOutcome.ran) {
@@ -407,6 +478,27 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     code = Math.max(code, coverageOutcome.code)
   }
 
+  if (deletionsOutcome !== null) {
+    if (deletionsOutcome.error !== null) {
+      // Deliberately NOT "git unavailable at X" — `GitUnavailableError` is
+      // also what an unresolvable REF raises (e.g. `--deletions-since
+      // origin/main` under a shallow CI checkout that never fetched
+      // `main`), and asserting "git unavailable" for that case is actively
+      // misleading: git is fine, the ref just isn't there (issue #106
+      // "best value defaults" audit — this is the single most likely
+      // real-world failure mode of this flag, per its own README section).
+      // The underlying message already names the real cause either way.
+      yield* Console.log(
+        pick(locale, {
+          en: `⚠️  --report-deletions skipped: ${deletionsOutcome.error.message}`,
+          fr: `⚠️  --report-deletions ignoré : ${deletionsOutcome.error.message}`,
+        }),
+      )
+    } else {
+      yield* Console.log(formatDeletionsReport(deletionsOutcome.result, { locale }).join('\n'))
+    }
+  }
+
   if (parsed.json) {
     const report = buildJsonReport({ links: linksResult, summaries: summariesResult })
     // `Math.max`, not `report.exitCode` alone — `report.exitCode` is
@@ -430,6 +522,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
 
 const checkConfigShape = {
   config: configPathOption,
+  deletionsSince: deletionsSinceOption,
   explain: explainOption,
   fix: fixOption,
   json: jsonOption,
@@ -439,6 +532,7 @@ const checkConfigShape = {
   prose: proseRefsOption,
   prune: pruneOption,
   refs: refsOption,
+  reportDeletions: reportDeletionsOption,
   root: rootOption,
   roots: rootsArgs,
   stamp: stampOption,
