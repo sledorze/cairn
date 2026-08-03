@@ -100,6 +100,19 @@ describe('cli.ts (real subprocess) — --json incompatibility gate', () => {
     expect(JSON.parse(result.stdout)).toEqual({ error: '--json cannot be combined with --prose-refs yet' })
   })
 
+  // Issue #106: --report-deletions isn't part of the CheckPlugin registry
+  // (it needs live GitFs, which the registry deliberately keeps out), so
+  // its --json guard is a hand-written `if`, not the generic
+  // `rejectedJsonMessage` mechanism the three tests above share — this is
+  // its own, previously-untested code path (the only prior verification
+  // was a human/agent reading cli.ts, never actually executed).
+  it('rejects --json --report-deletions with a clear message, before running anything', () => {
+    const p = project('cli-json-report-deletions', { 'docs/index.md': '# Index\n\nShort.\n' })
+    const result = runCli(p.root, ['check', '--json', '--report-deletions'])
+    expect(result.exitCode).toBe(1)
+    expect(JSON.parse(result.stdout)).toEqual({ error: '--json cannot be combined with --report-deletions' })
+  })
+
   it('rejects --json when checks.coverage is configured, even without any coverage-specific flag', () => {
     const p = project('cli-json-coverage', {
       '.cairnrc.json': JSON.stringify({ checks: { coverage: { kinds: [], rules: [] } } }),
