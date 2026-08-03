@@ -38,7 +38,7 @@
       "properties": {
         "description": {
           "type": "string",
-          "description": "Human-readable guidance shown in the report when this rule is unmet — what the relationship means and how to satisfy it, not just its name."
+          "description": "Human-readable guidance shown in the report when this rule is unmet — what the relationship means and how to satisfy it, not just its name. Mandatory whenever `name` is set."
         },
         "from": { "type": "string" },
         "name": {

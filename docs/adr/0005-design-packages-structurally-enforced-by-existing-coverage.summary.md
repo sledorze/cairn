@@ -23,3 +23,9 @@ dedup key would have silently collapsed two same-pair rules — the FOURTH occur
 exact bug class, caught this time by the key's own standing warning comment. A separate
 `description` field shipped alongside `scope`: `name` only ever fed a bare label into the
 report, never real guidance — `description` renders actual fix guidance under the message.
+
+**Second amendment:** `description` made mandatory whenever `name` is set (decode-time
+cross-field check), not left to authorial memory — a named rule with no description now
+fails config decode entirely. Refuted the "mandatory for every rule" alternative: an
+unnamed rule's report line is already self-explanatory, so forcing a description there
+would just be filler. Verified by real falsification against this repo's own `.cairnrc.json`.

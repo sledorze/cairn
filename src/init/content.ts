@@ -263,7 +263,10 @@ Add a real \`description\` too — \`name\` alone is only a disambiguating label
 is telling two same-pair rules apart, nothing more); it explains nothing to a reader who
 hits \`no link ("grounded_by") to a "spikes"-kind doc\` with no prior context. \`description\`
 renders as a real guidance line right under that message — write the ACTUAL fix ("cite the
-spike that backs this claim"), not a restatement of the rule name.
+spike that backs this claim"), not a restatement of the rule name. **Mandatory whenever
+\`name\` is set** — a named rule with no description fails config decode entirely, so this
+can't silently regress the next time someone adds one. NOT mandatory on an unnamed rule
+(its report line is already self-explanatory); forcing one there would just be filler.
 
 ## Stress-test your own package before trusting it
 

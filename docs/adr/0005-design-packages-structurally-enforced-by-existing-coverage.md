@@ -91,3 +91,12 @@ for an unrelated but related reason: `name` (e.g. `grounded_by`) was found to on
 a bare disambiguating label into the report, never real guidance — a reader hitting the
 message with no prior context had no way to know what it meant. `description` renders as an
 actual guidance line under the missing-coverage message when present.
+
+**Second amendment, same session**: `description` was made **mandatory whenever `name` is
+set**, not left structurally optional — enforced by a decode-time cross-field check, the
+same shape as the pre-existing undeclared-kind check above. The refuted alternative
+("mandatory for every rule") was rejected on the same evidence this whole ADR runs on: an
+UNNAMED rule's report line is already self-explanatory, so a forced description there would
+be restated filler, not real guidance. Verified by real falsification: a description removed
+from this repo's own `.cairnrc.json` made `cairn check` refuse to even load the config, not
+just warn.

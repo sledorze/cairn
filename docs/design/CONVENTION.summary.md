@@ -23,9 +23,12 @@ its own check structurally unfailable — removed rather than left as confusing 
 
 **Real guidance, not just labels:** `rule.name` (e.g. `grounded_by`) only ever fed a bare
 disambiguating label into the report — a reader had no way to know what it meant. A new
-`description` field renders actual fix guidance under the missing-coverage message. Adding
-`scope`/`description` also caught the rule-dedup key's own recurring omission bug (4th
-occurrence) on first write, via its own standing warning comment.
+`description` field renders actual fix guidance under the missing-coverage message, and is
+now MANDATORY whenever `name` is set (decode-time check) — refuted the "mandatory
+everywhere" version first: an unnamed rule's report line is already self-explanatory, so
+forcing one there would be filler. Adding `scope`/`description` also caught the rule-dedup
+key's own recurring omission bug (4th occurrence) on first write, via its own standing
+warning comment.
 
 **Materialized as a real, shipped skill**: `cairn init --agent claude` scaffolds
 `.claude/skills/cairn-design-package/SKILL.md`, teaching this whole discipline to every

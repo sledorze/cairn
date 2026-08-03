@@ -202,9 +202,17 @@ explicitly: it exists so two rules sharing a kind pair "don't collapse," not to 
 anything. A reader hitting that message with no prior context has no way to know what
 `grounded_by` MEANS or how to fix it without separately finding and reading this doc.
 
-**Closed with a real, optional `description` field** (`core/Config.ts`'s `CoverageRule`),
-rendered directly under the missing-coverage line when present — real, in-context guidance,
-not a label to look up elsewhere:
+**Closed with a real `description` field** (`core/Config.ts`'s `CoverageRule`), rendered
+directly under the missing-coverage line when present — real, in-context guidance, not a
+label to look up elsewhere. Structurally optional on the field itself, but **mandatory
+whenever `name` is set** — enforced by a decode-time cross-field check, refuting the
+tempting-but-wrong "make it mandatory for every rule" version first: an UNNAMED rule's
+report line (`no link to a "decision"-kind doc`) is already fully self-explanatory, so
+forcing a description there would only produce restated filler — the exact
+decorative-not-genuine failure this field exists to avoid. A config with a named rule and no
+description now fails to load AT ALL (not just a coverage warning), verified for real: a
+description was removed from this repo's own `.cairnrc.json`, `cairn check` refused to even
+start, restored, green again.
 
 ```
 ❌ 1 doc(s) missing required coverage:

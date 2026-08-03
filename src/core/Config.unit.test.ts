@@ -87,7 +87,55 @@ describe('decodeConfig()', () => {
             { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
             { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
-          rules: [{ from: 'spec', name: 'implements', to: 'decision' }],
+          rules: [
+            {
+              description: 'A spec must cite the decision it implements.',
+              from: 'spec',
+              name: 'implements',
+              to: 'decision',
+            },
+          ],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // A named rule with no `description` doesn't just look incomplete — it
+  // silently reintroduces the exact "bare label, no guidance" gap
+  // `description` was added to close. Caught at decode time, not left to
+  // authorial discipline.
+  it('returns a Failure when a rule has `name` but no `description`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'spec', name: 'implements', to: 'decision' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // The refuted alternative: `description` is NOT mandatory for every rule,
+  // only named ones — an unnamed rule's report line is already
+  // self-explanatory ("no link to a 'decision'-kind doc"); forcing a
+  // description there would just be restated filler.
+  it('does NOT require `description` on an unnamed rule', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'spec', to: 'decision' }],
         },
       },
     }

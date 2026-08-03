@@ -87,10 +87,15 @@ const CoverageRuleInputSchema = Schema.Struct({
   // guidance rendered directly in `formatCoverageReport` (../../program/
   // structure/CheckCoverage.ts) alongside the bare label, closing that gap
   // for real rather than leaving the vocabulary as config-only metadata.
+  // Structurally optional (a plain, unnamed rule's report line is already
+  // self-explanatory — see `CoverageInputSchema`'s own cross-field check
+  // below), but MANDATORY whenever `name` is set, enforced there, not just
+  // documented here: a named rule with no description silently reintroduces
+  // the exact gap this field exists to close.
   description: Schema.optionalKey(
     Schema.String.annotate({
       description:
-        'Human-readable guidance shown in the report when this rule is unmet — what the relationship means and how to satisfy it, not just its name.',
+        'Human-readable guidance shown in the report when this rule is unmet — what the relationship means and how to satisfy it, not just its name. Mandatory whenever `name` is set.',
     }),
   ),
   from: Schema.String,
@@ -174,6 +179,24 @@ const CoverageInputSchema = Schema.Struct({
           // undeclared-kind check only applies to the plain kind-id string shape.
           if (isKindTarget(rule.to) && !declaredIds.has(rule.to)) {
             issues.push({ issue: `references undeclared kind "${rule.to}"`, path: ['rules', i, 'to'] })
+          }
+          // `description` is mandatory ONLY when `name` is set — deliberately
+          // NOT for every rule (refuted: an unnamed rule's report line, "no
+          // link to a 'X'-kind doc," is already fully self-explanatory —
+          // forcing a description there produces restated filler, exactly
+          // the decorative-not-genuine text this field exists to avoid). A
+          // NAMED rule (e.g. `grounded_by`) uses vocabulary a reader can't
+          // infer from the bare label alone — found for real: `name` only
+          // ever fed a disambiguating label into the report, never
+          // explained anything (see `description`'s own comment above).
+          // Enforced at decode time, not left to authorial discipline, so
+          // the next named rule can't silently reintroduce the exact gap
+          // `description` was added to close.
+          if (rule.name !== undefined && rule.description === undefined) {
+            issues.push({
+              issue: `named rule "${rule.name}" has no description — a bare name doesn't explain what it means to a reader`,
+              path: ['rules', i, 'description'],
+            })
           }
         })
         return issues
