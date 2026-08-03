@@ -35,41 +35,48 @@ Any consumer of `cairn` can adopt this exact shape for their own design work by 
 cairn's own repo beyond the `docs/design/` path, which is itself just a convention, not a
 hardcoded assumption.
 
-## The config that enforces it (copy this into your own `.cairnrc.json`)
+## The config that enforces it — SCOPED per package, not a shared wildcard
+
+**An earlier version of this section recommended shared, wildcard kind globs** (e.g.
+`"glob": "**/docs/design/*/spikes.md"`, matching ANY package). Stress-tested and found
+capturable — see "Is any of this actually capturable?" below for the full finding. The
+corrected, actually-recommended shape scopes every kind id and glob to ONE exact package
+path (replace `<slug>` with your own directory name, e.g. `101-refs-symbol-scoping`):
 
 ```json
 "checks": {
   "coverage": {
     "kinds": [
-      { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
-      { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
-      { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
-      { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
-      { "id": "story-map", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
-      { "id": "roadmap", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
-      { "id": "implementation-details", "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" } },
-      { "id": "knowledge", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
+      { "id": "<slug>-design-package", "select": { "by": "path", "glob": "**/docs/design/<slug>/_SUMMARY.md" } },
+      { "id": "<slug>-problem-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/problem-space.md" } },
+      { "id": "<slug>-solution-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/solution-space.md" } },
+      { "id": "<slug>-spikes", "select": { "by": "path", "glob": "**/docs/design/<slug>/spikes.md" } },
+      { "id": "<slug>-story-map", "select": { "by": "path", "glob": "**/docs/design/<slug>/story-map.md" } },
+      { "id": "<slug>-roadmap", "select": { "by": "path", "glob": "**/docs/design/<slug>/roadmap.md" } },
+      { "id": "<slug>-implementation-details", "select": { "by": "path", "glob": "**/docs/design/<slug>/implementation-details.md" } },
+      { "id": "<slug>-knowledge", "select": { "by": "path", "glob": "**/docs/design/<slug>/knowledge.md" } }
     ],
     "rules": [
-      { "from": "design-package", "to": "problem-space" },
-      { "from": "design-package", "to": "solution-space" },
-      { "from": "design-package", "to": "spikes" },
-      { "from": "design-package", "to": "story-map" },
-      { "from": "design-package", "to": "roadmap" },
-      { "from": "design-package", "to": "implementation-details" },
-      { "from": "design-package", "to": "knowledge" }
+      { "from": "<slug>-design-package", "to": "<slug>-problem-space" },
+      { "from": "<slug>-design-package", "to": "<slug>-solution-space" },
+      { "from": "<slug>-design-package", "to": "<slug>-spikes" },
+      { "from": "<slug>-design-package", "to": "<slug>-story-map" },
+      { "from": "<slug>-design-package", "to": "<slug>-roadmap" },
+      { "from": "<slug>-design-package", "to": "<slug>-implementation-details" },
+      { "from": "<slug>-design-package", "to": "<slug>-knowledge" }
     ]
   }
 }
 ```
 
-**Deliberately kind-based, not filename-based**: a rule is satisfied by ANY doc matching
-the `to` kind's glob, so an author is free to name their own files however they like (this
-repo's own `problem-space.md`/`solution-space.md`/... naming is one convention, not a
-requirement `checks.coverage` itself imposes) as long as each required ROLE has some doc
-filling it, linked from the package's own summary. This is what makes the mechanism
-generalize to a different consumer's naming preferences, rather than being tied to this
-repo's specific filenames.
+**Still kind-based, not filename-based** within one package: a rule is satisfied by ANY doc
+matching the `to` kind's glob, so an author is free to name their OWN files however they
+like (this repo's own `problem-space.md`/`solution-space.md`/... naming is one convention,
+not a requirement `checks.coverage` itself imposes). What changed is scope, not naming
+freedom: the glob no longer reaches across package boundaries. This costs real reusability
+— a new package can't just reuse a shared block, it needs its own scoped one (see "Is any
+of this actually capturable?" for why, and the onboarding-guard script that keeps this
+manageable as more packages appear).
 
 ## Materialized and falsified for real, not just designed on paper
 
@@ -86,23 +93,16 @@ useful ones.
 
 ## A real, honest limitation — found by adversarial stress-testing, not glossed over
 
-`checks.coverage`'s rules are NOT scoped per-package: a rule `{from: design-package, to:
-spikes}` is satisfied by a link to ANY doc of kind `spikes` ANYWHERE in the scanned corpus,
-not specifically THIS package's own `spikes.md`. Verified concretely: a throwaway second
-package (`docs/design/999-fake-test-package/`, since deleted) whose `_SUMMARY.md` linked
-entirely to the FIRST package's docs — none of its own — passed `checks.coverage` cleanly
-(`✅ Coverage OK (9 doc(s) checked)`). A careless or lazy author could satisfy the
-structural check by cross-linking a sibling package's docs instead of writing their own.
-
-This is a genuine gap in what `checks.coverage`'s existing `kinds`/`rules` shape can
-express — it has no notion of "the same containing directory" as a scoping constraint, only
-"anywhere in the corpus." Closing it would need either a NEW selector variant (e.g.
-`by: 'path'` gaining a "same parent directory as the FROM doc" relation) or a dedicated new
-check — genuinely out of scope for this convention doc to design speculatively. Recorded
-here as a known, load-bearing limitation of reusing `checks.coverage` for this purpose, not
-silently left for a future reader to rediscover the hard way. In practice, with one design
-package today, this doesn't bite — but it would need addressing before this convention is
-recommended at scale (many concurrent design packages).
+**Superseded by "Is any of this actually capturable?" below — kept here, corrected, rather
+than silently deleted, since the ORIGINAL wildcard-kinds design (this section's original
+subject) really did have this gap.** `checks.coverage`'s rules aren't scoped per-directory
+by default: a rule `{from: design-package, to: spikes}` under a SHARED, wildcard kind is
+satisfied by a link to ANY doc of kind `spikes` ANYWHERE in the corpus, not specifically one
+package's own `spikes.md`. Verified concretely (see below): a throwaway second package
+whose `_SUMMARY.md` linked entirely to a real sibling's docs — none of its own — passed
+`checks.coverage` cleanly. The scoped-kinds fix (this doc's actual current recommendation,
+"The config that enforces it" above) closes this specific gap by construction, at the cost
+described in "Is any of this actually capturable?"'s own onboarding-guard section.
 
 ## Linking to the real dev issue (real, done) — and product issues/vision (proposed, not built)
 
@@ -134,3 +134,103 @@ discipline (every claim in this package was run or grepped, never assumed). Wort
 as its own scoped design package — filed as a real GitHub issue first, the same way #101 and
 #108 were — once there's real product-issue content (this repo's own, or a consumer's) to
 verify the model against, not before.
+
+## Is any of this actually capturable? — a real, severe finding
+
+Stress-tested directly: created a throwaway second package
+(`docs/design/999-fake-test-package/`) containing NOTHING but a `_SUMMARY.md` that
+cross-linked every one of the real package's docs — zero real content of its own. Against
+the ORIGINAL config (shared, wildcard kind ids — `spikes` matching
+`**/docs/design/*/spikes.md`, any package), this fake package passed `checks.coverage`
+**cleanly, with zero warnings.** `capturable` was not a theoretical worry; it was real and
+severe — an author (or a tool generating filler to satisfy a gate) could get a fully green
+check without writing a single real word.
+
+**Fixed by scoping every kind id and glob to the exact real package path** (`101-` prefix,
+exact filenames, no `*` wildcard — see the config above). Re-ran the identical stress test
+against the corrected config: the fake package's `_SUMMARY.md` no longer matches ANY kind
+at all (its path isn't `docs/design/101-refs-symbol-scoping/_SUMMARY.md`), so cross-package
+satisfaction is now structurally impossible for this package's rules.
+
+**This fix has its own honest cost, found the same way — stress-tested, not assumed.**
+Created a THIRD throwaway package: genuinely new, genuinely incomplete (only a
+`problem-space.md`, missing all 6 other required pieces), never added to `.cairnrc.json`.
+Result: **zero warnings, completely invisible to `checks.coverage`.** The scoped fix closes
+the adversarial gap but reopens the ORIGINAL gap this whole convention exists to catch —
+honest, accidental incompleteness — for any package nobody remembers to onboard. Scoped
+kinds require a human to explicitly wire up `.cairnrc.json` for every new package; nothing
+currently makes that step visible or mandatory the way `pnpm changeset` is gated on every
+user-facing PR (see this repo's own `scripts/check-changeset.sh`).
+
+**Closed for the buildable-now option; the deeper one stays future work.** Two candidate
+directions were identified:
+
+1. A genuinely new `checks.coverage` selector relation — "matches a doc of this kind IN THE
+   SAME PARENT DIRECTORY as the FROM doc" — would make wildcard kinds safe again without
+   per-package hand-scoping. A real core-engine change (`core/structure/Coverage.ts`'s
+   `resolveRuleEdges`, `core/Config.ts`'s `KindSelectorInputSchema`), not a config tweak —
+   deserves its own problem-space/solution-space treatment, deliberately NOT built here.
+2. **Built:** `scripts/check-design-package-onboarding.ts` — a repo-level guard (mirroring
+   `scripts/check-changeset.sh`'s own "gate every PR" precedent, reusing `core/glob.ts`'s
+   own matcher so it stays consistent with how `checks.coverage` itself matches) that scans
+   `docs/design/*/` for real packages and fails loudly if any has no matching
+   `checks.coverage` kind. Wired into `lefthook.yml`'s pre-push AND `.github/workflows/ci.yml`
+   — same shared-script-not-two-copies shape the changeset gate already established. Verified
+   by the same falsification discipline as everything else here: a real unconfigured package
+   makes it fail with an actionable message; removing that package makes it pass again.
+
+Adding a design package's `.cairnrc.json` block is still, additionally, a REQUIRED step in
+the SAME PR that creates the package — the guard above is the automated backstop for anyone
+who forgets, not a replacement for doing it deliberately.
+
+**Materialized as a real, shipped skill, not just this repo's own docs.** `cairn init
+--agent claude` now scaffolds a second skill file
+(`.claude/skills/cairn-design-package/SKILL.md`, sourced from `DESIGN_PACKAGE_SKILL_BODY` in
+`src/init/content.ts`) teaching this entire discipline — the seven documents, scoped kinds,
+the onboarding-guard convention, precise verb naming, and self-stress-testing before trusting
+a package — to every future cairn consumer. Dogfooded for real: ran `cairn init --agent
+claude` against a scratch directory and confirmed the file writes with the expected content,
+plus a real integration test (`src/init/generate.integration.test.ts`) locking it in.
+
+## A vocabulary for rule names — checked against real content, not chosen for sound
+
+`checks.coverage`'s `name` field exists precisely so two rules on the same kind pair can mean
+different things (`docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`'s own `implements`/`verified_by` precedent). Early drafts
+of this package's own rules used `grounded_by` as a catch-all for every "X cites spikes.md"
+edge — re-reading the actual content found it was quietly standing in for at least three
+different real relationships:
+
+- `solution-space` → `spikes`, `roadmap` → `spikes`, `problem-space` → `spikes`: the source
+  doc makes an ARGUMENT, and spike evidence is offered as support — genuinely `grounded_by`
+  (Toulmin's own argumentation-theory term for exactly this: a claim's grounds/data).
+- `implementation-details` → `spikes`: "Built on spike 4's confirmed-viable primitive" — not
+  an argument being supported, an IMPLEMENTATION using the spike's validated approach as its
+  foundation — renamed to `builds_on`.
+- `knowledge` → `spikes`: "Use the CORRECTED signature from spikes.md" — instructional
+  content directly copied/restated from the spike, not argued for — renamed to `sourced_from`.
+
+A larger reference vocabulary, drawn from established fields rather than invented per-edge,
+for whoever names the next rule:
+
+**Requirements traceability** (already partly used in `docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`): `implements`,
+`verifies`, `verified_by`, `satisfies`, `derives_from`, `refines`, `traces_to`, `depends_on`,
+`realizes`, `conforms_to`, `specializes`, `generalizes`.
+
+**Toulmin argumentation theory** (claim / grounds / warrant / backing / qualifier / rebuttal
+— the actual academic model `grounded_by` borrows from, not an invented term): `grounds` /
+`grounded_by`, `warrants`, `backs` / `backed_by`, `qualifies`, `rebuts` / `rebutted_by`,
+`refutes`, `supports`, `contradicts`, `undermines`, `corroborates`.
+
+**Evidence / epistemic relations**: `evidences` / `evidenced_by`, `justifies`,
+`substantiates`, `validates`, `confirms`, `disconfirms`, `motivates`, `informs`.
+
+**Lineage / process relations** (for how a doc came to exist, not what it claims):
+`derived_from`, `sourced_from`, `distilled_from`, `builds_on`, `supersedes`, `deprecates`,
+`amends`, `extends`, `elaborates`, `clarifies`.
+
+Picking from this list is not optional decoration — the same discipline `knowledge.md`
+already documents applies here: before naming a rule, re-read the actual sentence making the
+claim, and pick the word that's true of THAT sentence, not the word that sounds most
+sophisticated. `satisfies` → `derived_from` and `grounded_by` → `builds_on`/`sourced_from`
+(both corrected earlier in this same package, by exactly this process) are the proof this
+isn't hypothetical.

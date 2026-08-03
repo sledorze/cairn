@@ -179,3 +179,85 @@ How-to guides for everyday tasks, in reading order.
 
 Keep summaries short, keep links complete, stamp last, verify green.
 `
+
+export const DESIGN_PACKAGE_SKILL_BODY = `# Building a design package with \`checks.coverage\`
+
+Use this when a problem is big enough to need a real design before code: a full
+problem-space → solution-space → spikes → story-map → roadmap → implementation-details →
+knowledge package, structurally enforced by \`checks.coverage\` — not just prose that happens
+to have the right headings.
+
+## The seven required documents
+
+A design package is a directory (e.g. \`docs/design/<slug>/\`) containing:
+
+- \`_SUMMARY.md\` — the package's own index, linking every doc below.
+- \`problem-space.md\` — the failure/gap, root cause, constraints on any fix, and an HONEST
+  evidence basis (how many real reports is this resting on — one anecdote, or corroborated?).
+- \`solution-space.md\` — candidate directions, evaluated and ranked; REJECTED options
+  recorded with real reasoning, not silently dropped.
+- \`spikes.md\` — feasibility evidence actually RUN, not assumed. If a spike's first attempt
+  fails, keep the failure and the correction in the doc — that's real evidence too.
+- \`story-map.md\` — the real user workflow, mapped to stories and a walking-skeleton slice.
+- \`roadmap.md\` — shippable increments, with migration notes.
+- \`implementation-details.md\` — concrete enough to start from.
+- \`knowledge.md\` — the reusable technique, for whoever extends this later.
+
+## Wire it into \`checks.coverage\` — SCOPED to this exact package, not shared globs
+
+A shared, wildcard kind (\`"glob": "**/docs/design/*/spikes.md"\`) is **capturable**: a
+different, hollow package can satisfy every rule by cross-linking a real sibling's docs
+without writing a word of its own — verified concretely, not theoretically. Scope every kind
+id and glob to THIS package's exact path instead:
+
+\`\`\`json
+"checks": {
+  "coverage": {
+    "kinds": [
+      { "id": "<slug>-design-package", "select": { "by": "path", "glob": "**/docs/design/<slug>/_SUMMARY.md" } },
+      { "id": "<slug>-problem-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/problem-space.md" } },
+      { "id": "<slug>-solution-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/solution-space.md" } },
+      { "id": "<slug>-spikes", "select": { "by": "path", "glob": "**/docs/design/<slug>/spikes.md" } },
+      { "id": "<slug>-story-map", "select": { "by": "path", "glob": "**/docs/design/<slug>/story-map.md" } },
+      { "id": "<slug>-roadmap", "select": { "by": "path", "glob": "**/docs/design/<slug>/roadmap.md" } },
+      { "id": "<slug>-implementation-details", "select": { "by": "path", "glob": "**/docs/design/<slug>/implementation-details.md" } },
+      { "id": "<slug>-knowledge", "select": { "by": "path", "glob": "**/docs/design/<slug>/knowledge.md" } }
+    ],
+    "rules": [
+      { "from": "<slug>-design-package", "to": "<slug>-problem-space" },
+      { "from": "<slug>-design-package", "to": "<slug>-solution-space" },
+      { "from": "<slug>-design-package", "to": "<slug>-spikes" },
+      { "from": "<slug>-design-package", "to": "<slug>-story-map" },
+      { "from": "<slug>-design-package", "to": "<slug>-roadmap" },
+      { "from": "<slug>-design-package", "to": "<slug>-implementation-details" },
+      { "from": "<slug>-design-package", "to": "<slug>-knowledge" }
+    ]
+  }
+}
+\`\`\`
+
+This has a real cost: a package nobody wires in gets ZERO structural checking — worse than
+the shared-glob version for the honest "forgot a piece" case, since it's simply invisible
+rather than flagged. Doing this in the SAME PR that creates the package (the same discipline
+this repo already applies to changesets — see the release convention) is what makes the
+tradeoff worth it. If your project scripts a check for this (walking \`docs/design/*/\` and
+verifying every package has a matching \`checks.coverage\` kind), run it before shipping.
+
+## Name relationships precisely, not decoratively
+
+If a doc cites another for a REASON beyond membership (a claim justified by a spike, a
+roadmap realizing a story-map concept), add a real \`{from, to, name}\` rule, not just prose.
+Pick the \`name\` by re-reading the actual sentence making the claim — \`grounded_by\` (an
+argument supported by evidence), \`builds_on\` (an implementation using a validated approach
+as its foundation), \`derived_from\` (one doc's structure literally comes from another's),
+\`sourced_from\` (content copied/restated from elsewhere) are NOT interchangeable. A generic
+name picked for how it sounds, not checked against the content, is worse than no name at all
+— it looks rigorous without being rigorous.
+
+## Stress-test your own package before trusting it
+
+Before calling a design package done: try to make a fake, hollow version of it pass. Create
+a throwaway sibling directory whose \`_SUMMARY.md\` cross-links your real package's docs with
+none of its own — if \`cairn check\` stays green, your kinds aren't scoped tightly enough.
+Delete the throwaway directory either way; it's a test, not a keeper.
+`

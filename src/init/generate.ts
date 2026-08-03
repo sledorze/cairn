@@ -6,6 +6,9 @@
 //    natively, so `--agent opencode` is a thin alias for `--agent agents`: no separate
 //    file format, just this block.
 //  - Claude/Codex:  .claude/skills/cairn/SKILL.md            (the writing methodology)
+//  - Claude/Codex:  .claude/skills/cairn-design-package/SKILL.md (building a structurally-
+//    enforced design package — a separate skill body, not folded into the summary one:
+//    a different trigger ("this needs a real design"), different content entirely)
 //  - Claude Code:   a marked `@AGENTS.md` import in CLAUDE.md — Claude Code auto-loads
 //    CLAUDE.md at session start but never reads AGENTS.md on its own, so without this
 //    pointer the cross-tool block in AGENTS.md is invisible to it.
@@ -19,7 +22,7 @@ import * as path from 'node:path'
 
 import { Effect, FileSystem } from 'effect'
 
-import { CONVENTION_BODY, SKILL_BODY } from './content.ts'
+import { CONVENTION_BODY, DESIGN_PACKAGE_SKILL_BODY, SKILL_BODY } from './content.ts'
 
 // Single source of truth for valid `--agent` values, so the CLI's choice list
 // (src/cli.ts) can never drift from what `runInit` actually understands.
@@ -79,6 +82,16 @@ const skillFile = (): string =>
     '---',
     '',
     SKILL_BODY,
+  ].join('\n')
+
+const designPackageSkillFile = (): string =>
+  [
+    '---',
+    'name: cairn-design-package',
+    'description: How to build and structurally enforce a full problem-space/solution-space/spikes/story-map/roadmap/implementation-details/knowledge design package with checks.coverage, scoped to avoid capturable shared kinds. Use when a problem needs a real design before code, not just a quick doc.',
+    '---',
+    '',
+    DESIGN_PACKAGE_SKILL_BODY,
   ].join('\n')
 
 /**
@@ -169,6 +182,7 @@ export const runInit = ({ agent, cwd, roots }: InitArgs): Effect.Effect<InitResu
     if (doClaude) {
       yield* write(path.join(cwd, '.claude/rules/docs-summaries.md'), claudeRule(globs), written)
       yield* write(path.join(cwd, '.claude/skills/cairn/SKILL.md'), skillFile(), written)
+      yield* write(path.join(cwd, '.claude/skills/cairn-design-package/SKILL.md'), designPackageSkillFile(), written)
       yield* upsertClaudeMdImport(cwd, written, skipped)
     }
     if (doCopilot) {
