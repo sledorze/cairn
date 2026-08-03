@@ -47,6 +47,20 @@ export const relativeToBase = (candidate: string, base: string): string =>
   isWithinBase(candidate, base) ? toPosix(path.relative(base, candidate)) : toPosix(candidate)
 
 /**
+ * True when `p` is `r` itself, or lives under `r`, for at least one of `roots`
+ * — a plain prefix check (not `isWithinBase`'s traversal-aware relative-path
+ * logic), correct here because `roots`/`p` are always absolute POSIX paths
+ * already, never a `..`-relative string that check exists to disambiguate.
+ *
+ * Extracted (issue #106's own PR, DRY audit) after this exact one-liner
+ * turned up hand-duplicated, verbatim, between `SummaryTree.ts`'s own
+ * `inScope` and `CheckDeletions.ts`'s own `inScope` — same risk class as
+ * `readMarkdownCorpus`'s extraction, just for a much smaller function.
+ */
+export const isInScope = (p: string, roots: readonly string[]): boolean =>
+  roots.some((r) => p === r || p.startsWith(`${r}/`))
+
+/**
  * True when `candidate` (absolute) matches any of `ignore`'s glob patterns —
  * tested both as its absolute POSIX path (the pre-existing contract: a
  * pattern that IS the absolute path, or is `**`-prefixed so it can absorb

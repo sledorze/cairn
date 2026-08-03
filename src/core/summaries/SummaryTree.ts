@@ -28,7 +28,7 @@ import * as nodePath from 'node:path'
 
 import { extractLinks, isCheckableTarget, stripAnchor, stripCode } from '../links/MarkdownLinks.ts'
 import { hashContent } from '../hashing.ts'
-import { isIgnored } from '../paths.ts'
+import { isIgnored, isInScope } from '../paths.ts'
 import type { Naming, SummaryStatus } from './DocSummaries.ts'
 import { countLines, DEFAULT_NAMING, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
 
@@ -187,11 +187,10 @@ export const planSummaries = ({
   }
 
   // --- directories in scope ---
-  const inScope = (d: string): boolean => roots.some((r) => d === r || d.startsWith(`${r}/`))
   const dirs = new Set<string>()
   for (const doc of sourceDocs) {
     let d = path.dirname(doc)
-    while (inScope(d)) {
+    while (isInScope(d, roots)) {
       dirs.add(d)
       const parent = path.dirname(d)
       if (parent === d) {

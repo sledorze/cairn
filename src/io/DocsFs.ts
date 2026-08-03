@@ -9,7 +9,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
 import { matchesAny } from '../core/glob.ts'
-import { isIgnored, isWithinBase, relativeToBase, toPosix } from '../core/paths.ts'
+import { isIgnored, isInScope, isWithinBase, relativeToBase, toPosix } from '../core/paths.ts'
 
 export interface FileStat {
   readonly mtimeMs: number
@@ -405,7 +405,7 @@ export const makeTestDocsFs = (files: Record<string, TestFile>): Layer.Layer<Doc
     listFiles: (roots, ignore = []) =>
       Effect.sync(() =>
         [...store.keys()].filter((p) => {
-          if (!roots.some((r) => p.startsWith(`${r}/`) || p === r)) {
+          if (!isInScope(p, roots)) {
             return false
           }
           const segments = p.split('/')
