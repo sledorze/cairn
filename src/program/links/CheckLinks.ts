@@ -16,7 +16,7 @@ import {
 } from '../../core/links/Anchors.ts'
 import type { BrokenLink, PendingCheck } from '../../core/links/MarkdownLinks.ts'
 import { buildBasenameIndex, checkContent, stripAnchor, stripCode, suggestFix } from '../../core/links/MarkdownLinks.ts'
-import { matchesAny } from '../../core/glob.ts'
+import { isIgnored } from '../../core/paths.ts'
 import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
@@ -409,7 +409,7 @@ export const checkLinks = ({
     const trackedUniverse = trackedFiles === undefined ? undefined : withAncestors([...trackedFiles])
     const existsAbs = (p: string): boolean => known.has(p)
     const inRoots = (p: string): boolean => roots.some((root) => p === root || p.startsWith(`${root}/`))
-    const mdFiles = allFiles.filter((file) => file.endsWith('.md') && !matchesAny(file, ignore))
+    const mdFiles = allFiles.filter((file) => file.endsWith('.md') && !isIgnored(file, ignore, roots))
 
     interface FileScan {
       content: string

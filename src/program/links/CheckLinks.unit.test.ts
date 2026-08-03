@@ -309,6 +309,25 @@ describe('checkLinks()', () => {
     expect(result.broken.map((b) => b.file)).toEqual(['/r/docs/keep.md'])
   })
 
+  // Issue #102: a FILE-shaped ignore pattern with no leading `**/` (the form
+  // anyone actually writes, e.g. `SKIP.md` relative to the configured root)
+  // is authored root-relative — must exclude the file just as reliably as a
+  // `**`-prefixed pattern already does above. Regression coverage for the
+  // fix in `isIgnored` (`core/paths.ts`), exercised through the real
+  // checker, not just the pure helper's own unit tests — a call site
+  // silently reverting to the old `matchesAny(f, ignore)` would fail this
+  // test even though `isIgnored` itself stayed correct.
+  it('skips an ignored source file matched by a root-relative pattern with no leading **/ (issue #102)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/SKIP.md': { content: '[dead](./also-nope.md)', mtimeMs: 1 },
+      '/r/docs/keep.md': { content: '[dead](./nope.md)', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkLinks({ base: '/r', fix: false, ignore: ['SKIP.md'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.broken.map((b) => b.file)).toEqual(['/r/docs/keep.md'])
+  })
+
   // Issue #39, scenario B: cross-file heading anchor.
   it('flags a cross-file anchor that has no matching heading, and leaves a real one alone', async () => {
     const layer = makeTestDocsFs({

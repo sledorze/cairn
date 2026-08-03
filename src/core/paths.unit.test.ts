@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isWithinBase, toPosix } from './paths.ts'
+import { isIgnored, isWithinBase, relativeToBase, toPosix } from './paths.ts'
 
 describe('toPosix()', () => {
   it('converts Windows separators to POSIX', () => {
@@ -47,5 +47,52 @@ describe('isWithinBase()', () => {
 
   it('is still false for actual traversal even when a later segment starts with ".."', () => {
     expect(isWithinBase('/etc/..weird/file.ts', '/r')).toBeFalsy()
+  })
+})
+
+describe('relativeToBase()', () => {
+  it('expresses a candidate inside base as a root-relative POSIX path', () => {
+    expect(relativeToBase('/r/.agents/notes.md', '/r')).toBe('.agents/notes.md')
+  })
+
+  it('returns base itself as an empty relative path', () => {
+    expect(relativeToBase('/r', '/r')).toBe('')
+  })
+
+  it('falls back to the candidate itself (as POSIX) when it is not within base', () => {
+    expect(relativeToBase('/other/x.md', '/r')).toBe('/other/x.md')
+  })
+})
+
+describe('isIgnored()', () => {
+  it('is false when no ignore patterns are configured', () => {
+    expect(isIgnored('/r/docs/a.md', [], ['/r'])).toBeFalsy()
+  })
+
+  // The pre-existing contract (before issue #102): a pattern that IS the
+  // absolute path, or is `**`-prefixed so it can absorb one, already
+  // matched — every FILE-level `ignore` call site (`CheckLinks.ts`,
+  // `CheckRefs.ts`, `CheckProseRefs.ts`, `CheckCoverage.ts`,
+  // `SummaryTree.ts`) used to call `matchesAny(f, ignore)` directly against
+  // this absolute form, so it must keep working unchanged.
+  it('matches a `**`-prefixed pattern against the absolute path', () => {
+    expect(isIgnored('/r/docs/SKIP.md', ['**/SKIP.md'], ['/r'])).toBeTruthy()
+  })
+
+  // Issue #102, file-level case: the same bug reported for DIRECTORY
+  // pruning also broke every downstream FILE-level `ignore` filter — a
+  // root-relative pattern with no leading `**` segment (the form anyone
+  // writes, e.g. `docs/SKIP.md`) could never match an absolute path.
+  it('matches a root-relative pattern with no leading ** segment, against the containing root', () => {
+    expect(isIgnored('/r/docs/SKIP.md', ['docs/SKIP.md'], ['/r'])).toBeTruthy()
+  })
+
+  it('picks whichever of several roots actually contains the candidate', () => {
+    expect(isIgnored('/b/private/x.md', ['private/x.md'], ['/a', '/b'])).toBeTruthy()
+    expect(isIgnored('/a/private/x.md', ['private/x.md'], ['/a', '/b'])).toBeTruthy()
+  })
+
+  it('is false for a file that matches none of the patterns, absolute or relative', () => {
+    expect(isIgnored('/r/docs/kept.md', ['docs/SKIP.md'], ['/r'])).toBeFalsy()
   })
 })

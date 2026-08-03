@@ -21,8 +21,7 @@ import * as nodePath from 'node:path'
 import { Effect } from 'effect'
 
 import { extractProseRefs } from '../../core/links/ProseRefs.ts'
-import { matchesAny } from '../../core/glob.ts'
-import { isWithinBase } from '../../core/paths.ts'
+import { isIgnored, isWithinBase } from '../../core/paths.ts'
 import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import { withAncestors } from './CheckLinks.ts'
@@ -146,7 +145,7 @@ export const checkProseRefs = ({
     const dfs = yield* DocsFs
     const allFiles = yield* dfs.listFiles(roots, ignore)
     const mdFiles = allFiles.filter(
-      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
+      (f) => f.endsWith('.md') && !isIgnored(f, ignore, roots) && (trackedFiles === undefined || trackedFiles.has(f)),
     )
     const trackedUniverse = trackedFiles === undefined ? undefined : withAncestors([...trackedFiles])
 
