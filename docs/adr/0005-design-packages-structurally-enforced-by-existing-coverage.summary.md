@@ -29,3 +29,10 @@ cross-field check), not left to authorial memory — a named rule with no descri
 fails config decode entirely. Refuted the "mandatory for every rule" alternative: an
 unnamed rule's report line is already self-explanatory, so forcing a description there
 would just be filler. Verified by real falsification against this repo's own `.cairnrc.json`.
+
+**Third amendment:** re-examining this repo's own 7 "design-package requires X" rules
+(left unnamed on the self-explanatory theory) found that theory didn't survive contact with
+"why DOES a design package need its own spikes.md" — all 13 rules are now named with real
+descriptions. Same principle extended to `KindDef`: a bare kind id has no auto-generated
+sentence around it, so `description` there is unconditionally required — every one of this
+repo's 8 kinds now carries one.

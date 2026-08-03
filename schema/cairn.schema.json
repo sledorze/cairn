@@ -9,8 +9,15 @@
     },
     "CairnKindDef": {
       "type": "object",
-      "properties": { "id": { "type": "string" }, "select": { "$ref": "#/$defs/CairnKindSelector" } },
-      "required": ["id", "select"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What this kind actually means — shown alongside its id wherever it appears in a report."
+        },
+        "id": { "type": "string" },
+        "select": { "$ref": "#/$defs/CairnKindSelector" }
+      },
+      "required": ["description", "id", "select"],
       "additionalProperties": false,
       "description": "One named document kind."
     },

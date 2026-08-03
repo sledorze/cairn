@@ -53,14 +53,39 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [{ from: 'feature', to: 'decision' }],
         },
       },
     }
     expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // A kind id (`design-package`, `spikes`) isn't self-explanatory to a
+  // reader unfamiliar with a repo's own convention, unlike a rule's
+  // auto-generated report line — no fallback exists for a kind the way an
+  // unnamed rule's message already explains itself, so `description` is
+  // unconditionally required here (unlike `CoverageRule.description`,
+  // mandatory only when `name` is set).
+  it('returns a Failure when a kind has no `description`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+              rules: [],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
   })
 
   it('decodes `checks.coverage.exempt` when present', () => {
@@ -84,8 +109,8 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [
             {
@@ -112,8 +137,8 @@ describe('decodeConfig()', () => {
           checks: {
             coverage: {
               kinds: [
-                { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
-                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+                { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
               ],
               rules: [{ from: 'spec', name: 'implements', to: 'decision' }],
             },
@@ -132,8 +157,8 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [{ from: 'spec', to: 'decision' }],
         },
@@ -147,8 +172,12 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [{ from: 'feature', to: 'decision', via: { by: 'link' } }],
         },
@@ -164,8 +193,12 @@ describe('decodeConfig()', () => {
           checks: {
             coverage: {
               kinds: [
-                { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
               ],
               rules: [{ from: 'feature', to: 'decision', via: { by: 'backlink' } }],
             },
@@ -185,8 +218,16 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'roadmap', select: { by: 'path', glob: '**/docs/design/*/roadmap.md' } },
-            { id: 'spikes', select: { by: 'path', glob: '**/docs/design/*/spikes.md' } },
+            {
+              description: 'A roadmap doc.',
+              id: 'roadmap',
+              select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+            },
+            {
+              description: 'A feasibility-spike doc.',
+              id: 'spikes',
+              select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+            },
           ],
           rules: [{ from: 'roadmap', scope: 'sibling', to: 'spikes' }],
         },
@@ -202,8 +243,12 @@ describe('decodeConfig()', () => {
           checks: {
             coverage: {
               kinds: [
-                { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
               ],
               rules: [{ from: 'feature', scope: 'directory', to: 'decision' }],
             },
@@ -217,7 +262,16 @@ describe('decodeConfig()', () => {
     expect(Result.isFailure(decodeConfig({ checks: { coverage: { kinds: [], rulez: [] } } }))).toBeTruthy()
     expect(
       Result.isFailure(
-        decodeConfig({ checks: { coverage: { kinds: [{ id: 'x', select: { by: 'path', globb: '*' } }], rules: [] } } }),
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A placeholder kind for this test.', id: 'x', select: { by: 'path', globb: '*' } },
+              ],
+              rules: [],
+            },
+          },
+        }),
       ),
     ).toBeTruthy()
   })
@@ -226,7 +280,14 @@ describe('decodeConfig()', () => {
     expect(
       Result.isFailure(
         decodeConfig({
-          checks: { coverage: { kinds: [{ id: 'x', select: { by: 'frontmatter', glob: '*' } }], rules: [] } },
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A placeholder kind for this test.', id: 'x', select: { by: 'frontmatter', glob: '*' } },
+              ],
+              rules: [],
+            },
+          },
         }),
       ),
     ).toBeTruthy()
@@ -242,7 +303,13 @@ describe('decodeConfig()', () => {
         decodeConfig({
           checks: {
             coverage: {
-              kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+              kinds: [
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+              ],
               rules: [{ from: 'feature', to: 'decisionn' }],
             },
           },
@@ -254,7 +321,9 @@ describe('decodeConfig()', () => {
         decodeConfig({
           checks: {
             coverage: {
-              kinds: [{ id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } }],
+              kinds: [
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
               rules: [{ from: 'featur', to: 'decision' }],
             },
           },
@@ -271,7 +340,13 @@ describe('decodeConfig()', () => {
     const result = decodeConfig({
       checks: {
         coverage: {
-          kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+          kinds: [
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+          ],
           rules: [{ from: 'feature', to: 'decisionn' }],
         },
       },
@@ -292,7 +367,7 @@ describe('decodeConfig()', () => {
     const raw = {
       checks: {
         coverage: {
-          kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
           rules: [{ from: 'spec', to: { external: 'path' } }],
         },
       },
@@ -307,7 +382,7 @@ describe('decodeConfig()', () => {
     const result = decodeConfig({
       checks: {
         coverage: {
-          kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
           rules: [{ from: 'spec', to: { external: 'path' } }],
         },
       },
@@ -321,7 +396,9 @@ describe('decodeConfig()', () => {
         decodeConfig({
           checks: {
             coverage: {
-              kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+              kinds: [
+                { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              ],
               rules: [{ from: 'spec', to: { external: 'url' } }],
             },
           },
@@ -335,8 +412,12 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [{ from: 'feature', to: 'decision' }],
         },

@@ -34,6 +34,14 @@ export interface KindSelector {
 
 export interface KindDef {
   readonly id: string
+  /** What this kind actually MEANS — mandatory at config decode time
+   * (`../Config.ts`'s `KindDefInputSchema`), optional here since internal
+   * code constructing a `KindDef` directly (never rendered to a reader) has
+   * no reason to carry one. A kind id like `design-package` isn't
+   * self-explanatory the way a rule's auto-generated report line is —
+   * see `../Config.ts`'s own comment on `CoverageRule.description` for the
+   * same "words should guide, not just label" principle applied here. */
+  readonly description?: string
   readonly select: KindSelector
 }
 

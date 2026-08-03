@@ -38,6 +38,17 @@ const KindSelectorInputSchema = Schema.Struct({
 })
 
 const KindDefInputSchema = Schema.Struct({
+  // Mandatory, not optional: a kind id like `design-package` isn't
+  // self-explanatory to a reader unfamiliar with this repo's own
+  // convention — same "words should guide, not just label" principle
+  // `CoverageRule.description` was added for (see that field's own
+  // comment). Unlike a rule's `description` (mandatory only when `name` is
+  // set, since an unnamed rule's auto-generated report line is already
+  // self-explanatory), a KIND has no such fallback — its id is the only
+  // thing that ever names it, so this is unconditionally required.
+  description: Schema.String.annotate({
+    description: 'What this kind actually means — shown alongside its id wherever it appears in a report.',
+  }),
   id: Schema.String,
   select: KindSelectorInputSchema,
 }).annotate({ description: 'One named document kind.', identifier: 'CairnKindDef' })

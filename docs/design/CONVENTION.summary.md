@@ -30,6 +30,14 @@ forcing one there would be filler. Adding `scope`/`description` also caught the 
 key's own recurring omission bug (4th occurrence) on first write, via its own standing
 warning comment.
 
+**Re-examined and corrected:** the 7 "design-package requires X" rules were first left
+unnamed on the "self-explanatory" theory — didn't survive contact with "why DOES a design
+package need its own spikes.md." All 13 of this repo's own rules ended up named with real
+descriptions; the unnamed escape hatch remains available but isn't the default to reach for.
+Same principle extended to `KindDef`: a bare kind id has no auto-generated sentence around
+it at all (unlike a rule's report line), so `description` there is unconditionally required,
+not conditional on `name` — every one of this repo's 8 kinds now carries one.
+
 **Materialized as a real, shipped skill**: `cairn init --agent claude` scaffolds
 `.claude/skills/cairn-design-package/SKILL.md`, teaching this whole discipline to every
 future cairn consumer — dogfooded and locked in with a real integration test.

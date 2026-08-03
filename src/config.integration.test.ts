@@ -242,7 +242,9 @@ describe('loadConfig()', () => {
         checks: {
           coverage: {
             exempt: ['from-base/**'],
-            kinds: [{ id: 'from-base', select: { by: 'path', glob: '*' } }],
+            kinds: [
+              { description: 'A from-base kind, for this test.', id: 'from-base', select: { by: 'path', glob: '*' } },
+            ],
             rules: [],
           },
         },
@@ -251,7 +253,14 @@ describe('loadConfig()', () => {
     fs.writeFileSync(
       path.join(cwd, '.cairnrc.json'),
       JSON.stringify({
-        checks: { coverage: { kinds: [{ id: 'from-local', select: { by: 'path', glob: '*' } }], rules: [] } },
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A from-local kind, for this test.', id: 'from-local', select: { by: 'path', glob: '*' } },
+            ],
+            rules: [],
+          },
+        },
         extends: './base.cairnrc.json',
       }),
     )
@@ -261,7 +270,9 @@ describe('loadConfig()', () => {
     const config = await run(loadConfig(cwd))
     expect(config.checks.coverage).toEqual({
       exempt: [],
-      kinds: [{ id: 'from-local', select: { by: 'path', glob: '*' } }],
+      kinds: [
+        { description: 'A from-local kind, for this test.', id: 'from-local', select: { by: 'path', glob: '*' } },
+      ],
       rules: [],
     })
   })
@@ -270,7 +281,14 @@ describe('loadConfig()', () => {
     const cwd = mkTmp('cairn-extends-coverage-disable-')
     fs.writeFileSync(
       path.join(cwd, 'base.cairnrc.json'),
-      JSON.stringify({ checks: { coverage: { kinds: [{ id: 'x', select: { by: 'path', glob: '*' } }], rules: [] } } }),
+      JSON.stringify({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A x kind, for this test.', id: 'x', select: { by: 'path', glob: '*' } }],
+            rules: [],
+          },
+        },
+      }),
     )
     fs.writeFileSync(
       path.join(cwd, '.cairnrc.json'),

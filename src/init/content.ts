@@ -221,27 +221,31 @@ edits ever:
 "checks": {
   "coverage": {
     "kinds": [
-      { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
-      { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
-      { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
-      { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
-      { "id": "story-map", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
-      { "id": "roadmap", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
-      { "id": "implementation-details", "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" } },
-      { "id": "knowledge", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
+      { "id": "design-package", "description": "The package's own index — links to every other required document and marks a directory as a design package.", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
+      { "id": "problem-space", "description": "The real need, market, or context this work responds to — not just its technical symptom.", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
+      { "id": "solution-space", "description": "Candidate directions, evaluated and ranked, with rejected options recorded.", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
+      { "id": "spikes", "description": "Feasibility evidence actually run, not assumed.", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
+      { "id": "story-map", "description": "The real user workflow, mapped to stories and a walking-skeleton release.", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
+      { "id": "roadmap", "description": "Shippable increments, with migration notes.", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
+      { "id": "implementation-details", "description": "Concrete enough to start implementation from directly.", "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" } },
+      { "id": "knowledge", "description": "The reusable technique and lessons, for whoever extends this work later.", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
     ],
     "rules": [
-      { "from": "design-package", "scope": "sibling", "to": "problem-space" },
-      { "from": "design-package", "scope": "sibling", "to": "solution-space" },
-      { "from": "design-package", "scope": "sibling", "to": "spikes" },
-      { "from": "design-package", "scope": "sibling", "to": "story-map" },
-      { "from": "design-package", "scope": "sibling", "to": "roadmap" },
-      { "from": "design-package", "scope": "sibling", "to": "implementation-details" },
-      { "from": "design-package", "scope": "sibling", "to": "knowledge" }
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own problem-space.md — skipping it means no one recorded WHY this work matters.", "scope": "sibling", "to": "problem-space" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own solution-space.md — skipping it means alternatives were never actually weighed.", "scope": "sibling", "to": "solution-space" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own spikes.md — skipping it means claims rest on assumption, not evidence.", "scope": "sibling", "to": "spikes" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own story-map.md — skipping it means there's no real user workflow behind the plan.", "scope": "sibling", "to": "story-map" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own roadmap.md — skipping it means there's no sequencing or migration plan.", "scope": "sibling", "to": "roadmap" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own implementation-details.md — skipping it means the design isn't concrete enough to start from.", "scope": "sibling", "to": "implementation-details" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own knowledge.md — skipping it means lessons learned won't reach whoever extends this next.", "scope": "sibling", "to": "knowledge" }
     ]
   }
 }
 \`\`\`
+
+Every \`kind\` above carries a real \`description\` — unlike a rule's report line (which at
+least has an auto-generated sentence around it), a bare kind id has NO surrounding sentence
+at all, so \`description\` is unconditionally required there, not conditional on anything.
 
 Use a single \`*\` (not \`**\`) between \`docs/design/\` and the filename — \`**\` can match ZERO
 segments, which would also match \`docs/design/_SUMMARY.md\` itself (a parent index, not a
@@ -266,7 +270,12 @@ renders as a real guidance line right under that message — write the ACTUAL fi
 spike that backs this claim"), not a restatement of the rule name. **Mandatory whenever
 \`name\` is set** — a named rule with no description fails config decode entirely, so this
 can't silently regress the next time someone adds one. NOT mandatory on an unnamed rule
-(its report line is already self-explanatory); forcing one there would just be filler.
+(its report line is already self-explanatory) — but treat that as a narrow escape hatch, not
+a default to reach for: this repo's own 7 "design-package requires X" rules were first left
+unnamed on exactly that theory, and it didn't survive contact with the real question "why
+DOES a design package need its own spikes.md." All 13 rules in this repo's own config ended
+up named with real descriptions once re-examined honestly — naming and describing even a
+seemingly self-evident rule is usually worth it.
 
 ## Stress-test your own package before trusting it
 

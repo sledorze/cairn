@@ -9,64 +9,159 @@
   "checks": {
     "coverage": {
       "kinds": [
-        { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
-        { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
-        { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
-        { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
-        { "id": "story-map", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
-        { "id": "roadmap", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
         {
-          "id": "implementation-details",
-          "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" }
+          "description": "The package's own index — links to every other required document and marks a directory as a design package.",
+          "id": "design-package",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/_SUMMARY.md"
+          }
         },
-        { "id": "knowledge", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
+        {
+          "description": "The real need, market, or context this work responds to — not just its technical symptom.",
+          "id": "problem-space",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/problem-space.md"
+          }
+        },
+        {
+          "description": "Candidate directions, evaluated and ranked, with rejected options recorded.",
+          "id": "solution-space",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/solution-space.md"
+          }
+        },
+        {
+          "description": "Feasibility evidence actually run, not assumed.",
+          "id": "spikes",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/spikes.md"
+          }
+        },
+        {
+          "description": "The real user workflow, mapped to stories and a walking-skeleton release.",
+          "id": "story-map",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/story-map.md"
+          }
+        },
+        {
+          "description": "Shippable increments, with migration notes.",
+          "id": "roadmap",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/roadmap.md"
+          }
+        },
+        {
+          "description": "Concrete enough to start implementation from directly.",
+          "id": "implementation-details",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/implementation-details.md"
+          }
+        },
+        {
+          "description": "The reusable technique and lessons, for whoever extends this work later.",
+          "id": "knowledge",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/*/knowledge.md"
+          }
+        }
       ],
       "rules": [
-        { "from": "design-package", "scope": "sibling", "to": "problem-space" },
-        { "from": "design-package", "scope": "sibling", "to": "solution-space" },
-        { "from": "design-package", "scope": "sibling", "to": "spikes" },
-        { "from": "design-package", "scope": "sibling", "to": "story-map" },
-        { "from": "design-package", "scope": "sibling", "to": "roadmap" },
-        { "from": "design-package", "scope": "sibling", "to": "implementation-details" },
-        { "from": "design-package", "scope": "sibling", "to": "knowledge" },
         {
-          "from": "solution-space",
+          "description": "Every design package must include and link to its own problem-space.md — skipping it means no one recorded WHY this work matters.",
+          "from": "design-package",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "problem-space"
+        },
+        {
+          "description": "Every design package must include and link to its own solution-space.md — skipping it means alternatives were never actually weighed.",
+          "from": "design-package",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "solution-space"
+        },
+        {
+          "description": "Every design package must include and link to its own spikes.md — skipping it means claims rest on assumption, not evidence.",
+          "from": "design-package",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "spikes"
+        },
+        {
+          "description": "Every design package must include and link to its own story-map.md — skipping it means there's no real user workflow behind the plan.",
+          "from": "design-package",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "story-map"
+        },
+        {
+          "description": "Every design package must include and link to its own roadmap.md — skipping it means there's no sequencing or migration plan.",
+          "from": "design-package",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "roadmap"
+        },
+        {
+          "description": "Every design package must include and link to its own implementation-details.md — skipping it means the design isn't concrete enough to start from.",
+          "from": "design-package",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "implementation-details"
+        },
+        {
+          "description": "Every design package must include and link to its own knowledge.md — skipping it means lessons learned won't reach whoever extends this next.",
+          "from": "design-package",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "knowledge"
+        },
+        {
           "description": "A cost/feasibility/risk claim needs real evidence — cite the spike that backs it.",
+          "from": "solution-space",
           "name": "grounded_by",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "from": "roadmap",
           "description": "A sequencing decision needs real evidence — cite the spike that justifies it.",
+          "from": "roadmap",
           "name": "grounded_by",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "from": "problem-space",
           "description": "A risk/investment claim needs real evidence — cite the spike that backs it.",
+          "from": "problem-space",
           "name": "grounded_by",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "from": "implementation-details",
           "description": "An implementation approach must be built on a validated primitive, not assumed — cite the spike that confirmed it works.",
+          "from": "implementation-details",
           "name": "builds_on",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "from": "knowledge",
           "description": "Instructional guidance restating a spike's findings must cite the spike it's sourced from, so a reader can verify it's still accurate.",
+          "from": "knowledge",
           "name": "sourced_from",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "from": "roadmap",
           "description": "A roadmap that realizes a story-map concept (e.g. a walking skeleton) must cite the story-map doc it derives from.",
+          "from": "roadmap",
           "name": "derived_from",
           "scope": "sibling",
           "to": "story-map"
@@ -76,8 +171,14 @@
     "docCoverage": {
       "sources": ["src/**/*.ts"],
       "coveredBy": [
-        { "glob": "docs/architecture.md", "kind": "architecture" },
-        { "glob": "docs/adr/**", "kind": "adr" }
+        {
+          "glob": "docs/architecture.md",
+          "kind": "architecture"
+        },
+        {
+          "glob": "docs/adr/**",
+          "kind": "adr"
+        }
       ],
       "exempt": ["src/**/*.test.ts", "src/**/*.bench.ts", "src/testSupport/**"]
     }

@@ -205,11 +205,15 @@ anything. A reader hitting that message with no prior context has no way to know
 **Closed with a real `description` field** (`core/Config.ts`'s `CoverageRule`), rendered
 directly under the missing-coverage line when present — real, in-context guidance, not a
 label to look up elsewhere. Structurally optional on the field itself, but **mandatory
-whenever `name` is set** — enforced by a decode-time cross-field check, refuting the
-tempting-but-wrong "make it mandatory for every rule" version first: an UNNAMED rule's
-report line (`no link to a "decision"-kind doc`) is already fully self-explanatory, so
-forcing a description there would only produce restated filler — the exact
-decorative-not-genuine failure this field exists to avoid. A config with a named rule and no
+whenever `name` is set** — enforced by a decode-time cross-field check. An unnamed rule's
+report line (`no link to a "decision"-kind doc`) can genuinely be self-explanatory in some
+cases, so the schema doesn't force `description` there — but re-examining THIS repo's own 7
+"design-package requires X" star rules found they weren't actually exempt in practice: "why
+does a design package need its own spikes.md" is exactly the kind of thing worth explaining,
+not assuming obvious. All 13 rules in this repo's own `.cairnrc.json` ended up named
+(`requires`, `grounded_by`, `builds_on`, `sourced_from`, `derived_from`) with real
+descriptions — the schema's exemption for unnamed rules stays available for a genuinely
+self-evident case, but isn't a default to reach for. A config with a named rule and no
 description now fails to load AT ALL (not just a coverage warning), verified for real: a
 description was removed from this repo's own `.cairnrc.json`, `cairn check` refused to even
 start, restored, green again.
@@ -220,6 +224,16 @@ start, restored, green again.
     ✗ no link ("grounded_by") to a "spikes"-kind doc (required by kind "solution-space")
       A cost/feasibility/risk claim needs real evidence — cite the spike that backs it.
 ```
+
+**The same principle extended to KINDS, not just rules.** A kind id (`design-package`,
+`spikes`) isn't self-explanatory to a reader unfamiliar with this repo's own convention
+either — unlike a rule, a kind has no fallback (its id is the ONLY thing that ever names it,
+there's no auto-generated sentence around it the way a rule's report line has one), so
+`description` on `KindDef` (`core/Config.ts`'s `KindDefInputSchema`) is unconditionally
+**required**, not conditional on anything. Every one of this repo's own 8 kinds now carries
+one. Purely metadata today (never consulted by kind-matching logic — verified by reading
+`core/structure/DocMetadata.ts`'s classification code, which only ever touches `id`/
+`select`), the same "additive, never affects behavior" shape `description` on a rule has.
 
 Adding `description` to `CoverageRule` also caught a real, adversarial-review-documented
 recurring bug on its own: `checkCoverage`'s rule-dedup key (`program/structure/

@@ -94,9 +94,16 @@ actual guidance line under the missing-coverage message when present.
 
 **Second amendment, same session**: `description` was made **mandatory whenever `name` is
 set**, not left structurally optional — enforced by a decode-time cross-field check, the
-same shape as the pre-existing undeclared-kind check above. The refuted alternative
-("mandatory for every rule") was rejected on the same evidence this whole ADR runs on: an
-UNNAMED rule's report line is already self-explanatory, so a forced description there would
-be restated filler, not real guidance. Verified by real falsification: a description removed
-from this repo's own `.cairnrc.json` made `cairn check` refuse to even load the config, not
-just warn.
+same shape as the pre-existing undeclared-kind check above. Verified by real falsification: a
+description removed from this repo's own `.cairnrc.json` made `cairn check` refuse to even
+load the config, not just warn.
+
+**Third amendment**: re-examining this repo's own 7 "design-package requires X" rules — left
+unnamed on the theory their report line was already self-explanatory — found that theory
+didn't survive contact with the real question "why DOES a design package need its own
+spikes.md." All 13 rules in this repo's own config are now named with real descriptions; the
+schema's exemption for a genuinely self-evident unnamed rule remains available but isn't the
+default to reach for. The same principle was also extended to `KindDef`: a kind id
+(`design-package`, `spikes`) has no auto-generated sentence around it the way a rule's report
+line does, so `description` there is unconditionally required, not conditional on anything —
+every one of this repo's 8 kinds now carries one.
