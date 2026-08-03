@@ -165,14 +165,6 @@ const loadConfigWithSourceOrFail = (cwd: string, overrides: Overrides, explicitP
 const expandRootsOrFail = (cwd: string, patterns: readonly string[]) =>
   expandRoots(cwd, patterns).pipe(Effect.mapError(toConfigError))
 
-// `expandRoots` throws a real Error (issue #92) when a `..`-free,
-// non-absolute root pattern resolves to a symlink escaping `cwd` — same
-// "a bare throw must never surface as a raw defect" discipline as
-// `loadConfigOrFail` above, so the CLI reports it as a clean one-line
-// message + exit 1, not a stack trace.
-const expandRootsOrFail = (cwd: string, patterns: readonly string[]) =>
-  Effect.try({ catch: toConfigError, try: () => expandRoots(cwd, patterns) })
-
 interface CheckParsed {
   readonly config: Option.Option<string>
   readonly deletionsSince: Option.Option<string>
