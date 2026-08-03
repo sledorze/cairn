@@ -26,3 +26,12 @@ an existing package's docs (none of its own) passed cleanly. Closing
 this needs a new same-directory selector relation or a dedicated
 check — out of scope here, recorded as a known gap for multi-package
 scale.
+
+**Dev-issue linking:** every doc now carries one real
+`[issue #101](github.com/.../101)` link (was plain unlinked text) —
+real, but un-enforced (`checks.coverage` can't classify an external
+URL as a kind today). **Product-issue/vision layer:** raised, not
+modeled — this repo has no real interview/customer-feedback content
+to ground it in, and inventing fictional data would break this
+package's own evidence-based discipline; proposed as its own future
+design package, filed as a real issue first.

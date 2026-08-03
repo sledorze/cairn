@@ -77,9 +77,10 @@ But it is not a fix cairn can rely on:
 
 ## Evidence basis — stated plainly, not overstated
 
-This design rests on **one reported case**: issue #101 itself, filed by cairn's own
-maintainer, from their own side project (`sledorze/falsestart`), on a flag (`--refs`) the
-README and `--help` both already label experimental/v1. As of this design being written,
+This design rests on **one reported case**: [issue #101](https://github.com/sledorze/cairn/issues/101)
+itself, filed by cairn's own maintainer, from their own side project (`sledorze/falsestart`),
+on a flag (`--refs`) the README and `--help` both already label experimental/v1. As of this
+design being written,
 the issue has zero comments and zero reactions from anyone else — there is no evidence yet
 that another cairn user has hit this, asked for it, or even runs `--refs` at all. That
 doesn't make the report wrong (the repro is concrete and the failure mode is real,

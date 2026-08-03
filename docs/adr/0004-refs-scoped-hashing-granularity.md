@@ -6,7 +6,7 @@ status: proposed
 
 ## Context
 
-Issue #101: `--refs`'s whole-file content hashing (`resolveReferenceContent`,
+[Issue #101](https://github.com/sledorze/cairn/issues/101): `--refs`'s whole-file content hashing (`resolveReferenceContent`,
 `CheckRefs.ts:83`) makes any edit to a cited file — including edits that change nothing a
 doc actually claims — fail `cairn check`. Reported for real (dogfooding cairn 0.6.0 on
 `sledorze/falsestart`): a doc citing 14 implementation files failed on every unrelated edit
@@ -16,7 +16,7 @@ to any of them, until the reporter restructured their source tree to add a facad
 That restructure is evidence of a real gap, not a non-issue: **a documentation tool caused
 an architectural change** the reporter says they would not otherwise have made, and the
 workaround doesn't generalize to a repo without (or unwilling to add) a facade layer. This
-repo's own `checks.docCoverage` (issue #108, shipped just before this ADR) makes the
+repo's own `checks.docCoverage` ([issue #108](https://github.com/sledorze/cairn/issues/108), shipped just before this ADR) makes the
 problem concrete here too: cairn's own `.cairnrc.json` now cites dozens of `src/**/*.ts`
 files directly from `docs/architecture.md`, by design — turning `--refs` on for this repo
 today would hit exactly this issue.

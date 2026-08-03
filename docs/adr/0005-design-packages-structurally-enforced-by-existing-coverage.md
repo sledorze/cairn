@@ -6,7 +6,7 @@ status: accepted
 
 ## Context
 
-Working on issue #101's own design package (`docs/design/101-refs-symbol-scoping/`), a
+Working on [issue #101](https://github.com/sledorze/cairn/issues/101)'s own design package (`docs/design/101-refs-symbol-scoping/`), a
 real question surfaced: these are hand-authored Markdown files (`problem-space.md`,
 `solution-space.md`, `spikes.md`, `story-map.md`, `roadmap.md`,
 `implementation-details.md`, `knowledge.md`) with no consistent internal heading schema

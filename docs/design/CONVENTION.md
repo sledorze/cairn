@@ -103,3 +103,34 @@ here as a known, load-bearing limitation of reusing `checks.coverage` for this p
 silently left for a future reader to rediscover the hard way. In practice, with one design
 package today, this doesn't bite — but it would need addressing before this convention is
 recommended at scale (many concurrent design packages).
+
+## Linking to the real dev issue (real, done) — and product issues/vision (proposed, not built)
+
+Every doc in this package used to say "issue #101" as plain, unlinked text — real content,
+but not a real reference anyone (or any tool) could follow or verify. Fixed by adding one
+authoritative `[issue #101](https://github.com/sledorze/cairn/issues/101)` link per doc
+(the first substantive mention, not every occurrence — matching the same "one real link is
+enough to establish the relationship" discipline the `grounded_by` rules above use).
+
+**Honest limit on how far this generalizes today**: `checks.coverage`'s `kinds` classify
+real FILES cairn scans by path glob — it has no concept of an external URL as a kind, so
+"every design package must link to a real GitHub issue" can't be a `checks.coverage` rule
+the way "must link to a `spikes`-kind doc" is. The link above is real and useful, but
+un-enforced; nothing fails `cairn check` if it's missing or wrong. Closing that gap for
+real would need a genuinely new capability — e.g. a `CoverageTarget` variant like the
+already-existing `{ external: 'path' }` (a rule satisfied by a link to a real file on disk),
+extended with something like `{ external: 'url', pattern: '...' }` (a rule satisfied by a
+link matching a URL pattern) — not designed here, since it needs its own problem-space/
+solution-space treatment the way issue #101 itself got, not a bolt-on paragraph.
+
+**A separate, larger idea raised alongside this — deliberately NOT modeled here**: linking
+design packages not just to a dev issue (GitHub, this repo) but to a "product issue" layer
+capturing feedback from interviews or real user experience that shapes vision, upstream of
+any specific GitHub issue. This repo has **no real content to ground that in** — every issue
+here is dev-flavored (dogfooded by the tool's own maintainer), not sourced from a separate
+product/customer-feedback process. Modeling it here would mean inventing fictional
+interview data to hang a schema on, which breaks this whole convention's own founding
+discipline (every claim in this package was run or grepped, never assumed). Worth pursuing
+as its own scoped design package — filed as a real GitHub issue first, the same way #101 and
+#108 were — once there's real product-issue content (this repo's own, or a consumer's) to
+verify the model against, not before.

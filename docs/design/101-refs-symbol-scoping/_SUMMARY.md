@@ -1,7 +1,8 @@
 # Issue #101 design: `--refs` symbol/export-scoped hashing
 
-Full design package for closing issue #101 ("`--refs` whole-file granularity makes
-documentation drive code structure"), before any implementation code is written. See
+Full design package for closing [issue #101](https://github.com/sledorze/cairn/issues/101)
+("`--refs` whole-file granularity makes documentation drive code structure"), before any
+implementation code is written. See
 [`docs/adr/0004`](../../adr/0004-refs-scoped-hashing-granularity.md) for the accepted
 decision this package supports.
 
