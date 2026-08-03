@@ -144,6 +144,54 @@ const CoverageInputSchema = Schema.Struct({
     ),
   )
 
+// Issue #108: `checks.coverage` only ever asks doc→doc questions ("does a
+// doc of kind X link to a doc of kind Y") — nothing checks that a SOURCE
+// FILE is mentioned by any documentation at all, so a brand-new,
+// undocumented module passes `cairn check` cleanly. Deliberately a SEPARATE
+// key, not an extension of `CoverageInputSchema`'s `kinds`/`rules` shape —
+// design review (issue #108's own thread) found that bolting "sometimes
+// `kind` means a raw filesystem path, not a scanned doc" onto the existing
+// engine would make the same `kinds`/`rules` array sometimes mean doc→doc,
+// sometimes doc→path, distinguished only by a flag a reader has to check
+// per-entry. A dedicated key keeps the two mechanisms visually and
+// structurally distinct instead.
+//
+// `coveredBy` is a list of NAMED groups (not a single glob) because a
+// source file can legitimately be documented from more than one kind of
+// doc (an architecture doc, an ADR, a README) — `kind` exists purely for
+// report clarity ("src/x.ts is covered by neither `architecture` nor
+// `adr`"), not to drive per-kind separate obligations: coverage is
+// satisfied by a link from ANY one of the listed groups, not all of them.
+const DocCoverageGroupInputSchema = Schema.Struct({
+  glob: Schema.String,
+  kind: Schema.String,
+}).annotate({
+  description: 'One named group of docs whose outbound links count as covering a source file.',
+  identifier: 'CairnDocCoverageGroup',
+})
+
+const DocCoverageInputSchema = Schema.Struct({
+  coveredBy: Schema.Array(DocCoverageGroupInputSchema),
+  exempt: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: 'Globs exempted from source-tree coverage — a source file matching one is never reported.',
+    }),
+  ),
+  sources: Schema.Array(Schema.String),
+}).annotate({
+  description:
+    'Opt-in check that every source file matching `sources` is linked to by at least one doc matching ' +
+    'one of the `coveredBy` groups. Absent by default — presence enables it. Direct links only (a citation ' +
+    "chain through an intermediate doc does not count), matching `checks.coverage`'s own non-transitive rules.",
+  identifier: 'CairnDocCoverageConfig',
+})
+
+// `DocCoverageInputSchema | Literal(false)` — same escape hatch as
+// `CoverageOrDisabledSchema` below, for the same reason: a descendant
+// config needs a way to turn an inherited `extends` preset's docCoverage
+// back off with a plain `false`, not just override it with different globs.
+const DocCoverageOrDisabledSchema = Schema.Union([DocCoverageInputSchema, Schema.Literal(false)])
+
 // `CoverageInputSchema | Literal(false)`, not just `CoverageInputSchema` —
 // `links`/`summaries` can be turned back off with a plain `false`, letting a
 // descendant config override an inherited `extends` preset; `checks.coverage`
@@ -157,6 +205,7 @@ const CoverageOrDisabledSchema = Schema.Union([CoverageInputSchema, Schema.Liter
 
 const ChecksInputSchema = Schema.Struct({
   coverage: Schema.optionalKey(CoverageOrDisabledSchema),
+  docCoverage: Schema.optionalKey(DocCoverageOrDisabledSchema),
   links: Schema.optionalKey(
     Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
   ),
@@ -295,10 +344,26 @@ export interface CoverageConfig {
   readonly rules: readonly CoverageRule[]
 }
 
+/** One named group of docs whose outbound links count as covering a source
+ * file — see `DocCoverageGroupInputSchema`'s own comment for why `kind`
+ * exists (report clarity, not per-kind separate obligations). */
+export interface DocCoverageGroup {
+  readonly glob: string
+  readonly kind: string
+}
+
+export interface DocCoverageConfig {
+  readonly coveredBy: readonly DocCoverageGroup[]
+  readonly exempt: readonly string[]
+  readonly sources: readonly string[]
+}
+
 export interface ChecksConfig {
   /** `null` = disabled (the default) — presence of `checks.coverage` in a
    * config file is itself the opt-in, not a separate boolean flag. */
   readonly coverage: CoverageConfig | null
+  /** `null` = disabled (the default), same convention as `coverage` above. */
+  readonly docCoverage: DocCoverageConfig | null
   readonly links: boolean
   readonly summaries: boolean
 }
@@ -340,7 +405,7 @@ export interface Overrides {
 }
 
 export const DEFAULT_CONFIG: ResolvedConfig = {
-  checks: { coverage: null, links: true, summaries: true },
+  checks: { coverage: null, docCoverage: null, links: true, summaries: true },
   ignore: ['**/node_modules/**'],
   locale: 'en',
   naming: DEFAULT_NAMING,
@@ -405,6 +470,18 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
               exempt: layer.checks.coverage.exempt ?? [],
               kinds: layer.checks.coverage.kinds,
               rules: layer.checks.coverage.rules,
+            },
+    // Same three-way (undefined inherits / false disables / anything else
+    // replaces wholesale) reasoning as `coverage` above.
+    docCoverage:
+      layer.checks?.docCoverage === undefined
+        ? base.checks.docCoverage
+        : layer.checks.docCoverage === false
+          ? null
+          : {
+              coveredBy: layer.checks.docCoverage.coveredBy,
+              exempt: layer.checks.docCoverage.exempt ?? [],
+              sources: layer.checks.docCoverage.sources,
             },
     links: layer.checks?.links ?? base.checks.links,
     summaries: layer.checks?.summaries ?? base.checks.summaries,
