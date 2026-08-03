@@ -447,7 +447,9 @@ const checkConfigShape = {
 }
 
 const checkCommand = Command.make('check', checkConfigShape, runCheck).pipe(
-  Command.withDescription('Check hierarchical doc summaries and Markdown links (the default action).'),
+  Command.withDescription(
+    'Check hierarchical doc summaries and Markdown links (the default action). Also runs config-only checks with no flag of their own, when configured in .cairnrc.json: checks.coverage (structural doc-kind coverage/orphan detection — see README or the JSON schema for its keys).',
+  ),
 )
 
 // --- `init` ---

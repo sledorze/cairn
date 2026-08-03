@@ -204,6 +204,19 @@ describe('cli.ts (real subprocess) — every documented flag is exercised by nam
     const undocumented = [...documented].filter((flag) => !ownSource.includes(`'${flag}'`))
     expect(undocumented).toEqual([])
   })
+
+  // Issue #104: `checks.coverage` has no CLI flag of its own (config-only
+  // opt-in), so nothing in the FLAGS audit above could ever catch it —
+  // before this fix, `cairn check --help | grep -c coverage` and
+  // `cairn --help | grep -c coverage` both returned 0, the exact repro from
+  // the issue. Config-only checks with no flag still need to be mentioned
+  // in prose somewhere `--help` shows, or they're undiscoverable short of
+  // reading the schema or vendored docs.
+  it('mentions checks.coverage in --help even though it has no flag of its own (issue #104)', () => {
+    const p = project('cli-coverage-discoverable')
+    expect(runCli(p.root, ['check', '--help']).stdout).toContain('checks.coverage')
+    expect(runCli(p.root, ['--help']).stdout).toContain('checks.coverage')
+  })
 })
 
 describe('cli.ts (real subprocess) — flags with no prior CLI-level test coverage', () => {
