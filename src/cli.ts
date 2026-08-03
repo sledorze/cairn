@@ -30,6 +30,7 @@ import { proseRefsPlugin } from './program/links/CheckProseRefs.ts'
 import { refsPlugin } from './program/links/CheckRefs.ts'
 import { checkDeletions, formatDeletionsReport } from './program/summaries/CheckDeletions.ts'
 import { coveragePlugin } from './program/structure/CheckCoverage.ts'
+import { docCoveragePlugin } from './program/structure/CheckDocCoverage.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -43,13 +44,13 @@ import { buildJsonReport } from './program/JsonReport.ts'
 import type { Locale } from './program/locale.ts'
 import { pick } from './program/locale.ts'
 
-// The 4 checks migrated onto the CheckPlugin abstraction, in the EXACT
+// The 5 checks migrated onto the CheckPlugin abstraction, in the EXACT
 // order their equivalent hand-wired blocks used to run (links, then —
 // after summaries, which stays hand-wired, see ./program/checks/
-// CheckPlugin.ts's own header — refs, proseRefs, coverage). Order matters:
-// it's the order `--json` incompatibility messages are checked in
-// (rejectedJsonMessage) AND the order console output appears in.
-const JSON_INCOMPATIBLE_PLUGINS = [refsPlugin, proseRefsPlugin, coveragePlugin]
+// CheckPlugin.ts's own header — refs, proseRefs, coverage, docCoverage).
+// Order matters: it's the order `--json` incompatibility messages are
+// checked in (rejectedJsonMessage) AND the order console output appears in.
+const JSON_INCOMPATIBLE_PLUGINS = [refsPlugin, proseRefsPlugin, coveragePlugin, docCoveragePlugin]
 
 // Narrowed once, at module scope, instead of a `!` non-null assertion
 // (forbidden by this repo's lint config) at each call site — a genuine,
@@ -295,10 +296,11 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   let linksResult: LinkCheckResult | null = null
   let summariesResult: SummaryPlan | null = null
 
-  // Every `runCheckPlugin` call site (links/refs/proseRefs/coverage) prints
-  // its lines (if any) and folds its exit code into the running `code` the
-  // exact same way — extracted (issue #93 DRY audit) after this shape
-  // turned up identically 4 times. Links additionally captures its own
+  // Every `runCheckPlugin` call site (links/refs/proseRefs/coverage/
+  // docCoverage) prints its lines (if any) and folds its exit code into the
+  // running `code` the exact same way — extracted (issue #93 DRY audit)
+  // after this shape turned up identically 4 times. Links additionally
+  // captures its own
   // `result` for `--json`'s report, kept as separate glue at that one call
   // site rather than folded in here.
   const reportOutcome = (outcome: CheckPluginRunOutcome<unknown>) =>
@@ -484,6 +486,8 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
 
   yield* reportOutcome(yield* runCheckPlugin(coveragePlugin, pluginArgs))
 
+  yield* reportOutcome(yield* runCheckPlugin(docCoveragePlugin, pluginArgs))
+
   if (deletionsOutcome !== null) {
     if (deletionsOutcome.error !== null) {
       // Deliberately NOT "git unavailable at X" — `GitUnavailableError` is
@@ -511,8 +515,8 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     // derived purely from links/summaries, so using it verbatim would
     // silently discard any OTHER contribution to `code` (today: the
     // zero-resolved-roots check above, the only such case reachable under
-    // `--json`, since refs/proseRefs/coverage are all already rejected
-    // upfront when `--json` is set). The printed JSON body's own
+    // `--json`, since refs/proseRefs/coverage/docCoverage are all already
+    // rejected upfront when `--json` is set). The printed JSON body's own
     // `exitCode` field is corrected too, not just `process.exitCode` below
     // — a consumer reading only the JSON body must see the same number the
     // process actually exits with, not a stale one.
@@ -548,7 +552,7 @@ const checkConfigShape = {
 
 const checkCommand = Command.make('check', checkConfigShape, runCheck).pipe(
   Command.withDescription(
-    'Check hierarchical doc summaries and Markdown links (the default action). Also runs config-only checks with no flag of their own, when configured in .cairnrc.json: checks.coverage (structural doc-kind coverage/orphan detection — see README or the JSON schema for its keys).',
+    'Check hierarchical doc summaries and Markdown links (the default action). Also runs config-only checks with no flag of their own, when configured in .cairnrc.json: checks.coverage (structural doc-kind coverage/orphan detection) and checks.docCoverage (source-tree documentation coverage) — see README or the JSON schema for their keys.',
   ),
 )
 
