@@ -176,6 +176,18 @@ under test is specifically about real filesystem behaviour (path resolution, sid
 placement, content hashing) — the in-memory double is faster and still worth keeping
 alongside it, but it can't catch what only the real `DocsFsLive` binding exercises.
 
+**Run an adversarial review, from a purposely unbiased sub-agent, before every push.** The
+author of a change is the worst-positioned reviewer of it — they already believe the fix is
+correct, so they re-read their own reasoning instead of checking it. Before pushing, spawn a
+fresh agent with no prior context on the change (a plain diff/PR description, not a summary of
+your own reasoning) and ask it to find reasons the change is wrong, not to confirm it's right —
+try to break the fix, not tour it. This is a distinct step from "Dogfood" and "Convert every
+manual proof into a test" above: dogfooding proves the fix catches what it's meant to; an
+adversarial review checks for what you didn't think to test, an edge case the fix doesn't
+cover, or a regression it silently introduces elsewhere. Skippable only when the change is
+trivial (a typo, a comment, a one-line doc fix) — anything touching behaviour, a check's
+detection logic, or a write path gets the review.
+
 **Treat a structural/architectural claim in a doc as unverified until grepped, not just
 re-read.** "The architecture doc reflects the code" and "these two modules don't depend on
 each other" are exactly the kind of claim that silently rots as a codebase grows — this repo
