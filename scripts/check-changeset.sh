@@ -16,15 +16,38 @@
 # bump) — an explicit, visible-in-the-diff acknowledgment, not a silent skip. This
 # was the issue's own explicit ask: "an explicit label... not a heuristic prone to
 # false positives in either direction."
+#
+# Known, deliberate gap (not fixed here): `package.json` (a new dependency, a new
+# `bin`/`exports` entry) is genuinely user-facing but not in the required-paths
+# list. Adding it was tried and reverted — the changesets bot's own "Version
+# Packages" PR also touches `package.json` while DELETING every consumed
+# changeset, so a naive inclusion would fail the bot's own release PR unless
+# specifically exempted (e.g. by branch name or by detecting "changesets only
+# deleted, nothing added"), which is real added complexity this PR's scope
+# (issue #111's own suggested direction: `src/**`) doesn't cover. A manual
+# dependency-only PR without a changeset stays a real, known gap.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 BASE_REF="${1:-}"
 if [ -z "$BASE_REF" ]; then
-  BASE_REF="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+  # Deliberately NOT `@{u}` (the current branch's own remote-tracking ref):
+  # adversarial review found that wrong — `@{u}` compares against wherever
+  # THIS branch was last pushed to, not the branch it will actually merge
+  # INTO, so on a normal single-push workflow the diff against it is empty
+  # (or, on a later push, only that push's own incremental commits) and the
+  # check silently no-ops on exactly the case issue #111 is about: a fresh
+  # PR's full diff against `main` missing a changeset. The actual merge
+  # target is the repo's default branch — resolved from `origin/HEAD`'s own
+  # symref (survives a renamed default branch), falling back to `origin/main`
+  # if that symref was never set locally (e.g. a shallow/partial clone).
+  BASE_REF="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 fi
 if [ -z "$BASE_REF" ]; then
-  echo "check-changeset: no base ref given and no upstream branch configured (first push?) — skipping."
+  BASE_REF="origin/main"
+fi
+if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
+  echo "check-changeset: base ref '$BASE_REF' does not resolve locally — skipping."
   exit 0
 fi
 
@@ -51,7 +74,13 @@ if [ -z "$USER_FACING" ]; then
   exit 0
 fi
 
-if echo "$CHANGED_FILES" | grep -Eq '^\.changeset/[^/]+\.md$'; then
+# `--diff-filter=A` (added only), not a plain path match against
+# `--name-only` — the changesets bot's own "Version Packages" PR touches
+# `package.json` (now itself a required path, so this check runs there too)
+# while DELETING every consumed changeset, and `--name-only` lists a
+# deletion the same as an addition; matching either would make deleting a
+# changeset look identical to adding one.
+if git diff --name-only --diff-filter=A "$MERGE_BASE" HEAD | grep -Eq '^\.changeset/[^/]+\.md$'; then
   echo "check-changeset: user-facing change(s) found, and a changeset is present. OK."
   exit 0
 fi
