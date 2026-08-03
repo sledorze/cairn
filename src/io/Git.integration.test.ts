@@ -239,6 +239,168 @@ it.layer(GitFsTestLive)('GitFsLive().listIgnoredDirs()', (layerIt) => {
   )
 })
 
+// Issue #106: `--report-deletions` needs a deleted doc's LAST content to
+// extract headings/links from — the one thing only git can still supply
+// once a file is gone from the working tree. Its own `it.layer` block (not
+// reusing the first block's `root`) so deleting a file here can't affect
+// that block's own "includes committed files" assertions.
+it.layer(GitFsTestLive)('GitFsLive().readFileAtRef()', (layerIt) => {
+  let deletionRoot = ''
+
+  beforeAll(() => {
+    deletionRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-readatref-'))
+    git(deletionRoot, 'init', '-q')
+    git(deletionRoot, 'config', 'user.email', 'test@example.com')
+    git(deletionRoot, 'config', 'user.name', 'Test')
+
+    fs.mkdirSync(path.join(deletionRoot, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(deletionRoot, 'docs', 'committed.md'), '# Committed\n\nBody text.')
+    git(deletionRoot, 'add', 'docs/committed.md')
+    git(deletionRoot, 'commit', '-q', '-m', 'initial')
+
+    // The real issue #106 scenario: deleted from the working tree, but still
+    // in HEAD (not yet committed as a deletion).
+    fs.rmSync(path.join(deletionRoot, 'docs', 'committed.md'))
+
+    // Staged (added to the index) but never committed — HEAD genuinely does
+    // not have this path; `readFileAtRef` must FAIL for it (issue #106
+    // adversarial review: a caller-supplied `ref` failing silently would
+    // conflate a real problem with a benign absence).
+    fs.writeFileSync(path.join(deletionRoot, 'docs', 'staged-only.md'), '# Staged only')
+    git(deletionRoot, 'add', 'docs/staged-only.md')
+  })
+
+  afterAll(() => {
+    if (deletionRoot) {
+      fs.rmSync(deletionRoot, { force: true, recursive: true })
+    }
+  })
+
+  layerIt.effect("recovers a committed doc's content, at HEAD, after it's been deleted from the working tree", () =>
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      const deletedAbs = toPosix(path.join(deletionRoot, 'docs', 'committed.md'))
+      expect(fs.existsSync(deletedAbs)).toBeFalsy()
+      const content = yield* gitFs.readFileAtRef(deletionRoot, 'HEAD', deletedAbs)
+      expect(content).toBe('# Committed\n\nBody text.')
+    }),
+  )
+
+  layerIt.effect('fails (never a silent null) for a path staged but never committed, at HEAD', () =>
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      const stagedAbs = toPosix(path.join(deletionRoot, 'docs', 'staged-only.md'))
+      const error = yield* Effect.flip(gitFs.readFileAtRef(deletionRoot, 'HEAD', stagedAbs))
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    }),
+  )
+
+  layerIt.effect('fails for a path that never existed at all', () =>
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      const neverAbs = toPosix(path.join(deletionRoot, 'docs', 'never-existed.md'))
+      const error = yield* Effect.flip(gitFs.readFileAtRef(deletionRoot, 'HEAD', neverAbs))
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    }),
+  )
+})
+
+// Issue #106: `listDeletedSince` is the detection surface itself — which
+// docs, present at some ref, are gone from the CURRENT working tree. Real
+// git, both shapes: an uncommitted `rm` (ref = HEAD) and a deletion already
+// committed on top of a base ref (ref = an earlier commit) — the second is
+// the actual reported scenario ("deleted a doc, only noticed hours later").
+it.layer(GitFsTestLive)('GitFsLive().listDeletedSince()', (layerIt) => {
+  let delRoot = ''
+  let baseSha = ''
+
+  beforeAll(() => {
+    delRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-deletedsince-'))
+    git(delRoot, 'init', '-q')
+    git(delRoot, 'config', 'user.email', 'test@example.com')
+    git(delRoot, 'config', 'user.name', 'Test')
+
+    fs.mkdirSync(path.join(delRoot, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(delRoot, 'docs', 'kept.md'), '# Kept')
+    fs.writeFileSync(path.join(delRoot, 'docs', 'uncommitted-delete.md'), '# Will be rm-ed, uncommitted')
+    fs.writeFileSync(path.join(delRoot, 'docs', 'committed-delete.md'), '# Will be rm-ed and committed')
+    git(delRoot, 'add', '.')
+    git(delRoot, 'commit', '-q', '-m', 'initial')
+    baseSha = git(delRoot, 'rev-parse', 'HEAD').trim()
+
+    // Committed deletion — gone from HEAD too, only visible against baseSha.
+    fs.rmSync(path.join(delRoot, 'docs', 'committed-delete.md'))
+    git(delRoot, 'add', 'docs/committed-delete.md')
+    git(delRoot, 'commit', '-q', '-m', 'delete committed-delete.md')
+
+    // Uncommitted deletion — gone from disk, but HEAD still has it.
+    fs.rmSync(path.join(delRoot, 'docs', 'uncommitted-delete.md'))
+  })
+
+  afterAll(() => {
+    if (delRoot) {
+      fs.rmSync(delRoot, { force: true, recursive: true })
+    }
+  })
+
+  layerIt.effect('against HEAD, reports only the uncommitted deletion, not the already-committed one', () =>
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      const deleted = yield* gitFs.listDeletedSince(delRoot, 'HEAD')
+      expect(deleted).toEqual([toPosix(path.join(delRoot, 'docs', 'uncommitted-delete.md'))])
+    }),
+  )
+
+  layerIt.effect(
+    'against the base commit (before either deletion), reports BOTH — the real reported scenario: a deletion already committed, noticed only later',
+    () =>
+      Effect.gen(function* () {
+        const gitFs = yield* GitFs
+        const deleted = yield* gitFs.listDeletedSince(delRoot, baseSha)
+        expect(deleted.toSorted()).toEqual(
+          [
+            toPosix(path.join(delRoot, 'docs', 'committed-delete.md')),
+            toPosix(path.join(delRoot, 'docs', 'uncommitted-delete.md')),
+          ].toSorted(),
+        )
+      }),
+  )
+
+  layerIt.effect('does not report a doc that was never deleted at all', () =>
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      const deleted = yield* gitFs.listDeletedSince(delRoot, baseSha)
+      expect(deleted).not.toContain(toPosix(path.join(delRoot, 'docs', 'kept.md')))
+    }),
+  )
+
+  layerIt.effect('fails with a named GitUnavailableError when `base` is not a git repository', () =>
+    Effect.gen(function* () {
+      const nonRepo = yield* acquireTempDir('not-a-repo-deletedsince-')
+      const gitFs = yield* GitFs
+      const error = yield* Effect.flip(gitFs.listDeletedSince(nonRepo, 'HEAD'))
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    }),
+  )
+
+  // Issue #106 adversarial review: without a `--` separator, git silently
+  // reinterprets an invalid revision that happens to match a real PATH as
+  // a pathspec filter instead of erroring — exactly the "believe it's
+  // working when it isn't" failure mode this repo's own `onlyGitTracked`
+  // philosophy exists to prevent elsewhere. A ref literally named "docs"
+  // (matching the real `docs/` directory) must still fail loudly, not
+  // silently return a scoped-but-wrong diff.
+  layerIt.effect(
+    'fails loudly for an invalid ref that happens to collide with a real path, rather than silently reinterpreting it as a pathspec',
+    () =>
+      Effect.gen(function* () {
+        const gitFs = yield* GitFs
+        const error = yield* Effect.flip(gitFs.listDeletedSince(delRoot, 'docs'))
+        expect(error).toBeInstanceOf(GitUnavailableError)
+      }),
+  )
+})
+
 // Regression coverage for the incident this repo hit for real: when the checkout is a
 // linked `git worktree`, git exports GIT_DIR (and, during pre-commit, GIT_INDEX_FILE)
 // into hook subprocesses. `cairn`'s own lefthook.yml runs `pnpm check` — i.e. GitFsLive

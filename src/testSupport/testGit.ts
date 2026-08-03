@@ -26,10 +26,14 @@ import { scrubbedGitEnv } from '../io/gitEnv.ts'
 // `~/.gitconfig` out of the picture), and OS temp cleanup reclaims it naturally.
 const fixtureHome = fs.mkdtempSync(path.join(os.tmpdir(), 'testGit-home-'))
 
-export const runGit = (cwd: string, ...args: readonly string[]): void => {
+/** Runs a real `git` command in a fixture repo; returns its stdout (most
+ * callers just discard it — fixture setup like `init`/`add`/`commit` — but
+ * a few genuinely need the output, e.g. `rev-parse HEAD` to capture a base
+ * SHA for a later `git diff <sha>`). */
+export const runGit = (cwd: string, ...args: readonly string[]): string => {
   const env = scrubbedGitEnv(cwd)
   env.HOME = fixtureHome
   env.GIT_CONFIG_GLOBAL = '/dev/null'
   env.GIT_CONFIG_SYSTEM = '/dev/null'
-  execFileSync('git', args, { cwd, env, stdio: 'pipe' })
+  return execFileSync('git', args, { cwd, env, stdio: 'pipe' }).toString('utf8')
 }

@@ -47,6 +47,14 @@ summary links to every child") — is one-directional and real, not a cycle.
        manifest hashes (compared against an externally-supplied `stamps`
        map, never read from content), the link-completeness invariant,
        deleted-source stamp detection, and the bottom-up order.
+     - [`DeletionReport.ts`](../src/core/summaries/DeletionReport.ts) —
+       opt-in (`--report-deletions`, issue #106): given a batch of docs
+       known to have disappeared (their last content, from
+       `program/summaries/CheckDeletions.ts`'s git-history read) and the
+       current corpus, which of the deleted docs' headings/outbound link
+       targets survive nowhere else — informational only, never a blocking
+       verdict (deleting genuinely redundant documentation must stay
+       cheap).
    - **[`links/`](../src/core/links/)** — the link/reference/anchor domain.
      - [`MarkdownLinks.ts`](../src/core/links/MarkdownLinks.ts) — link/
        reference extraction, checkable-target rules, ambiguity-aware fix
@@ -112,8 +120,11 @@ summary links to every child") — is one-directional and real, not a cycle.
      are tested without touching disk.
    - [`Git.ts`](../src/io/Git.ts) — `onlyGitTracked` (issue #48)'s one real
      capability, plus issue #63's gitignore-aware/worktree-aware directory
-     pruning: `GitFsLive.listTrackedFiles`/`listIgnoredDirs`/`listWorktreeDirs`
-     shell out to the real `git` binary (`ls-files`, `worktree list`) via
+     pruning, plus issue #106's `--report-deletions` detection surface:
+     `GitFsLive.listTrackedFiles`/`listIgnoredDirs`/`listWorktreeDirs`/
+     `listDeletedSince`/`readFileAtRef` shell out to the real `git` binary
+     (`ls-files`, `worktree list`, `diff --name-status --diff-filter=D`,
+     `show <ref>:<path>`) via
      `effect`'s own `ChildProcess`/`ChildProcessSpawner`
      (`effect/unstable/process`), not raw `node:child_process` — a typed
      `PlatformError`/exit-code contract instead of hand-wiring a `Promise`
@@ -145,6 +156,14 @@ summary links to every child") — is one-directional and real, not a cycle.
        compute the plan; read/write the `.cairn/**` sidecar tree; stamp
        existing summaries bottom-up; one-off `--migrate-stamps` off the
        legacy in-content form.
+     - [`CheckDeletions.ts`](../src/program/summaries/CheckDeletions.ts) —
+       opt-in (`--report-deletions`, issue #106), hand-wired like
+       `CheckSummaries.ts` above rather than a `CheckPlugin` (needs live
+       `GitFs`, which the registry deliberately keeps out — see
+       `CheckPlugin.ts`'s own header): `io/Git.ts`'s
+       `listDeletedSince`/`readFileAtRef` recover a deleted doc's
+       last-known content, `core/summaries/DeletionReport.ts` does the
+       actual comparison. `deletionsExitCode` always returns 0.
    - **[`links/`](../src/program/links/)**
      - [`CheckLinks.ts`](../src/program/links/CheckLinks.ts) — scan for dead
        links/anchors/line-anchors, optionally auto-repair unambiguous path breaks.

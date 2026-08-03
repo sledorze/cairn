@@ -45,6 +45,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { TempProject } from './testSupport/tempProject.ts'
 import { makeTempProject } from './testSupport/tempProject.ts'
+import { runGit } from './testSupport/testGit.ts'
 
 const CLI = path.join(import.meta.dirname, 'cli.ts')
 const TSX = path.join(import.meta.dirname, '..', 'node_modules', '.bin', 'tsx')
@@ -266,6 +267,53 @@ describe('cli.ts (real subprocess) — flags with no prior CLI-level test covera
     const result = runCli(p.root, ['check', '--prune'])
     expect(result.stdout).toContain('removed 1 orphan summary')
     expect(fs.existsSync(path.join(p.root, 'docs/a.summary.md'))).toBeFalsy()
+  })
+
+  // Issue #106: --report-deletions needs a REAL git repo (it compares the
+  // working tree against a ref) — `project()`'s temp dir isn't one on its
+  // own, so this git-inits it directly, matching Git.integration.test.ts's
+  // own real-git fixture convention.
+  it("--report-deletions reports a deleted doc's orphaned heading, and never affects the exit code", () => {
+    const p = project('cli-report-deletions', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/kept.md': '# Kept\n\nUnrelated content.\n',
+      'docs/old.md': '# Old\n\n### Unique Section\n\nOnly description of this feature anywhere.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+    fs.rmSync(path.join(p.root, 'docs/old.md'))
+
+    const result = runCli(p.root, ['check', '--report-deletions', '--links-only'])
+    expect(result.stdout).toContain('docs/old.md')
+    expect(result.stdout).toContain('### Unique Section')
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('--deletions-since compares against an explicit ref, catching an already-committed deletion', () => {
+    const p = project('cli-deletions-since', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/old.md': '# Old\n\n### Unique Section\n\nOnly description of this feature anywhere.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+    const baseSha = runGit(p.root, 'rev-parse', 'HEAD').trim()
+    fs.rmSync(path.join(p.root, 'docs/old.md'))
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'delete old.md')
+
+    // Against HEAD (the default), the deletion is already committed — nothing to compare.
+    const againstHead = runCli(p.root, ['check', '--report-deletions', '--links-only'])
+    expect(againstHead.stdout).not.toContain('### Unique Section')
+
+    // Against the base commit (before the deletion), it's caught.
+    const againstBase = runCli(p.root, ['check', '--report-deletions', '--deletions-since', baseSha, '--links-only'])
+    expect(againstBase.stdout).toContain('### Unique Section')
   })
 
   it('--config points at an explicit config file instead of the default lookup', () => {

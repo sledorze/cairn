@@ -73,6 +73,7 @@ never writes into content either.
 | `cairn check --refs --stamp`              | Opt-in: record each real reference target's content hash                   |
 | `cairn check --refs`                      | Opt-in: report references whose target content has drifted since           |
 | `cairn check --prose-refs`                | Opt-in, safe for permanent use: flag a drifted bare-backtick file citation |
+| `cairn check --report-deletions`          | Opt-in, informational only: report a deleted doc's orphaned content        |
 | `cairn init --agent claude\|copilot\|all` | Scaffold agent guidance files                                              |
 
 ### Link checking
@@ -148,6 +149,36 @@ anything whose first path segment doesn't resolve to something real at all (e.g.
 npm-import-style string like `effect/Schema`) — verified by running this check against cairn's
 own real docs, not just synthetic examples. Fenced code examples are never scanned, only inline
 `` `code spans` `` in prose.
+
+### Deleted content: `--report-deletions`
+
+Link-completeness and content hashing both assume tracked content **persists** — nothing
+notices content that **vanishes**. Deleting a doc on the correct belief that it's pure
+duplication can still take one heading or outbound reference with it that existed nowhere
+else, and every other check stays green afterward: the tree got smaller, the hashes
+re-stamped, the delta simply gone (issue #106).
+
+`cairn check --report-deletions` compares the current working tree against a git ref
+(`--deletions-since`, default `HEAD`) and, for every in-scope doc that's disappeared since
+then, reports which of its headings and outbound link targets appear in **no** remaining
+doc:
+
+```
+⚠️  1 deleted doc(s) took content with them, found nowhere else:
+  docs/conventions.md
+    heading nowhere else: ### Opt-in checks
+```
+
+Comparing against `HEAD` (the default) catches an uncommitted `rm`, suited to a pre-commit
+hook; comparing against a PR's base branch (e.g. `--deletions-since origin/main`) in CI
+catches every deletion the PR itself introduces, including ones already committed — the
+actual reported scenario ("deleted a doc, only noticed hours later"). Needs a real git
+repository; a path staged but never committed has nothing recoverable at the ref and is
+silently skipped, not reported as an error.
+
+**Informational only, by design — never affects the exit code.** Deleting genuinely
+redundant documentation is a good thing that should stay cheap; this is a report to make a
+lossy deletion visible, not a blocking verdict.
 
 ### Structural coverage/orphans: `checks.coverage`
 
