@@ -1,0 +1,1 @@
+\.(test|test-d|bench)\.ts$|^src/testSupport/|^src/devTools/
