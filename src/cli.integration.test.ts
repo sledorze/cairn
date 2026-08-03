@@ -353,6 +353,44 @@ describe('cli.ts (real subprocess) — flags with no prior CLI-level test covera
     expect(result.stdout).toContain('totally-bogus-ref')
   })
 
+  // Issue #106 "best value defaults" audit, round 5: --fix physically
+  // rewrites doc content BEFORE --report-deletions used to re-read the
+  // corpus — an unrelated doc's broken link, once --fix repairs it to
+  // coincidentally point at the SAME target a deleted doc used to link
+  // to, silently counted as "surviving," under-reporting a real orphaned
+  // link target. --report-deletions must now report the SAME finding
+  // whether or not --fix ran alongside it in the same invocation.
+  it('--report-deletions reports the same finding whether or not --fix ran in the same invocation', () => {
+    const p = project('cli-report-deletions-fix-interaction', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/deleted.md': '# Deleted\n\n[guide](sub/guide.md)\n',
+      // An unrelated, unambiguous --fix candidate: same basename, wrong
+      // relative path — --fix will repair it to point at sub/guide.md,
+      // the exact target docs/deleted.md (about to be removed) used.
+      'docs/keeper.md': '# Keeper\n\n[guide](guide.md)\n',
+      'docs/sub/guide.md': '# Guide\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+    fs.rmSync(path.join(p.root, 'docs/deleted.md'))
+
+    const withoutFix = runCli(p.root, ['check', '--report-deletions', '--deletions-since', 'HEAD', '--links-only'])
+    expect(withoutFix.stdout).toContain('link target nowhere else')
+
+    const withFix = runCli(p.root, [
+      'check',
+      '--fix',
+      '--report-deletions',
+      '--deletions-since',
+      'HEAD',
+      '--links-only',
+    ])
+    expect(withFix.stdout).toContain('link target nowhere else')
+  })
+
   it('--config points at an explicit config file instead of the default lookup', () => {
     const p = project('cli-config-flag', {
       'custom.json': JSON.stringify({ requireDirSummaries: false, roots: ['elsewhere'] }),
