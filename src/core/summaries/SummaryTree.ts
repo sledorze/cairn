@@ -238,10 +238,18 @@ export const planSummaries = ({
     const expectedHash = nodeExpectedHash({ files, inputs, kind: 'dir', path: dsp })
     const recordedHash = recorded(dsp)
     const exists = files.has(dsp)
-    // A directory summary must link every direct sub-file AND sub-folder.
-    const requiredLinks = [...childDocs, ...childDirs]
+    // A directory summary must link every direct sub-file AND sub-folder. A
+    // sub-folder counts as linked either way (issue #103): a bare directory
+    // link (`./sub`) or a link straight to that child's own `_SUMMARY.md`
+    // (`./sub/_SUMMARY.md`) — the curated index, and precisely the artifact
+    // whose hash the Merkle model tracks for that child, not merely a
+    // friendlier alternative to the bare path.
     const linked = resolveLinks(files.get(dsp) ?? '', dir)
-    const missingLinks = requiredLinks.filter((target) => !linked.has(target)).toSorted()
+    const isChildDirLinked = (sub: string): boolean => linked.has(sub) || linked.has(path.join(sub, naming.dirSummary))
+    const missingLinks = [
+      ...childDocs.filter((doc) => !linked.has(doc)),
+      ...childDirs.filter((sub) => !isChildDirLinked(sub)),
+    ].toSorted()
     const fresh = exists && recordedHash === expectedHash && missingLinks.length === 0
     dirNodes.push({
       expectedHash,
