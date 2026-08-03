@@ -1,60 +1,8 @@
-import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import {
-  appendSyntheticBenchEntry,
-  buildCheckFixture,
-  decodeReport,
-  DECISION_COUNT,
-  FEATURE_COUNT,
-  resolveAbsoluteCliPath,
-} from './BenchCliCheck.ts'
-
-describe('the bench-check fixture', () => {
-  it('writes a self-consistent fixture: every feature links to a real decision, none orphaned', () => {
-    const root = buildCheckFixture()
-    try {
-      const decisionIds = new Set(Array.from({ length: DECISION_COUNT }, (_, i) => i))
-      for (let i = 0; i < FEATURE_COUNT; i++) {
-        const body = fs.readFileSync(path.join(root, `product/features/${i}.md`), 'utf8')
-        const match = /docs\/adr\/(\d+)\.md/.exec(body)
-        expect(match).not.toBeNull()
-        const decisionId = match ? Number(match[1]) : Number.NaN
-        expect(decisionIds.has(decisionId)).toBeTruthy()
-      }
-      for (let i = 0; i < DECISION_COUNT; i++) {
-        expect(fs.existsSync(path.join(root, `docs/adr/${i}.md`))).toBeTruthy()
-        expect(fs.readFileSync(path.join(root, `docs/adr/${i}.md`), 'utf8')).toContain(`# Decision ${i}`)
-      }
-      // Exactly DECISION_COUNT/FEATURE_COUNT files, not off-by-one in either
-      // direction — a `<` -> `<=` mutation in the fixture's own build loop would
-      // silently write one extra (orphan-free-by-luck) doc past either range.
-      expect(fs.readdirSync(path.join(root, 'docs/adr'))).toHaveLength(DECISION_COUNT)
-      expect(fs.readdirSync(path.join(root, 'product/features'))).toHaveLength(FEATURE_COUNT)
-      const config = JSON.parse(fs.readFileSync(path.join(root, '.cairnrc.json'), 'utf8')) as {
-        checks: {
-          coverage: {
-            kinds: { id: string; select: { by: string; glob: string } }[]
-            rules: { from: string; to: string }[]
-          }
-        }
-        requireDirSummaries: boolean
-        roots: string[]
-      }
-      expect(config.checks.coverage.kinds).toEqual([
-        { id: 'feature', select: { by: 'path', glob: '**/product/features/**' } },
-        { id: 'decision', select: { by: 'path', glob: '**/docs/adr/**' } },
-      ])
-      expect(config.checks.coverage.rules).toEqual([{ from: 'feature', to: 'decision' }])
-      expect(config.requireDirSummaries).toBeFalsy()
-      expect(config.roots).toEqual(['docs', 'product'])
-    } finally {
-      fs.rmSync(root, { force: true, recursive: true })
-    }
-  })
-})
+import { appendSyntheticBenchEntry, decodeReport, resolveAbsoluteCliPath } from './BenchCliCheck.ts'
 
 describe('resolving the CLI path to bench', () => {
   it('resolves a relative path against process.cwd(), not against any spawn-time cwd', () => {

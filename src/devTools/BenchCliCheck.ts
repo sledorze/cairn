@@ -9,12 +9,17 @@
 // contract instead of a callback, and (critically for this module) injectable
 // via ChildProcessSpawner for tests instead of only exercisable by actually
 // spawning a real `node` process.
+//
+// `buildCheckFixture` is likewise Effect-based (`FileSystem` service, matching
+// `io/DocsFs.ts`'s/`config.ts`'s own convention) rather than raw `node:fs` —
+// safe to do without perf concern, unlike the hot paths this benchmark
+// harness actually TIMES: the caller (scripts/bench-cli-check.ts) builds the
+// fixture entirely outside its own `performance.now()` window, so this
+// module's own IO cost is never part of what's measured.
 
-import * as fs from 'node:fs'
-import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { Data, Effect, Schema } from 'effect'
+import { Data, Effect, FileSystem, Schema } from 'effect'
 import type * as PlatformError from 'effect/PlatformError'
 import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 
@@ -48,35 +53,40 @@ export class CliCheckFailedError extends Data.TaggedError('CliCheckFailedError')
  * (cycling through all of them, so none are orphaned either) — a genuinely
  * CLEAN run (exit 0), the representative case most `cairn check` invocations
  * are, rather than one dominated by formatting a pile of findings. */
-export const buildCheckFixture = (): string => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cairn-bench-check-'))
-  fs.mkdirSync(path.join(root, 'docs/adr'), { recursive: true })
-  fs.mkdirSync(path.join(root, 'product/features'), { recursive: true })
-  fs.writeFileSync(
-    path.join(root, '.cairnrc.json'),
-    JSON.stringify({
-      checks: {
-        coverage: {
-          kinds: [
-            { id: 'feature', select: { by: 'path', glob: '**/product/features/**' } },
-            { id: 'decision', select: { by: 'path', glob: '**/docs/adr/**' } },
-          ],
-          rules: [{ from: 'feature', to: 'decision' }],
+export const buildCheckFixture = (): Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const root = yield* fs.makeTempDirectory({ prefix: 'cairn-bench-check-' })
+    yield* fs.makeDirectory(path.join(root, 'docs/adr'), { recursive: true })
+    yield* fs.makeDirectory(path.join(root, 'product/features'), { recursive: true })
+    yield* fs.writeFileString(
+      path.join(root, '.cairnrc.json'),
+      JSON.stringify({
+        checks: {
+          coverage: {
+            kinds: [
+              { id: 'feature', select: { by: 'path', glob: '**/product/features/**' } },
+              { id: 'decision', select: { by: 'path', glob: '**/docs/adr/**' } },
+            ],
+            rules: [{ from: 'feature', to: 'decision' }],
+          },
         },
-      },
-      requireDirSummaries: false,
-      roots: ['docs', 'product'],
-    }),
-  )
-  for (let i = 0; i < DECISION_COUNT; i++) {
-    fs.writeFileSync(path.join(root, `docs/adr/${i}.md`), `# Decision ${i}\n\nBody text for decision ${i}.\n`)
-  }
-  for (let i = 0; i < FEATURE_COUNT; i++) {
-    const body = `See [decision](../../docs/adr/${i % DECISION_COUNT}.md) for background.`
-    fs.writeFileSync(path.join(root, `product/features/${i}.md`), `# Feature ${i}\n\n${body}\n`)
-  }
-  return root
-}
+        requireDirSummaries: false,
+        roots: ['docs', 'product'],
+      }),
+    )
+    for (let i = 0; i < DECISION_COUNT; i++) {
+      yield* fs.writeFileString(
+        path.join(root, `docs/adr/${i}.md`),
+        `# Decision ${i}\n\nBody text for decision ${i}.\n`,
+      )
+    }
+    for (let i = 0; i < FEATURE_COUNT; i++) {
+      const body = `See [decision](../../docs/adr/${i % DECISION_COUNT}.md) for background.`
+      yield* fs.writeFileString(path.join(root, `product/features/${i}.md`), `# Feature ${i}\n\n${body}\n`)
+    }
+    return root
+  })
 
 /**
  * Runs `node <cliPath> check` in `cwd` and fails on a non-zero exit.
