@@ -104,6 +104,30 @@ describe('planSummaries()', () => {
     expect(staleNode?.missingLinks).toEqual(['/r/docs/a.md'])
   })
 
+  // Issue #103: a parent `_SUMMARY.md` linking to a child DIRECTORY via its
+  // own `_SUMMARY.md` (`./sub/_SUMMARY.md`) — the curated index, and the
+  // exact artifact the Merkle model hashes for that child — must count as
+  // linking the child, same as the bare directory link (`./sub`) already does.
+  it("accepts a link to a child directory's own _SUMMARY.md as satisfying link-completeness", () => {
+    const base = new Map<string, string>([
+      ['/r/docs/sub/b.md', big],
+      ['/r/docs/sub/b.summary.md', '# résumé b'],
+      ['/r/docs/sub/_SUMMARY.md', '- [link](./b.md)'],
+    ])
+    const baseStamps = stampsFor(base, ['/r/docs'])
+
+    const withDirSummaryLink = new Map(base).set('/r/docs/_SUMMARY.md', '- [sub/](./sub/_SUMMARY.md)')
+    const node = planSummaries({
+      files: withDirSummaryLink,
+      roots: ['/r/docs'],
+      stamps: baseStamps,
+      thresholdLines: 30,
+    }).nodes.find((n) => n.path === '/r/docs/_SUMMARY.md')
+
+    expect(node?.missingLinks).toEqual([])
+    expect(node?.status).toBe('ok')
+  })
+
   it('flags a directory summary stale when an input hash changes', () => {
     const fresh = freshTree()
     const freshStamps = stampsFor(fresh, ['/r/docs'])
