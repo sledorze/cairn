@@ -210,4 +210,25 @@ describe('check-changeset.sh', () => {
     expect(result.code).toBe(1)
     expect(result.stdout).toContain('src/foo.ts')
   })
+
+  // Third adversarial review finding: an OLD changeset already sitting in the
+  // repo from before the branch point — left completely untouched by this
+  // PR — must NOT count as "a changeset is present." The requirement is
+  // that THIS PR carries its own new changeset, not merely that one exists
+  // somewhere in the repo's history. `--diff-filter=AR` already gets this
+  // right (an untouched file appears nowhere in the diff at all), but
+  // nothing pinned it as a permanent test before this.
+  it('does not count a pre-existing, untouched changeset as satisfying the requirement', () => {
+    const root = makeRepo()
+    fs.writeFileSync(path.join(root, '.changeset/old.md'), '---\n---\nAn older, unrelated changeset.\n')
+    runGit(root, 'add', '-A')
+    runGit(root, 'commit', '-q', '-m', 'seed an old changeset on main')
+    runGit(root, 'checkout', '-q', '-b', 'feature')
+    fs.writeFileSync(path.join(root, 'src/foo.ts'), 'export const x = 2\n')
+    runGit(root, 'add', '-A')
+    runGit(root, 'commit', '-q', '-m', 'change foo, no new changeset')
+    const result = run(root)
+    expect(result.code).toBe(1)
+    expect(result.stdout).toContain('src/foo.ts')
+  })
 })
