@@ -294,6 +294,75 @@ describe('decodeConfig()', () => {
     })
   })
 
+  // Issue #108: source-tree coverage — a SEPARATE key from `checks.coverage`,
+  // deliberately (see Config.ts's own comment on `DocCoverageInputSchema` for
+  // why it isn't folded into `coverage`'s `kinds`/`rules` shape).
+  describe('checks.docCoverage (issue #108)', () => {
+    it('decodes `checks.docCoverage` — presence itself is the opt-in, no separate `enabled` field', () => {
+      const raw = {
+        checks: {
+          docCoverage: {
+            coveredBy: [{ glob: 'docs/architecture.md', kind: 'architecture' }],
+            sources: ['src/*/index.ts'],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('decodes `checks.docCoverage.exempt` when present', () => {
+      const raw = {
+        checks: {
+          docCoverage: {
+            coveredBy: [{ glob: 'docs/architecture.md', kind: 'architecture' }],
+            exempt: ['src/testSupport/**'],
+            sources: ['src/*/index.ts'],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('decodes multiple `coveredBy` groups', () => {
+      const raw = {
+        checks: {
+          docCoverage: {
+            coveredBy: [
+              { glob: 'docs/architecture.md', kind: 'architecture' },
+              { glob: 'docs/adr/*.md', kind: 'adr' },
+            ],
+            sources: ['src/*/index.ts'],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    // Same escape hatch as `checks.coverage: false` above, for the same
+    // reason: a descendant config needs a way to re-disable an inherited
+    // `extends` preset's docCoverage.
+    it('decodes `checks.docCoverage: false` — an explicit re-disable, distinct from omitting the key entirely', () => {
+      const raw = { checks: { docCoverage: false as const } }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('returns a Failure on an unknown key inside `checks.docCoverage` or a coveredBy group', () => {
+      expect(Result.isFailure(decodeConfig({ checks: { docCoverage: { coveredBy: [], sourcez: [] } } }))).toBeTruthy()
+      expect(
+        Result.isFailure(
+          decodeConfig({
+            checks: { docCoverage: { coveredBy: [{ globb: 'x', kind: 'y' }], sources: [] } },
+          }),
+        ),
+      ).toBeTruthy()
+    })
+
+    it('returns a Failure when `sources` or `coveredBy` is missing entirely', () => {
+      expect(Result.isFailure(decodeConfig({ checks: { docCoverage: { coveredBy: [] } } }))).toBeTruthy()
+      expect(Result.isFailure(decodeConfig({ checks: { docCoverage: { sources: [] } } }))).toBeTruthy()
+    })
+  })
+
   // "Make illegal states unrepresentable": thresholdLines is compared as `lineCount >
   // thresholdLines` (core/DocSummaries.ts) — negative or fractional values are
   // nonsensical, not just unusual. Reject them at the type/schema level rather than
@@ -362,7 +431,7 @@ describe('isKindTarget()', () => {
 describe('the built-in defaults', () => {
   it('matches the documented defaults', () => {
     expect(DEFAULT_CONFIG).toEqual({
-      checks: { coverage: null, links: true, summaries: true },
+      checks: { coverage: null, docCoverage: null, links: true, summaries: true },
       ignore: ['**/node_modules/**'],
       locale: 'en',
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },

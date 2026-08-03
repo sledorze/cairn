@@ -320,6 +320,50 @@ link back to it. A `spec` doc with zero outbound links still reports missing cov
 though plain dead-link checking has nothing to flag (there's no link to check in the first
 place) — this is the check that catches "cited nothing," not just "cited something broken."
 
+### Source-tree documentation coverage: `checks.docCoverage`
+
+`checks.coverage` (above) only ever asks doc→doc questions — "does a doc of kind X link
+to a doc of kind Y." It has nothing to say about the other direction that matters just as
+much: is this **source file** documented anywhere at all? A repo can be fully green on
+every check above and still have entire modules nobody wrote a word about.
+
+`checks.docCoverage` closes that gap — **without generating a markdown file per source
+file** (that idea was considered and rejected: it doesn't scale, and it isn't what
+"documented" means in practice). Instead, it checks whether some doc that **already
+exists** already links to the source file:
+
+```json
+"checks": {
+  "docCoverage": {
+    "sources": ["src/**/*.ts"],
+    "coveredBy": [
+      { "glob": "docs/architecture/**", "kind": "architecture" },
+      { "glob": "docs/adr/**", "kind": "adr" }
+    ],
+    "exempt": ["src/**/*.test.ts", "src/generated/**"]
+  }
+}
+```
+
+- **`sources`** — globs for the source files that must be covered.
+- **`coveredBy`** — one or more **named groups**, each a glob over doc files whose direct
+  outbound links count as covering a source file. A source file can legitimately be
+  documented from more than one kind of doc (an architecture doc, an ADR, a README) —
+  coverage is satisfied by a link from **any one** of the listed groups, not all of them.
+  `kind` exists purely for report clarity ("`src/x.ts` is covered by neither
+  `architecture` nor `adr`"), not to impose a separate obligation per kind.
+- **`exempt`** — globs for source files that are never reported, regardless of coverage
+  (generated code, test files, anything intentionally undocumented).
+
+Like `checks.coverage`, this is opt-in via mere presence in config (no CLI flag — its
+globs have no CLI equivalent to express them with), and `checks.docCoverage: false` is the
+explicit way to re-disable it when inherited from an `extends` preset. Direct links only —
+a citation chain through an intermediate doc does not count, matching `checks.coverage`'s
+own non-transitive rule (a doc in `coveredBy` must link to the source file itself, not to
+another doc that happens to link to it). A `coveredBy` group whose glob matches zero real
+doc files is reported as a non-fatal ⚠️ warning (likely a typo), the same
+`unmatchedKinds` safety net `checks.coverage` already has.
+
 ### Upgrading from an older cairn
 
 **If you're upgrading past `0.3.0`**: link checking got stricter. Anchors and links outside
@@ -407,6 +451,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `checks.summaries`         | Enable summary freshness checking                                                                                                                                                                                                                                                                                                                                                    |
 | `checks.links`             | Enable Markdown link checking                                                                                                                                                                                                                                                                                                                                                        |
 | `checks.coverage`          | Opt-in structural coverage/orphan check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                                       |
+| `checks.docCoverage`       | Opt-in source-tree documentation coverage check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                               |
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                                                                                                                                                                                                                                                                                                                  |
 | `ignore`                   | Globs to exclude from scanning, matched against both the absolute path and the path relative to its containing root (issue #102) — a directory-shaped match is pruned before it's ever walked, not just filtered out afterward (issue #63). `.gitignore` is also consulted automatically for the same directory-level pruning, with no config needed, regardless of `onlyGitTracked` |
 | `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`                                                                                                                                                                                                                                                                                                |

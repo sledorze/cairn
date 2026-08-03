@@ -92,6 +92,14 @@ summary links to every child") — is one-directional and real, not a cycle.
        consumer (e.g. a stale-coverage-link freshness check) reuses the exact
        same kind-matching/path-resolution/`exempt` logic instead of
        re-deriving it (docs/adr/0003's own rationale).
+     - [`DocCoverage.ts`](../src/core/structure/DocCoverage.ts) — issue #108's
+       pure logic for `checks.docCoverage` (source-tree coverage, the reverse
+       direction from `Coverage.ts` above: does some doc link TO this source
+       file). Deliberately separate from `Coverage.ts`: a source file isn't a
+       scanned, classified doc with its own `nodes`, so this file only ever
+       sees the IO layer's already-resolved `coverageByPath` map, never
+       Markdown content — kept non-transitive by the same construction
+       `Coverage.ts` uses.
    - **Shared by both domains** (top-level `core/`, not inside either
      subdirectory — genuinely used by both, verified by import graph, not
      assumed): [`sidecar.ts`](../src/core/sidecar.ts) (the `.cairn/**` path
@@ -146,8 +154,9 @@ summary links to every child") — is one-directional and real, not a cycle.
      (docs/adr/0003): `isEnabled`/`run`/`format`/`exitCode`, optional
      `jsonUnsupportedMessage`/`stamp`, plus the generic
      `runCheckPlugin`/`rejectedJsonMessage` runner `cli.ts` drives every
-     migrated check through. `links`/`refs`/`proseRefs`/`coverage` each
-     export a plugin descriptor from their own file (below); `summaries`
+     migrated check through. `links`/`refs`/`proseRefs`/`coverage`/
+     `docCoverage` each export a plugin descriptor from their own file
+     (below); `summaries`
      deliberately stays OUTSIDE this abstraction — see `CheckPlugin.ts`'s own
      header for why (four CLI verbs — check/stamp/prune/migrate-stamps —
      that don't fit `run`/`format`/`exitCode`).
@@ -185,11 +194,22 @@ summary links to every child") — is one-directional and real, not a cycle.
        first check built on `core/structure/`: opt-in (`checks.coverage`'s
        mere presence, no CLI flag) missing-coverage/orphan/unmatched-kind
        reporting over a declared doc-kind graph (docs/adr/0002).
+     - [`CheckDocCoverage.ts`](../src/program/structure/CheckDocCoverage.ts) —
+       issue #108, opt-in (`checks.docCoverage`'s mere presence, no CLI flag):
+       scans the whole `base` tree (not just doc `roots`, since source files
+       live outside them) via the same `DocsFs.listFiles`/`ignore` pruning
+       every other check uses, filters it into `sources` and `coveredBy`
+       doc files, extracts each covering doc's own direct outbound links
+       (`core/links/MarkdownLinks.ts`'s `extractReferences`, the same
+       extractor `CheckRefs.ts` already uses) and hands the resulting
+       `coverageByPath`/`matchedCounts` maps to `core/structure/
+DocCoverage.ts`'s pure functions.
    - **Shared by more than one domain**: [`JsonReport.ts`](../src/program/JsonReport.ts)
      (combines a links/summaries run into the single
      `{ summaries, links, exitCode }` shape `--json` prints — only these two
-     checks participate; `refs`/`proseRefs`/`coverage` all reject `--json`
-     outright, via their plugin descriptor's `jsonUnsupportedMessage`),
+     checks participate; `refs`/`proseRefs`/`coverage`/`docCoverage` all
+     reject `--json` outright, via their plugin descriptor's
+     `jsonUnsupportedMessage`),
      [`locale.ts`](../src/program/locale.ts) (report localisation, English
      default, French mirror).
 

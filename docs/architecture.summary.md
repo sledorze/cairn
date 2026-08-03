@@ -26,7 +26,9 @@ Separation of concerns: pure decisions, IO at the edges.
     `DocMetadata` (path-glob kind classification + one ordered `heading`/`ref` node
     sequence per doc), `DocGraph` (corpus-wide inbound-reference `Bag`, for orphans),
     `Coverage` (`resolveRuleEdges` — pure rule-satisfaction resolution, extracted out of
-    `CheckCoverage.ts` so a future check can reuse it directly).
+    `CheckCoverage.ts` so a future check can reuse it directly), `DocCoverage` (issue #108
+    — the reverse direction: source-tree coverage, given an already-resolved
+    `coverageByPath` map, never Markdown content itself).
   - **Shared by both** (top-level `core/`): `sidecar.ts` (the `.cairn/**` path mapping +
     lenient-JSON-codec mechanics `StampStore`/`RefStore` both build on), `hashing.ts`
     (`hashContent` — moved out of `DocSummaries` once it was found to be the one thing
@@ -44,9 +46,10 @@ Separation of concerns: pure decisions, IO at the edges.
 - **`program/`**, same two-subdomain split, plus a `checks/` abstraction (docs/adr/0003):
   - **`checks/`**: the `CheckPlugin` interface (`isEnabled`/`run`/`format`/`exitCode`,
     optional `jsonUnsupportedMessage`/`stamp`) and its generic runner
-    (`runCheckPlugin`/`rejectedJsonMessage`) — `links`/`refs`/`proseRefs`/`coverage` each
-    export a plugin descriptor and `cli.ts` drives all four through it; `summaries` stays
-    hand-wired (four CLI verbs — check/stamp/prune/migrate-stamps — don't fit the shape).
+    (`runCheckPlugin`/`rejectedJsonMessage`) — `links`/`refs`/`proseRefs`/`coverage`/
+    `docCoverage` each export a plugin descriptor and `cli.ts` drives all five through it;
+    `summaries` stays hand-wired (four CLI verbs — check/stamp/prune/migrate-stamps —
+    don't fit the shape).
   - **`summaries/`**: `CheckSummaries` (reads/writes the `.cairn/**` sidecar tree;
     `stampFiles` self-heals a legacy in-content stamp on every ordinary `--stamp`, so
     `--migrate-stamps` is only an optional named alias, never required), `CheckDeletions`
@@ -59,9 +62,12 @@ Separation of concerns: pure decisions, IO at the edges.
     silent, only a drifted one is reported, with the link syntax to convert it).
   - **`structure/`**: `CheckCoverage` — opt-in (`checks.coverage`'s mere presence)
     missing-coverage/orphan/unmatched-kind reporting over a declared doc-kind graph.
+    `CheckDocCoverage` (issue #108) — opt-in (`checks.docCoverage`'s mere presence):
+    scans the whole `base` tree for `sources`/`coveredBy` files, extracts each covering
+    doc's own direct links, hands the result to `DocCoverage`'s pure functions.
   - **Shared by more than one check**: `JsonReport` (`--json`'s combined shape — only
-    links/summaries participate; refs/proseRefs/coverage reject `--json` outright),
-    `locale` (re-exports `Locale`; en default, fr mirror).
+    links/summaries participate; refs/proseRefs/coverage/docCoverage reject `--json`
+    outright), `locale` (re-exports `Locale`; en default, fr mirror).
 - **Edge**: `config.ts` (disk IO: reads rc/`extends`/`package.json`, decodes via
   `core/Config`, expands root globs), `cli.ts` (excluded from coverage, historically
   dogfooded via real subprocess only — `cli.integration.test.ts` now locks in its two

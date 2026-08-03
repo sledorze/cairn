@@ -180,7 +180,7 @@ describe('loadConfig()', () => {
     )
     const config = await run(loadConfig(cwd))
     expect(config.thresholdLines).toBe(50) // inherited from the base preset
-    expect(config.checks).toEqual({ coverage: null, links: false, summaries: false }) // deep-merged
+    expect(config.checks).toEqual({ coverage: null, docCoverage: null, links: false, summaries: false }) // deep-merged
     expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
   })
 
@@ -217,7 +217,7 @@ describe('loadConfig()', () => {
       JSON.stringify({ extends: ['./b.cairnrc.json', './c.cairnrc.json'] }),
     )
     const config = await run(loadConfig(cwd))
-    expect(config.checks).toEqual({ coverage: null, links: false, summaries: false })
+    expect(config.checks).toEqual({ coverage: null, docCoverage: null, links: false, summaries: false })
   })
 
   it('inherits `checks.coverage` from an `extends` preset when the local file does not set it', async () => {
@@ -292,6 +292,69 @@ describe('loadConfig()', () => {
     fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { coverage: false } }))
     const config = await run(loadConfig(cwd))
     expect(config.checks.coverage).toBeNull()
+  })
+
+  // Same three tests as `checks.coverage` just above, for `checks.docCoverage`
+  // (issue #108) — replace-wholesale on `extends`, re-disable with `false`,
+  // and the no-`extends`-at-all case, matching the same adversarial-review
+  // discipline that found the no-`extends` gap for `coverage` originally.
+  it('replaces (not merges) `checks.docCoverage` entirely when the local file also sets it', async () => {
+    const cwd = mkTmp('cairn-extends-doccoverage-replace-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({
+        checks: {
+          docCoverage: {
+            coveredBy: [{ glob: 'docs/from-base.md', kind: 'from-base' }],
+            exempt: ['from-base/**'],
+            sources: ['src/from-base/**'],
+          },
+        },
+      }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({
+        checks: {
+          docCoverage: {
+            coveredBy: [{ glob: 'docs/from-local.md', kind: 'from-local' }],
+            sources: ['src/from-local/**'],
+          },
+        },
+        extends: './base.cairnrc.json',
+      }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.docCoverage).toEqual({
+      coveredBy: [{ glob: 'docs/from-local.md', kind: 'from-local' }],
+      exempt: [],
+      sources: ['src/from-local/**'],
+    })
+  })
+
+  it('re-disables `checks.docCoverage` with `false` when a local config overrides an `extends` preset that enabled it', async () => {
+    const cwd = mkTmp('cairn-extends-doccoverage-disable-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({
+        checks: {
+          docCoverage: { coveredBy: [{ glob: 'docs/x.md', kind: 'x' }], sources: ['src/**'] },
+        },
+      }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { docCoverage: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.docCoverage).toBeNull()
+  })
+
+  it('resolves `checks.docCoverage: false` to null with no `extends` involved at all', async () => {
+    const cwd = mkTmp('cairn-doccoverage-disable-no-extends-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { docCoverage: false } }))
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.docCoverage).toBeNull()
   })
 
   it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', async () => {

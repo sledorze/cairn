@@ -48,6 +48,28 @@
       "additionalProperties": false,
       "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk."
     },
+    "CairnDocCoverageGroup": {
+      "type": "object",
+      "properties": { "glob": { "type": "string" }, "kind": { "type": "string" } },
+      "required": ["glob", "kind"],
+      "additionalProperties": false,
+      "description": "One named group of docs whose outbound links count as covering a source file."
+    },
+    "CairnDocCoverageConfig": {
+      "type": "object",
+      "properties": {
+        "coveredBy": { "type": "array", "items": { "$ref": "#/$defs/CairnDocCoverageGroup" } },
+        "exempt": {
+          "type": "array",
+          "description": "Globs exempted from source-tree coverage — a source file matching one is never reported.",
+          "items": { "type": "string" }
+        },
+        "sources": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["coveredBy", "sources"],
+      "additionalProperties": false,
+      "description": "Opt-in check that every source file matching `sources` is linked to by at least one doc matching one of the `coveredBy` groups. Absent by default — presence enables it. Direct links only (a citation chain through an intermediate doc does not count), matching `checks.coverage`'s own non-transitive rules."
+    },
     "CairnChecksConfig": {
       "type": "object",
       "properties": {
@@ -70,6 +92,9 @@
             },
             { "type": "boolean", "enum": [false] }
           ]
+        },
+        "docCoverage": {
+          "anyOf": [{ "$ref": "#/$defs/CairnDocCoverageConfig" }, { "type": "boolean", "enum": [false] }]
         },
         "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
         "summaries": {
