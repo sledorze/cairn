@@ -108,6 +108,41 @@ on the published package), run `pnpm changeset` and commit the generated file al
 your change. Not enforced by CI — a missing changeset just means that change won't show
 up in the next changelog, not a build failure.
 
+## Reviewing the "Version Packages" PR before merging it
+
+Merging "Version Packages" is irreversible in effect — it publishes to npm and cuts a
+GitHub Release, not just a git merge. Before merging it, check each unconsumed changeset
+individually, not just that the PR's diff (`package.json`/`CHANGELOG.md`) looks
+mechanically correct:
+
+- **The changeset's own wording becomes the published CHANGELOG entry verbatim** — it is
+  not internal PR description text a reviewer can silently correct later. A real incident
+  this repo hit: a changeset described a new restriction as narrower than the code
+  actually implemented ("no leading `../`" when the real check exempted a `..` segment
+  anywhere), and that inaccurate sentence would have shipped to every consumer reading the
+  changelog. Re-verify every factual claim in a changeset against the CURRENT code before
+  merging, the same "grepped, not assumed" discipline this file requires everywhere else —
+  a changeset written when a PR was opened can go stale by the time it merges.
+- **A silently-introduced behavior change from an unrelated PR needs its own changeset,
+  retroactively, before release** — not just the PR that happened to also fix the original
+  issue. This repo hit exactly this: a `config.ts` rewrite (an internal Effect-conversion
+  refactor) incidentally carried a real, user-facing stricter symlink-escape check that its
+  own PR never flagged as user-facing and never got a changeset for. A stricter check is a
+  real, sharp-edged behavior change (see below), not "just an internal refactor," even when
+  it rides along inside one.
+- **Check for redundant/superseded open PRs targeting an issue a changeset is about to
+  close** — a changeset's issue reference can make GitHub auto-close that issue on merge,
+  silently orphaning another still-open PR that already fixed the same thing independently
+  (this repo had exactly this: two unrelated PRs, opened days apart, both fixing the same
+  filed issue). Cross-check `gh issue view <n>` / `gh pr list` for the referenced issue
+  before merging, not just before opening your own PR.
+- **A new restriction needs to be discoverable, not just correct** — if the change adds or
+  tightens a config-level constraint, confirm the JSON Schema description (`schema/
+cairn.schema.json`, generated from `core/Config.ts`'s own `Schema.annotate` calls) and any
+  relevant `--help` text mention it, not just the changeset/README. An editor's config
+  autocomplete/tooltip is a real user-facing surface this repo has silently left stale
+  before.
+
 # Content-mutation safety (writing to files this codebase doesn't fully own)
 
 Any code path that WRITES BACK to a file the user authored — not a `.cairn/**` sidecar,
