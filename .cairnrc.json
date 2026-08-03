@@ -7,6 +7,30 @@
   "roots": ["docs"],
   "thresholdLines": 30,
   "checks": {
+    "coverage": {
+      "kinds": [
+        { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
+        { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
+        { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
+        { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
+        { "id": "story-map", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
+        { "id": "roadmap", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
+        {
+          "id": "implementation-details",
+          "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" }
+        },
+        { "id": "knowledge", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
+      ],
+      "rules": [
+        { "from": "design-package", "to": "problem-space" },
+        { "from": "design-package", "to": "solution-space" },
+        { "from": "design-package", "to": "spikes" },
+        { "from": "design-package", "to": "story-map" },
+        { "from": "design-package", "to": "roadmap" },
+        { "from": "design-package", "to": "implementation-details" },
+        { "from": "design-package", "to": "knowledge" }
+      ]
+    },
     "docCoverage": {
       "sources": ["src/**/*.ts"],
       "coveredBy": [

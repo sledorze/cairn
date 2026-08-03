@@ -320,6 +320,13 @@ link back to it. A `spec` doc with zero outbound links still reports missing cov
 though plain dead-link checking has nothing to flag (there's no link to check in the first
 place) — this is the check that catches "cited nothing," not just "cited something broken."
 
+**A different real use of the same mechanism**: `checks.coverage`'s `kinds`/`rules` aren't
+only for doc→doc traceability — they can enforce that a directory of related docs has a
+required SHAPE (e.g. "every design package must have a problem-space doc, a solution-space
+doc, ..."). This repo dogfoods exactly that for its own `docs/design/` packages — see
+`docs/design/CONVENTION.md` (in the source repo) for the worked example, a real
+falsification, and an honestly-documented limitation, with a copy-pasteable config block.
+
 ### Source-tree documentation coverage: `checks.docCoverage`
 
 `checks.coverage` (above) only ever asks doc→doc questions — "does a doc of kind X link
