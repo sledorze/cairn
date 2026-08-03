@@ -90,6 +90,7 @@ describe('checkProseRefs() against the real filesystem (DocsFsLive)', () => {
   // root/Windows (permission bits aren't enforced the same way).
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
   const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+
   it.skipIf(!supportsPosixPermissions)('skips a permission-denied doc instead of crashing', async () => {
     const p = project('proserefs-unreadable', {
       'docs/a.md': 'See `src/gone-a.ts` for details.',
@@ -124,6 +125,7 @@ describe('checkProseRefs() against the real filesystem (DocsFsLive)', () => {
   // reproducing the exact filesystem-existence oracle issue #47/#39 were
   // written to close, reached through a path that's lexically in-bounds.
   const supportsSymlinks = process.platform !== 'win32'
+
   it.skipIf(!supportsSymlinks)(
     'never treats a citation reaching a symlink whose real target escapes `base` as resolving, even under a legitimate in-base first segment',
     async () => {

@@ -88,6 +88,7 @@ describe('checkSummaries() + GitFsLive against a real git repository', () => {
   // POSIX bits).
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
   const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+
   it.skipIf(!supportsPosixPermissions)(
     'a permission-denied doc is silently excluded from the plan, not a crash',
     async () => {

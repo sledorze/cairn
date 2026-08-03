@@ -137,6 +137,7 @@ describe('DocsFsLive()', () => {
     // directory, therefore excluded") — this pins the fix.
     const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
     const supportsSymlinks = process.platform !== 'win32' && !isRoot
+
     it.skipIf(!supportsSymlinks)('a symlink resolving to a real file is included, not silently dropped', async () => {
       const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-symlink-file-'))
       try {
@@ -243,6 +244,7 @@ describe('DocsFsLive()', () => {
         supportsMkfifo = false
       }
     }
+
     it.skipIf(!supportsMkfifo)('a named pipe (FIFO) entry is silently excluded, not a crash', async () => {
       const fifoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-fifo-'))
       try {
@@ -295,6 +297,7 @@ describe('DocsFsLive()', () => {
     // enforce POSIX permission bits (Windows) — same guard style as this
     // repo's own existing tests would need for platform-conditional cases.
     const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+
     it.skipIf(!supportsPosixPermissions)(
       'an unreadable (no-execute) subdirectory is silently excluded, not a crash',
       async () => {

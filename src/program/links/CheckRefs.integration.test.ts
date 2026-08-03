@@ -131,6 +131,7 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
   // root/Windows (permission bits aren't enforced the same way).
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
   const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+
   it.skipIf(!supportsPosixPermissions)('stampRefs skips a permission-denied doc instead of crashing', async () => {
     const p = project('checkrefs-unreadable', {
       'docs/a.md': '[core](../src/engine.ts)',
@@ -157,6 +158,7 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
   // via a symlink an attacker could commit inside any scanned root; worse
   // than the plain existence oracle issue #39 was written to close.
   const supportsSymlinks = process.platform !== 'win32'
+
   it.skipIf(!supportsSymlinks)(
     'never reads or hashes the content of a symlink escaping `base`, even though its own path is lexically in-base',
     async () => {

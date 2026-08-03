@@ -75,6 +75,7 @@ describe('checkCoverage() against the real filesystem (DocsFsLive)', () => {
   // entirely) or on Windows (`chmod` doesn't enforce POSIX bits there).
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
   const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+
   it.skipIf(!supportsPosixPermissions)('skips an unreadable doc instead of crashing the whole scan', async () => {
     const p = project('checkcoverage-real-unreadable', {
       'decisions/d1.md': '# Decision',
@@ -120,6 +121,7 @@ describe('checkCoverage() against the real filesystem (DocsFsLive)', () => {
   // satisfying an `{ external: 'path' }` rule, matching the same
   // containment guarantee its own code comment claims.
   const supportsSymlinks = process.platform !== 'win32'
+
   it.skipIf(!supportsSymlinks)(
     'never treats a symlink whose real target escapes `base` as satisfying an external-path rule',
     async () => {
