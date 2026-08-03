@@ -27,8 +27,8 @@
 import * as nodePath from 'node:path'
 
 import { extractLinks, isCheckableTarget, stripAnchor, stripCode } from '../links/MarkdownLinks.ts'
-import { matchesAny } from '../glob.ts'
 import { hashContent } from '../hashing.ts'
+import { isIgnored } from '../paths.ts'
 import type { Naming, SummaryStatus } from './DocSummaries.ts'
 import { countLines, DEFAULT_NAMING, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
 
@@ -147,7 +147,7 @@ export const planSummaries = ({
   const recorded = (p: string): string | null => stamps.get(p) ?? null
 
   const sourceDocs = allPaths.filter(
-    (p) => p.endsWith('.md') && !isSummaryFile(p, naming) && !isDirSummary(p, naming) && !matchesAny(p, ignore),
+    (p) => p.endsWith('.md') && !isSummaryFile(p, naming) && !isDirSummary(p, naming) && !isIgnored(p, ignore, roots),
   )
   // Computed once per doc up front (a Set lookup below) rather than via a
   // countLines() call at each of the two sites that ask "is this doc big" — the
@@ -176,10 +176,11 @@ export const planSummaries = ({
   }
 
   if (!requireDirSummaries) {
-    const orphans = findOrphans({ files, ignore, naming, nodes: fileNodes, requireDirSummaries })
+    const orphans = findOrphans({ files, ignore, naming, nodes: fileNodes, requireDirSummaries, roots })
     const orphanStamps = findDeletedStamps({
       expectedNodePaths: new Set(fileNodes.map((n) => n.path)),
       ignore,
+      roots,
       stampNodePaths: stamps.keys(),
     })
     return { nodes: fileNodes, orphanStamps, orphans, todo: fileNodes.filter((n) => n.status !== 'ok') }
@@ -237,10 +238,18 @@ export const planSummaries = ({
     const expectedHash = nodeExpectedHash({ files, inputs, kind: 'dir', path: dsp })
     const recordedHash = recorded(dsp)
     const exists = files.has(dsp)
-    // A directory summary must link every direct sub-file AND sub-folder.
-    const requiredLinks = [...childDocs, ...childDirs]
+    // A directory summary must link every direct sub-file AND sub-folder. A
+    // sub-folder counts as linked either way (issue #103): a bare directory
+    // link (`./sub`) or a link straight to that child's own `_SUMMARY.md`
+    // (`./sub/_SUMMARY.md`) — the curated index, and precisely the artifact
+    // whose hash the Merkle model tracks for that child, not merely a
+    // friendlier alternative to the bare path.
     const linked = resolveLinks(files.get(dsp) ?? '', dir)
-    const missingLinks = requiredLinks.filter((target) => !linked.has(target)).toSorted()
+    const isChildDirLinked = (sub: string): boolean => linked.has(sub) || linked.has(path.join(sub, naming.dirSummary))
+    const missingLinks = [
+      ...childDocs.filter((doc) => !linked.has(doc)),
+      ...childDirs.filter((sub) => !isChildDirLinked(sub)),
+    ].toSorted()
     const fresh = exists && recordedHash === expectedHash && missingLinks.length === 0
     dirNodes.push({
       expectedHash,
@@ -258,10 +267,11 @@ export const planSummaries = ({
   dirNodes.sort((a, b) => depth(b.path) - depth(a.path) || a.path.localeCompare(b.path))
 
   const nodes = [...fileNodes, ...dirNodes]
-  const orphans = findOrphans({ files, ignore, naming, nodes, requireDirSummaries })
+  const orphans = findOrphans({ files, ignore, naming, nodes, requireDirSummaries, roots })
   const orphanStamps = findDeletedStamps({
     expectedNodePaths: new Set(nodes.map((n) => n.path)),
     ignore,
+    roots,
     stampNodePaths: stamps.keys(),
   })
   return { nodes, orphanStamps, orphans, todo: nodes.filter((n) => n.status !== 'ok') }
@@ -270,6 +280,7 @@ export const planSummaries = ({
 interface FindDeletedStampsArgs {
   readonly expectedNodePaths: ReadonlySet<string>
   readonly ignore: readonly string[]
+  readonly roots: readonly string[]
   readonly stampNodePaths: Iterable<string>
 }
 
@@ -281,8 +292,8 @@ interface FindDeletedStampsArgs {
  * itself was deleted alongside its source, catching a deletion `findOrphans`
  * alone would miss entirely.
  */
-const findDeletedStamps = ({ expectedNodePaths, ignore, stampNodePaths }: FindDeletedStampsArgs): string[] =>
-  [...stampNodePaths].filter((p) => !expectedNodePaths.has(p) && !matchesAny(p, ignore)).toSorted()
+const findDeletedStamps = ({ expectedNodePaths, ignore, roots, stampNodePaths }: FindDeletedStampsArgs): string[] =>
+  [...stampNodePaths].filter((p) => !expectedNodePaths.has(p) && !isIgnored(p, ignore, roots)).toSorted()
 
 interface FindOrphansArgs {
   readonly files: ReadonlyMap<string, string>
@@ -290,6 +301,7 @@ interface FindOrphansArgs {
   readonly naming: Naming
   readonly nodes: readonly PlanNode[]
   readonly requireDirSummaries: boolean
+  readonly roots: readonly string[]
 }
 
 /**
@@ -299,10 +311,10 @@ interface FindOrphansArgs {
  * `requireDirSummaries` is false, directory summaries are never expected, so
  * they are never flagged as orphans.
  */
-const findOrphans = ({ files, ignore, naming, nodes, requireDirSummaries }: FindOrphansArgs): string[] => {
+const findOrphans = ({ files, ignore, naming, nodes, requireDirSummaries, roots }: FindOrphansArgs): string[] => {
   const expected = new Set(nodes.map((n) => n.path))
   const actualSummaries = [...files.keys()].filter(
-    (p) => isManagedSummaryPath(p, naming, requireDirSummaries) && !matchesAny(p, ignore),
+    (p) => isManagedSummaryPath(p, naming, requireDirSummaries) && !isIgnored(p, ignore, roots),
   )
   return actualSummaries.filter((p) => !expected.has(p)).toSorted()
 }

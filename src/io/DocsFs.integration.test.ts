@@ -472,6 +472,35 @@ describe('DocsFsLive()', () => {
       }
     })
 
+    // Issue #102: `ignore` patterns are authored root-relative (as `ignore`'s
+    // own default, `"**/node_modules/**"`, already implies for the "anywhere
+    // in the tree" case) — but a pattern with no leading `**/`, the form
+    // anyone actually writes for a top-level directory, used to be matched
+    // against the walk's ABSOLUTE filesystem path and could therefore never
+    // match, silently. Reproduces the exact repro from the issue: `.agents/**`
+    // must prune just as reliably as the already-passing `**/.agents/**`.
+    it('prunes a directory using a root-relative pattern with no leading **/ (issue #102)', async () => {
+      const pruneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-prune-relative-'))
+      try {
+        fs.writeFileSync(path.join(pruneRoot, 'kept.md'), '# kept')
+        const ignoredDir = path.join(pruneRoot, '.agents')
+        fs.mkdirSync(ignoredDir)
+        fs.writeFileSync(path.join(ignoredDir, 'inner.md'), '# should never be seen')
+
+        const files = await run(
+          Effect.gen(function* () {
+            const dfs = yield* DocsFs
+            return yield* dfs.listFiles([pruneRoot], ['.agents/**'])
+          }),
+        )
+
+        expect(files).toContainEqual(toPosix(path.join(pruneRoot, 'kept.md')))
+        expect(files.some((f) => f.includes('.agents'))).toBeFalsy()
+      } finally {
+        fs.rmSync(pruneRoot, { force: true, recursive: true })
+      }
+    })
+
     it('an unmatched ignore pattern leaves the tree fully scanned, same as before', async () => {
       const pruneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'docsfs-prune-noop-'))
       try {

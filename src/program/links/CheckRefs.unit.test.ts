@@ -309,4 +309,19 @@ describe('ignore (found via a second independent audit)', () => {
     )
     expect(result.stamped).toBe(1)
   })
+
+  // Issue #102: a root-relative pattern with no leading `**/` (the form
+  // anyone actually writes) must exclude a file just as reliably as the
+  // `**`-prefixed patterns above — regression coverage exercised through
+  // the real checker, not just `isIgnored`'s own unit tests.
+  it('stampRefs skips a doc matched by a root-relative pattern with no leading **/ (issue #102)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/docs/SKIP.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+      '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      stampRefs({ base: '/r', ignore: ['SKIP.md'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+    )
+    expect(result.stamped).toBe(0)
+  })
 })

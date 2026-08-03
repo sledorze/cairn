@@ -20,8 +20,8 @@ import { Effect } from 'effect'
 import { extractReferences } from '../../core/links/MarkdownLinks.ts'
 import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
-import { matchesAny } from '../../core/glob.ts'
 import { hashContent } from '../../core/hashing.ts'
+import { isIgnored } from '../../core/paths.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
 import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
@@ -117,7 +117,7 @@ const listMdFiles = (
     const dfs = yield* DocsFs
     const allFiles = yield* dfs.listFiles(roots, ignore)
     return allFiles.filter(
-      (f) => f.endsWith('.md') && !matchesAny(f, ignore) && (trackedFiles === undefined || trackedFiles.has(f)),
+      (f) => f.endsWith('.md') && !isIgnored(f, ignore, roots) && (trackedFiles === undefined || trackedFiles.has(f)),
     )
   })
 

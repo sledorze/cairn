@@ -55,6 +55,28 @@ describe('checkCoverage()', () => {
     expect(result.checked).toBe(1)
   })
 
+  // Issue #102: a root-relative pattern with no leading `**/` (the form
+  // anyone actually writes, as opposed to the absolute-path pattern used
+  // above) must exclude a doc just as reliably — regression coverage
+  // exercised through the real checker, not just `isIgnored`'s own unit
+  // tests.
+  it('excludes a doc matched by a root-relative `ignore` pattern with no leading **/ (issue #102)', async () => {
+    const layer = makeTestDocsFs({
+      '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },
+      '/r/decisions/generated.md': { content: '# Generated, must be excluded', mtimeMs: 1 },
+    })
+    const result = await Effect.runPromise(
+      checkCoverage({
+        base: '/r',
+        ignore: ['decisions/generated.md'],
+        kinds: KINDS,
+        roots: ['/r'],
+        rules: [],
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(result.checked).toBe(1)
+  })
+
   it('reports a feature with zero links to any decision as missing coverage', async () => {
     const layer = makeTestDocsFs({
       '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },

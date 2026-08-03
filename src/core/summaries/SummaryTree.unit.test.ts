@@ -104,6 +104,30 @@ describe('planSummaries()', () => {
     expect(staleNode?.missingLinks).toEqual(['/r/docs/a.md'])
   })
 
+  // Issue #103: a parent `_SUMMARY.md` linking to a child DIRECTORY via its
+  // own `_SUMMARY.md` (`./sub/_SUMMARY.md`) — the curated index, and the
+  // exact artifact the Merkle model hashes for that child — must count as
+  // linking the child, same as the bare directory link (`./sub`) already does.
+  it("accepts a link to a child directory's own _SUMMARY.md as satisfying link-completeness", () => {
+    const base = new Map<string, string>([
+      ['/r/docs/sub/b.md', big],
+      ['/r/docs/sub/b.summary.md', '# résumé b'],
+      ['/r/docs/sub/_SUMMARY.md', '- [link](./b.md)'],
+    ])
+    const baseStamps = stampsFor(base, ['/r/docs'])
+
+    const withDirSummaryLink = new Map(base).set('/r/docs/_SUMMARY.md', '- [sub/](./sub/_SUMMARY.md)')
+    const node = planSummaries({
+      files: withDirSummaryLink,
+      roots: ['/r/docs'],
+      stamps: baseStamps,
+      thresholdLines: 30,
+    }).nodes.find((n) => n.path === '/r/docs/_SUMMARY.md')
+
+    expect(node?.missingLinks).toEqual([])
+    expect(node?.status).toBe('ok')
+  })
+
   it('flags a directory summary stale when an input hash changes', () => {
     const fresh = freshTree()
     const freshStamps = stampsFor(fresh, ['/r/docs'])
@@ -159,6 +183,27 @@ describe('planSummaries() — stamp/source lifecycle (S2, S3, S4)', () => {
     const plan = planSummaries({
       files: withoutSource,
       ignore: ['/r/docs/a.summary.md'],
+      roots: ['/r/docs'],
+      stamps,
+      thresholdLines: 30,
+    })
+    expect(plan.orphanStamps).not.toContain('/r/docs/a.summary.md')
+  })
+
+  // Issue #102: a root-relative pattern with no leading `**/` (the form
+  // anyone actually writes, as opposed to the absolute-path pattern used
+  // above) must suppress a deleted-source stamp just as reliably —
+  // regression coverage exercised through the real planner, not just
+  // `isIgnored`'s own unit tests.
+  it('S3b: a root-relative ignore pattern with no leading **/ also suppresses a deleted-source stamp (issue #102)', () => {
+    const files = tree()
+    const stamps = stampsFor(files, ['/r/docs'])
+    const withoutSource = new Map(files)
+    withoutSource.delete('/r/docs/a.md')
+    withoutSource.delete('/r/docs/a.summary.md')
+    const plan = planSummaries({
+      files: withoutSource,
+      ignore: ['a.summary.md'],
       roots: ['/r/docs'],
       stamps,
       thresholdLines: 30,

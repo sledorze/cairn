@@ -180,6 +180,21 @@ describe('checkProseRefs()', () => {
       expect(result.checked).toBe(0)
     })
 
+    // Issue #102: a root-relative pattern with no leading `**/` (the form
+    // anyone actually writes) must exclude a doc just as reliably as the
+    // `**`-prefixed pattern above — regression coverage exercised through
+    // the real checker, not just `isIgnored`'s own unit tests.
+    it('respects a root-relative `ignore` pattern with no leading **/ (issue #102)', async () => {
+      const layer = makeTestDocsFs({
+        '/r/docs/SKIP.md': { content: 'See `src/gone.ts` for details.', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkProseRefs({ base: '/r', ignore: ['SKIP.md'], roots: ['/r/docs'] }).pipe(Effect.provide(layer)),
+      )
+      expect(result.broken).toEqual([])
+      expect(result.checked).toBe(0)
+    })
+
     it('respects `trackedFiles` — an untracked doc is never scanned', async () => {
       const layer = makeTestDocsFs({
         '/r/docs/scratch.md': { content: 'See `src/gone.ts` for details.', mtimeMs: 1 },
