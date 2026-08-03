@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isIgnored, isWithinBase, relativeToBase, toPosix } from './paths.ts'
+import { isIgnored, isInScope, isWithinBase, relativeToBase, toPosix } from './paths.ts'
 
 describe('toPosix()', () => {
   it('converts Windows separators to POSIX', () => {
@@ -10,6 +10,28 @@ describe('toPosix()', () => {
 
   it('leaves POSIX paths unchanged', () => {
     expect(toPosix('/r/docs/a.md')).toBe('/r/docs/a.md')
+  })
+})
+
+describe('isInScope()', () => {
+  it('is true for a root itself', () => {
+    expect(isInScope('/r/docs', ['/r/docs'])).toBeTruthy()
+  })
+
+  it('is true for a path under a root', () => {
+    expect(isInScope('/r/docs/a.md', ['/r/docs'])).toBeTruthy()
+  })
+
+  it('is false for a sibling path that merely shares the root as a string prefix', () => {
+    expect(isInScope('/r/docs-other/a.md', ['/r/docs'])).toBeFalsy()
+  })
+
+  it('is false for a path outside every configured root', () => {
+    expect(isInScope('/r/other/a.md', ['/r/docs'])).toBeFalsy()
+  })
+
+  it('is true when any of several roots matches', () => {
+    expect(isInScope('/r/b/a.md', ['/r/a', '/r/b'])).toBeTruthy()
   })
 })
 

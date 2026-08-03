@@ -106,6 +106,12 @@ describe('checkProseRefs() against the real filesystem (DocsFsLive)', () => {
       const flaggedFiles = result.broken.map((f) => f.file)
       expect(flaggedFiles).toContain(path.join(p.root, 'docs', 'a.md'))
       expect(flaggedFiles).not.toContain(bPath)
+      // Issue #93 DRY audit, adversarial review: `checked` must count
+      // every LISTED file (both a.md and the unreadable b.md), not just
+      // the ones actually scanned — a prior refactor pass silently
+      // shrunk this to "successfully read" instead, undetected because
+      // nothing here asserted `checked` at all.
+      expect(result.checked).toBe(2)
     } finally {
       fs.chmodSync(bPath, 0o644)
     }

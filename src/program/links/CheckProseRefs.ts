@@ -23,8 +23,8 @@ import * as nodePath from 'node:path'
 import { Effect } from 'effect'
 
 import { extractProseRefs } from '../../core/links/ProseRefs.ts'
-import { isIgnored, isWithinBase } from '../../core/paths.ts'
-import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
+import { isWithinBase } from '../../core/paths.ts'
+import { DocsFs, isSafelyWithinBase, listMarkdownFiles } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import { withAncestors } from './CheckLinks.ts'
 import type { Locale } from '../locale.ts'
@@ -145,10 +145,12 @@ export const checkProseRefs = ({
 }: CheckProseRefsArgs): Effect.Effect<ProseRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore)
-    const mdFiles = allFiles.filter(
-      (f) => f.endsWith('.md') && !isIgnored(f, ignore, roots) && (trackedFiles === undefined || trackedFiles.has(f)),
-    )
+    // `listMarkdownFiles` (io/DocsFs.ts, issue #93 DRY audit) shares the
+    // filter this used to hand-roll — `readMarkdownCorpus`'s Map isn't
+    // used here since `checked` (below) must count every LISTED file, not
+    // just the ones that turn out readable (adversarial review: an
+    // earlier pass here silently shrunk it to "successfully read" instead).
+    const mdFiles = yield* listMarkdownFiles(dfs, roots, ignore, trackedFiles)
     const trackedUniverse = trackedFiles === undefined ? undefined : withAncestors([...trackedFiles])
 
     const broken: FileBrokenProseRefs[] = []

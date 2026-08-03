@@ -21,9 +21,8 @@ import { extractReferences } from '../../core/links/MarkdownLinks.ts'
 import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
 import { hashContent } from '../../core/hashing.ts'
-import { isIgnored } from '../../core/paths.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
-import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase, listMarkdownFiles, readMarkdownCorpus } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -108,19 +107,6 @@ const resolveReferenceContent = ({
     return yield* dfs.readFile(targetAbs).pipe(Effect.catchDefect(() => Effect.succeed(null)))
   })
 
-const listMdFiles = (
-  roots: readonly string[],
-  ignore: readonly string[],
-  trackedFiles?: ReadonlySet<string>,
-): Effect.Effect<readonly string[], never, DocsFs> =>
-  Effect.gen(function* () {
-    const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore)
-    return allFiles.filter(
-      (f) => f.endsWith('.md') && !isIgnored(f, ignore, roots) && (trackedFiles === undefined || trackedFiles.has(f)),
-    )
-  })
-
 const toRecord = (ref: { readonly anchor: string | null; readonly target: string }, hash: string): RefRecord =>
   ref.anchor === null ? { hash, target: ref.target } : { anchor: ref.anchor, hash, target: ref.target }
 
@@ -140,17 +126,12 @@ export const stampRefs = ({
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    // `readMarkdownCorpus` already gives an unreadable doc (permission
+    // denied) the same lenient skip this used to hand-roll — see its own
+    // doc comment for the discipline this matches.
+    const mdFiles = yield* readMarkdownCorpus(dfs, roots, ignore, trackedFiles)
     let stamped = 0
-    for (const file of mdFiles) {
-      // Found via adversarial "no unhandled exception" review: a doc that
-      // lists fine but can't be READ (permission denied) must not crash the
-      // whole run — skipped exactly like an untracked/ignored file already
-      // is, same discipline as `CheckSummaries.ts`'s own `readMarkdown` fix.
-      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
-      if (content === null) {
-        continue
-      }
+    for (const [file, content] of mdFiles) {
       const fromDir = path.dirname(file)
       const records: RefRecord[] = []
       for (const ref of extractReferences(content)) {
@@ -183,7 +164,7 @@ export const checkRefs = ({
   Effect.gen(function* () {
     const dfs = yield* DocsFs
     const layout = { base, metaRoot: metaRootFor(base) }
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    const mdFiles = yield* listMarkdownFiles(dfs, roots, ignore, trackedFiles)
     const stale: FileStaleRefs[] = []
     let checked = 0
     for (const file of mdFiles) {

@@ -9,7 +9,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
 import { matchesAny } from '../core/glob.ts'
-import { isWithinBase, relativeToBase, toPosix } from '../core/paths.ts'
+import { isIgnored, isInScope, isWithinBase, relativeToBase, toPosix } from '../core/paths.ts'
 
 export interface FileStat {
   readonly mtimeMs: number
@@ -81,6 +81,79 @@ export const isSafelyWithinBase = (
     }
     const real = yield* dfs.realPath(candidate)
     return real !== null && isWithinBase(real, base)
+  })
+
+/**
+ * Every in-scope `.md` file's path — issue #48's `trackedFiles` narrowing
+ * (an untracked doc is invisible to a fresh CI checkout, so a local run with
+ * `onlyGitTracked` on must be too), and a file-level `ignore` re-check
+ * (`isIgnored`, issue #102) since `listFiles`'s own `ignore` handling only
+ * prunes DIRECTORIES, never a file-shaped pattern.
+ *
+ * Extracted (issue #93's own PR, DRY audit) after this exact filter turned
+ * up hand-duplicated, verbatim, across `CheckSummaries.ts`'s own
+ * `readMarkdown`, `CheckRefs.ts`'s own `listMdFiles`, `CheckProseRefs.ts`'s
+ * inline filter, `CheckCoverage.ts`'s own `listMdFiles`, and
+ * `CheckDeletions.ts`'s own `readMarkdownCorpus` (issue #106's PR, merged
+ * to `main` in the meantime — migrated onto this shared definition too,
+ * closing the loop rather than leaving a fifth copy the moment it landed)
+ * — five independent copies of the same "list files, filter by `.md`/
+ * `ignore`/`trackedFiles`" logic, already existing to drift apart.
+ */
+export const listMarkdownFiles = (
+  dfs: Pick<DocsFsService, 'listFiles'>,
+  roots: readonly string[],
+  ignore: readonly string[],
+  trackedFiles?: ReadonlySet<string>,
+): Effect.Effect<readonly string[]> =>
+  Effect.gen(function* () {
+    const all = yield* dfs.listFiles(roots, ignore)
+    return all.filter(
+      (f) => f.endsWith('.md') && !isIgnored(f, ignore, roots) && (trackedFiles === undefined || trackedFiles.has(f)),
+    )
+  })
+
+/**
+ * Every in-scope `.md` doc's content, as a `path -> content` map, via
+ * `listMarkdownFiles` above. A doc that lists fine but can't actually be
+ * READ (permission denied, revoked between listing and reading) is
+ * silently excluded, not a crash — `dfs.readFile` is `Effect.orDie`-wrapped,
+ * so this reaches the DEFECT channel; skipped the same way an untracked/
+ * ignored doc already is.
+ *
+ * Built directly on `listMarkdownFiles` above — its file-level `isIgnored`
+ * re-check is genuinely load-bearing for `CheckRefs.ts`/`CheckProseRefs.ts`/
+ * `CheckCoverage.ts`/`CheckDeletions.ts` (each reads the resulting map
+ * directly, with no downstream filter of its own — `CheckDeletions.ts`'s
+ * own `remainingFiles` in particular: an ignored file's content wrongly
+ * counting as "content survives" for its orphaned-heading/link comparison
+ * would be a real false negative, not just cosmetic), and is the actual
+ * fix for the second half of issue #93's own title: `CheckSummaries.ts`'s
+ * prior hand-rolled copy silently lacked this re-check, only ever
+ * producing the right answer by coincidence — `SummaryTree.ts`'s
+ * `planSummaries` happens to apply the same `isIgnored` filter again
+ * downstream when building its plan (see `SummaryTree.unit.test.ts`'s own
+ * root-relative-ignore coverage) — but nothing guaranteed that would keep
+ * holding for a future change to either side. One shared definition means
+ * every caller gets the correct behavior by construction, not by
+ * coincidence.
+ */
+export const readMarkdownCorpus = (
+  dfs: Pick<DocsFsService, 'listFiles' | 'readFile'>,
+  roots: readonly string[],
+  ignore: readonly string[],
+  trackedFiles?: ReadonlySet<string>,
+): Effect.Effect<Map<string, string>> =>
+  Effect.gen(function* () {
+    const all = yield* listMarkdownFiles(dfs, roots, ignore, trackedFiles)
+    const files = new Map<string, string>()
+    for (const file of all) {
+      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+      if (content !== null) {
+        files.set(file, content)
+      }
+    }
+    return files
   })
 
 /** Live implementation bound to the Node filesystem. */
@@ -351,7 +424,7 @@ export const makeTestDocsFs = (files: Record<string, TestFile>): Layer.Layer<Doc
     listFiles: (roots, ignore = []) =>
       Effect.sync(() =>
         [...store.keys()].filter((p) => {
-          if (!roots.some((r) => p.startsWith(`${r}/`) || p === r)) {
+          if (!isInScope(p, roots)) {
             return false
           }
           const segments = p.split('/')
