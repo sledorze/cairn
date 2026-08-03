@@ -34,11 +34,10 @@ import { Effect } from 'effect'
 import type { CoverageRule, KindDef } from '../../core/Config.ts'
 import { isKindTarget } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
-import { isIgnored } from '../../core/paths.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
-import { DocsFs, isSafelyWithinBase } from '../../io/DocsFs.ts'
+import { DocsFs, isSafelyWithinBase, readMarkdownCorpus } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
 import { pick } from '../locale.ts'
@@ -86,19 +85,6 @@ export interface CoverageResult {
 export const coverageExitCode = (result: CoverageResult): number =>
   result.missing.length > 0 || result.orphans.length > 0 ? 1 : 0
 
-const listMdFiles = (
-  roots: readonly string[],
-  ignore: readonly string[],
-  trackedFiles?: ReadonlySet<string>,
-): Effect.Effect<readonly string[], never, DocsFs> =>
-  Effect.gen(function* () {
-    const dfs = yield* DocsFs
-    const allFiles = yield* dfs.listFiles(roots, ignore)
-    return allFiles.filter(
-      (f) => f.endsWith('.md') && !isIgnored(f, ignore, roots) && (trackedFiles === undefined || trackedFiles.has(f)),
-    )
-  })
-
 // `base` bounds the ONE place this check does touch the real filesystem
 // beyond already-`roots`-scoped docs: an `{ external: 'path' }` rule's
 // existence check, below. Every kind-based rule still needs no `isWithinBase`
@@ -116,7 +102,7 @@ export const checkCoverage = ({
 }: CheckCoverageArgs): Effect.Effect<CoverageResult, never, DocsFs> =>
   Effect.gen(function* () {
     const dfs = yield* DocsFs
-    const mdFiles = yield* listMdFiles(roots, ignore, trackedFiles)
+    const mdFiles = yield* readMarkdownCorpus(dfs, roots, ignore, trackedFiles)
 
     // Deduped by every field that can distinguish two rules on the same
     // kind pair — found via adversarial review, in three rounds so far.
@@ -145,16 +131,9 @@ export const checkCoverage = ({
       ).values(),
     ]
 
-    const allDocs = []
-    for (const file of mdFiles) {
-      // Same discipline as every sibling check: a file that lists fine but
-      // can't be READ (permission denied) must not crash the whole run.
-      const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
-      if (content === null) {
-        continue
-      }
-      allDocs.push(extractDocMetadata({ content, kinds, path: file }))
-    }
+    // `readMarkdownCorpus` already gives an unreadable doc (permission
+    // denied) the same lenient skip this used to hand-roll.
+    const allDocs = [...mdFiles].map(([file, content]) => extractDocMetadata({ content, kinds, path: file }))
 
     // The inbound graph is built from EVERY scanned doc, not just
     // declared-kind ones: an outbound reference from an unclassified doc
