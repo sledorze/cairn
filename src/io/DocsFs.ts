@@ -9,7 +9,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
 import { matchesAny } from '../core/glob.ts'
-import { isWithinBase, toPosix } from '../core/paths.ts'
+import { isWithinBase, relativeToBase, toPosix } from '../core/paths.ts'
 
 export interface FileStat {
   readonly mtimeMs: number
@@ -130,14 +130,28 @@ export const DocsFsLive = Layer.effect(
     // for a genuinely inaccessible root) — annotating this `never`-error
     // would silently re-swallow the exact failure this fix exists to
     // surface, right back to the bug found via adversarial review.
-    // A directory is pruned when its own absolute POSIX path matches an
-    // `ignore` glob, tested two ways: bare (a literal pattern like
-    // `"node_modules"`) and with a trailing `/` appended (so a `"**/x/**"`
-    // pattern — the shape `ignore`'s own default, `"**/node_modules/**"`,
-    // already uses — matches the directory itself, not just its contents).
-    const isPrunedDir = (abs: string, ignore: readonly string[]): boolean => {
-      const p = toPosix(abs)
-      return matchesAny(p, ignore) || matchesAny(`${p}/`, ignore)
+    // A directory is pruned when EITHER its absolute POSIX path, or its path
+    // RELATIVE to the root it's being walked under, matches an `ignore` glob
+    // — tested both bare (a literal pattern like `"node_modules"`) and with
+    // a trailing `/` appended (so a `"**/x/**"` pattern matches the
+    // directory itself, not just its contents). Absolute matching is the
+    // pre-existing contract (a pattern that happens to BE the absolute
+    // path, or is `**/`-prefixed so it can absorb one, already worked and
+    // must keep working); relative matching is the fix for issue #102 — a
+    // pattern with no leading `**/`, the form anyone actually writes for a
+    // top-level directory (e.g. `.agents/**`), is authored root-relative
+    // (as `ignore`'s own default, `"**/node_modules/**"`, already implies
+    // for the "anywhere in the tree" case) and previously could never match
+    // an absolute filesystem path at all.
+    const isPrunedDir = (abs: string, ignore: readonly string[], rootBase: string): boolean => {
+      const absPosix = toPosix(abs)
+      const rel = relativeToBase(abs, rootBase)
+      return (
+        matchesAny(absPosix, ignore) ||
+        matchesAny(`${absPosix}/`, ignore) ||
+        matchesAny(rel, ignore) ||
+        matchesAny(`${rel}/`, ignore)
+      )
     }
 
     const walk = (
@@ -145,6 +159,7 @@ export const DocsFsLive = Layer.effect(
       atRoot: boolean,
       ignore: readonly string[],
       roots: readonly string[],
+      rootBase: string,
     ): Effect.Effect<readonly string[], PlatformError> =>
       Effect.gen(function* () {
         // `withFileTypes: true` gets file-vs-directory type from the SAME
@@ -174,7 +189,9 @@ export const DocsFsLive = Layer.effect(
             // `readDirectory`'d/`stat`'d at all, not merely excluded from
             // the final list after being fully walked.
             const recurseIntoDir = (): Effect.Effect<readonly string[], PlatformError> =>
-              isPrunedDir(abs, ignore) ? Effect.succeed<readonly string[]>([]) : walk(abs, false, ignore, roots)
+              isPrunedDir(abs, ignore, rootBase)
+                ? Effect.succeed<readonly string[]>([])
+                : walk(abs, false, ignore, roots, rootBase)
             if (entry.isDirectory()) {
               return recurseIntoDir()
             }
@@ -255,7 +272,7 @@ export const DocsFsLive = Layer.effect(
           if (!present) {
             continue
           }
-          for (const abs of yield* walk(root, true, ignore, roots)) {
+          for (const abs of yield* walk(root, true, ignore, roots, root)) {
             // Normalise to POSIX so the pure planners see `/` paths on every OS.
             out.push(toPosix(abs))
           }

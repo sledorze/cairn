@@ -31,3 +31,15 @@ export const isWithinBase = (candidate: string, base: string): boolean => {
   const escapes = rel === '..' || rel.startsWith('../')
   return !escapes && !path.isAbsolute(rel)
 }
+
+/**
+ * `candidate` (absolute) expressed relative to `base` (also absolute), in
+ * POSIX form — `candidate` itself if it isn't actually within `base`.
+ * Exists so `ignore` glob patterns (issue #102) can be matched against the
+ * path an author actually wrote (`.agents/**`, root-relative) instead of
+ * the absolute filesystem path — a bare, non-`**`-prefixed pattern can
+ * never match an absolute path, since the anchored regex `core/glob.ts`
+ * compiles has no way to skip an arbitrary absolute-path prefix.
+ */
+export const relativeToBase = (candidate: string, base: string): string =>
+  isWithinBase(candidate, base) ? toPosix(path.relative(base, candidate)) : toPosix(candidate)
