@@ -329,6 +329,30 @@ describe('cli.ts (real subprocess) — flags with no prior CLI-level test covera
     expect(againstBase.stdout).toContain('### Unique Section')
   })
 
+  // Issue #106 "best value defaults" audit: an unresolvable `--deletions-since`
+  // ref (the single most likely real-world failure mode of this flag — a
+  // shallow CI checkout that never fetched the base branch) must not be
+  // mislabeled "git unavailable," which falsely implies git itself is
+  // broken when it's the REF that doesn't exist. Previously untested via
+  // real subprocess at all.
+  it('--deletions-since with an unresolvable ref is skipped with a message naming the real cause, not "git unavailable"', () => {
+    const p = project('cli-deletions-since-bad-ref', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': '# A\n\nShort.\n',
+    })
+    runGit(p.root, 'init', '-q')
+    runGit(p.root, 'config', 'user.email', 'test@example.com')
+    runGit(p.root, 'config', 'user.name', 'Test')
+    runGit(p.root, 'add', '.')
+    runGit(p.root, 'commit', '-q', '-m', 'initial')
+
+    const result = runCli(p.root, ['check', '--report-deletions', '--deletions-since', 'totally-bogus-ref'])
+    expect(result.exitCode).toBe(0) // links/summaries pass; --report-deletions is informational only
+    expect(result.stdout).toContain('--report-deletions skipped:')
+    expect(result.stdout).not.toContain('git unavailable')
+    expect(result.stdout).toContain('totally-bogus-ref')
+  })
+
   it('--config points at an explicit config file instead of the default lookup', () => {
     const p = project('cli-config-flag', {
       'custom.json': JSON.stringify({ requireDirSummaries: false, roots: ['elsewhere'] }),

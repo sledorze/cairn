@@ -180,6 +180,22 @@ describe('formatDeletionsReport() / deletionsExitCode()', () => {
     expect(lines).toEqual(['✅ No orphaned content found (3 deletion(s) checked).'])
   })
 
+  // Issue #106 "best value defaults" audit: `checked: 0` (nothing deleted
+  // since the compared ref at all — the common case for a bare local run
+  // against the default HEAD) must read differently from `checked: 3` (3
+  // deletions actually compared, none orphaned) — an unqualified ✅ for
+  // both would misleadingly imply verification happened when it didn't.
+  it('formatDeletionsReport() distinguishes "nothing to check" from "checked N, all clean"', () => {
+    const nothingToCheck = formatDeletionsReport({ checked: 0, findings: [], skipped: [] })
+    expect(nothingToCheck).toEqual([
+      'ℹ️  Nothing deleted since the compared ref — nothing to check. Pass --deletions-since <ref> (e.g. a PR base branch) to check deletions already committed on this branch.',
+    ])
+    expect(nothingToCheck[0]).not.toContain('✅')
+
+    const verifiedClean = formatDeletionsReport({ checked: 3, findings: [], skipped: [] })
+    expect(verifiedClean).toEqual(['✅ No orphaned content found (3 deletion(s) checked).'])
+  })
+
   it('formatDeletionsReport() names the orphaned heading/link target per deleted doc', () => {
     const lines = formatDeletionsReport({
       checked: 1,
@@ -205,9 +221,9 @@ describe('formatDeletionsReport() / deletionsExitCode()', () => {
   // own established `unreadable` precedent. Both branches (nothing
   // orphaned; something orphaned) must still surface it.
   it('formatDeletionsReport() names a skipped (unrecoverable) deleted doc, never silently', () => {
-    const withoutFindings = formatDeletionsReport({ checked: 0, findings: [], skipped: ['/r/docs/corrupt.md'] })
+    const withoutFindings = formatDeletionsReport({ checked: 1, findings: [], skipped: ['/r/docs/corrupt.md'] })
     expect(withoutFindings).toEqual([
-      '✅ No orphaned content found (0 deletion(s) checked).',
+      '✅ No orphaned content found (1 deletion(s) checked).',
       '⚠️  1 deleted doc(s) could not be read back at the ref (possibly corrupt) — not checked:',
       '  /r/docs/corrupt.md',
     ])

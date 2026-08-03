@@ -172,15 +172,35 @@ doc:
 Comparing against `HEAD` (the default) catches an uncommitted `rm`, suited to a pre-commit
 hook; comparing against a PR's base branch (e.g. `--deletions-since origin/main`) in CI
 catches every deletion the PR itself introduces, including ones already committed — the
-actual reported scenario ("deleted a doc, only noticed hours later"). Needs a real git
-repository; a deleted doc whose content can't be recovered at that ref (staged but never
-committed, or a genuinely corrupt git object) is never silently absorbed — it's named
-explicitly, matching the link checker's own `unreadable` precedent:
+actual reported scenario ("deleted a doc, only noticed hours later"). A bare run with
+nothing deleted since the compared ref (the common case right after a fresh clone) says so
+plainly rather than printing an unqualified ✅ that would misleadingly imply verification
+happened:
+
+```
+ℹ️  Nothing deleted since the compared ref — nothing to check. Pass --deletions-since <ref>
+    (e.g. a PR base branch) to check deletions already committed on this branch.
+```
+
+Needs a real git repository; a deleted doc whose content can't be recovered at that ref
+(staged but never committed, or a genuinely corrupt git object) is never silently absorbed
+— it's named explicitly, matching the link checker's own `unreadable` precedent:
 
 ```
 ⚠️  1 deleted doc(s) could not be read back at the ref (possibly corrupt) — not checked:
   docs/old.md
 ```
+
+**CI note:** `--deletions-since origin/main` needs that ref to actually be fetched — a
+default `actions/checkout` (`fetch-depth: 1`) won't have it, and the failure is reported as
+`--report-deletions skipped: fatal: bad revision 'origin/main'` (never "git unavailable,"
+even though the wording is superficially similar — git is fine, the ref just isn't there).
+Use `fetch-depth: 0`, or `git fetch origin main` before running `cairn check`.
+
+`--report-deletions` deliberately never inspects a summary's own content (`.summary.md`/
+`_SUMMARY.md`) — a deleted summary's ABSENCE is `--summaries-only`'s own orphan-stamp
+detection to catch; this check is scoped to source docs, the same way link-completeness is.
+A hand-authored aside living only inside a `.summary.md` is a known, permanent blind spot.
 
 **Informational only, by design — never affects the exit code.** Deleting genuinely
 redundant documentation is a good thing that should stay cheap; this is a report to make a

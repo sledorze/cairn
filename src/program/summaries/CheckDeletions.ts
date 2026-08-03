@@ -152,20 +152,35 @@ export interface DeletionsReportOptions {
  * informational — see `deletionsExitCode`. */
 export const formatDeletionsReport = (result: DeletionsResult, options: DeletionsReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
+  // "0 checked, nothing found" and "N checked, nothing found" read
+  // identically as an unqualified ✅ — misleadingly so, since the first is
+  // "there was nothing to compare" (the common case for a bare local run
+  // against the default `HEAD`, right after clone with no local
+  // deletions) and the second is "compared N docs and none lost anything"
+  // — a much stronger claim. Distinguished explicitly (issue #106
+  // "best value defaults" audit) rather than letting a green checkmark
+  // imply verification that didn't happen.
   const lines: string[] =
-    result.findings.length === 0
+    result.findings.length > 0
       ? [
-          pick(locale, {
-            en: `✅ No orphaned content found (${result.checked} deletion(s) checked).`,
-            fr: `✅ Aucun contenu orphelin trouvé (${result.checked} suppression(s) vérifiée(s)).`,
-          }),
-        ]
-      : [
           pick(locale, {
             en: `⚠️  ${result.findings.length} deleted doc(s) took content with them, found nowhere else:`,
             fr: `⚠️  ${result.findings.length} document(s) supprimé(s) ont emporté du contenu introuvable ailleurs :`,
           }),
         ]
+      : result.checked === 0
+        ? [
+            pick(locale, {
+              en: 'ℹ️  Nothing deleted since the compared ref — nothing to check. Pass --deletions-since <ref> (e.g. a PR base branch) to check deletions already committed on this branch.',
+              fr: "ℹ️  Rien n'a été supprimé depuis la référence comparée — rien à vérifier. Passez --deletions-since <ref> (par ex. une branche de base de PR) pour vérifier les suppressions déjà commises sur cette branche.",
+            }),
+          ]
+        : [
+            pick(locale, {
+              en: `✅ No orphaned content found (${result.checked} deletion(s) checked).`,
+              fr: `✅ Aucun contenu orphelin trouvé (${result.checked} suppression(s) vérifiée(s)).`,
+            }),
+          ]
   for (const finding of result.findings) {
     lines.push(`  ${finding.path}`)
     for (const heading of finding.orphanedHeadings) {

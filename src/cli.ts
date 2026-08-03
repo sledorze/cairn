@@ -454,10 +454,18 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
       Effect.catch((error) => Effect.succeed({ error, result: null })),
     )
     if (deletionsOutcome.error !== null) {
+      // Deliberately NOT "git unavailable at X" — `GitUnavailableError` is
+      // also what an unresolvable REF raises (e.g. `--deletions-since
+      // origin/main` under a shallow CI checkout that never fetched
+      // `main`), and asserting "git unavailable" for that case is actively
+      // misleading: git is fine, the ref just isn't there (issue #106
+      // "best value defaults" audit — this is the single most likely
+      // real-world failure mode of this flag, per its own README section).
+      // The underlying message already names the real cause either way.
       yield* Console.log(
         pick(locale, {
-          en: `⚠️  --report-deletions skipped: git unavailable at ${cwd}: ${deletionsOutcome.error.message}`,
-          fr: `⚠️  --report-deletions ignoré : git indisponible à ${cwd} : ${deletionsOutcome.error.message}`,
+          en: `⚠️  --report-deletions skipped: ${deletionsOutcome.error.message}`,
+          fr: `⚠️  --report-deletions ignoré : ${deletionsOutcome.error.message}`,
         }),
       )
     } else {
