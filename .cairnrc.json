@@ -9,50 +9,68 @@
   "checks": {
     "coverage": {
       "kinds": [
+        { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
+        { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
+        { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
+        { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
+        { "id": "story-map", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
+        { "id": "roadmap", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
         {
-          "id": "101-design-package",
-          "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/_SUMMARY.md" }
+          "id": "implementation-details",
+          "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" }
         },
-        {
-          "id": "101-problem-space",
-          "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/problem-space.md" }
-        },
-        {
-          "id": "101-solution-space",
-          "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/solution-space.md" }
-        },
-        { "id": "101-spikes", "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/spikes.md" } },
-        {
-          "id": "101-story-map",
-          "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/story-map.md" }
-        },
-        {
-          "id": "101-roadmap",
-          "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/roadmap.md" }
-        },
-        {
-          "id": "101-implementation-details",
-          "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/implementation-details.md" }
-        },
-        {
-          "id": "101-knowledge",
-          "select": { "by": "path", "glob": "**/docs/design/101-refs-symbol-scoping/knowledge.md" }
-        }
+        { "id": "knowledge", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
       ],
       "rules": [
-        { "from": "101-design-package", "to": "101-problem-space" },
-        { "from": "101-design-package", "to": "101-solution-space" },
-        { "from": "101-design-package", "to": "101-spikes" },
-        { "from": "101-design-package", "to": "101-story-map" },
-        { "from": "101-design-package", "to": "101-roadmap" },
-        { "from": "101-design-package", "to": "101-implementation-details" },
-        { "from": "101-design-package", "to": "101-knowledge" },
-        { "from": "101-solution-space", "to": "101-spikes", "name": "grounded_by" },
-        { "from": "101-roadmap", "to": "101-spikes", "name": "grounded_by" },
-        { "from": "101-problem-space", "to": "101-spikes", "name": "grounded_by" },
-        { "from": "101-implementation-details", "to": "101-spikes", "name": "builds_on" },
-        { "from": "101-knowledge", "to": "101-spikes", "name": "sourced_from" },
-        { "from": "101-roadmap", "to": "101-story-map", "name": "derived_from" }
+        { "from": "design-package", "scope": "sibling", "to": "problem-space" },
+        { "from": "design-package", "scope": "sibling", "to": "solution-space" },
+        { "from": "design-package", "scope": "sibling", "to": "spikes" },
+        { "from": "design-package", "scope": "sibling", "to": "story-map" },
+        { "from": "design-package", "scope": "sibling", "to": "roadmap" },
+        { "from": "design-package", "scope": "sibling", "to": "implementation-details" },
+        { "from": "design-package", "scope": "sibling", "to": "knowledge" },
+        {
+          "from": "solution-space",
+          "description": "A cost/feasibility/risk claim needs real evidence — cite the spike that backs it.",
+          "name": "grounded_by",
+          "scope": "sibling",
+          "to": "spikes"
+        },
+        {
+          "from": "roadmap",
+          "description": "A sequencing decision needs real evidence — cite the spike that justifies it.",
+          "name": "grounded_by",
+          "scope": "sibling",
+          "to": "spikes"
+        },
+        {
+          "from": "problem-space",
+          "description": "A risk/investment claim needs real evidence — cite the spike that backs it.",
+          "name": "grounded_by",
+          "scope": "sibling",
+          "to": "spikes"
+        },
+        {
+          "from": "implementation-details",
+          "description": "An implementation approach must be built on a validated primitive, not assumed — cite the spike that confirmed it works.",
+          "name": "builds_on",
+          "scope": "sibling",
+          "to": "spikes"
+        },
+        {
+          "from": "knowledge",
+          "description": "Instructional guidance restating a spike's findings must cite the spike it's sourced from, so a reader can verify it's still accurate.",
+          "name": "sourced_from",
+          "scope": "sibling",
+          "to": "spikes"
+        },
+        {
+          "from": "roadmap",
+          "description": "A roadmap that realizes a story-map concept (e.g. a walking skeleton) must cite the story-map doc it derives from.",
+          "name": "derived_from",
+          "scope": "sibling",
+          "to": "story-map"
+        }
       ]
     },
     "docCoverage": {

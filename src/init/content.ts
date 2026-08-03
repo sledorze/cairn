@@ -192,8 +192,11 @@ to have the right headings.
 A design package is a directory (e.g. \`docs/design/<slug>/\`) containing:
 
 - \`_SUMMARY.md\` — the package's own index, linking every doc below.
-- \`problem-space.md\` — the failure/gap, root cause, constraints on any fix, and an HONEST
-  evidence basis (how many real reports is this resting on — one anecdote, or corroborated?).
+- \`problem-space.md\` — what you're actually trying to address: the real need, market, or
+  context this work responds to, not just its technical symptom (a bug report is EVIDENCE the
+  problem exists, not the problem itself). Also carries root cause, constraints on any fix,
+  and an HONEST evidence basis (how many real reports this rests on — one anecdote, or
+  corroborated?).
 - \`solution-space.md\` — candidate directions, evaluated and ranked; REJECTED options
   recorded with real reasoning, not silently dropped.
 - \`spikes.md\` — feasibility evidence actually RUN, not assumed. If a spike's first attempt
@@ -203,47 +206,49 @@ A design package is a directory (e.g. \`docs/design/<slug>/\`) containing:
 - \`implementation-details.md\` — concrete enough to start from.
 - \`knowledge.md\` — the reusable technique, for whoever extends this later.
 
-## Wire it into \`checks.coverage\` — SCOPED to this exact package, not shared globs
+## Wire it into \`checks.coverage\` — ONE generic block, safe by construction
 
-A shared, wildcard kind (\`"glob": "**/docs/design/*/spikes.md"\`) is **capturable**: a
+A shared wildcard kind (\`"glob": "**/docs/design/*/spikes.md"\`) alone is **capturable**: a
 different, hollow package can satisfy every rule by cross-linking a real sibling's docs
-without writing a word of its own — verified concretely, not theoretically. Scope every kind
-id and glob to THIS package's exact path instead:
+without writing a word of its own — verified concretely, not theoretically. The fix isn't
+per-package hand-scoping (tried, found its own cost: a package nobody wires in becomes
+invisible, and config grows without bound as packages accumulate) — it's \`scope: "sibling"\`
+on the rule: satisfied only by a \`to\`-kind doc in the SAME directory as the \`from\` doc. One
+small, GENERIC block below now works for every package, present and future, no per-package
+edits ever:
 
 \`\`\`json
 "checks": {
   "coverage": {
     "kinds": [
-      { "id": "<slug>-design-package", "select": { "by": "path", "glob": "**/docs/design/<slug>/_SUMMARY.md" } },
-      { "id": "<slug>-problem-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/problem-space.md" } },
-      { "id": "<slug>-solution-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/solution-space.md" } },
-      { "id": "<slug>-spikes", "select": { "by": "path", "glob": "**/docs/design/<slug>/spikes.md" } },
-      { "id": "<slug>-story-map", "select": { "by": "path", "glob": "**/docs/design/<slug>/story-map.md" } },
-      { "id": "<slug>-roadmap", "select": { "by": "path", "glob": "**/docs/design/<slug>/roadmap.md" } },
-      { "id": "<slug>-implementation-details", "select": { "by": "path", "glob": "**/docs/design/<slug>/implementation-details.md" } },
-      { "id": "<slug>-knowledge", "select": { "by": "path", "glob": "**/docs/design/<slug>/knowledge.md" } }
+      { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
+      { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
+      { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
+      { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
+      { "id": "story-map", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
+      { "id": "roadmap", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
+      { "id": "implementation-details", "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" } },
+      { "id": "knowledge", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
     ],
     "rules": [
-      { "from": "<slug>-design-package", "to": "<slug>-problem-space" },
-      { "from": "<slug>-design-package", "to": "<slug>-solution-space" },
-      { "from": "<slug>-design-package", "to": "<slug>-spikes" },
-      { "from": "<slug>-design-package", "to": "<slug>-story-map" },
-      { "from": "<slug>-design-package", "to": "<slug>-roadmap" },
-      { "from": "<slug>-design-package", "to": "<slug>-implementation-details" },
-      { "from": "<slug>-design-package", "to": "<slug>-knowledge" }
+      { "from": "design-package", "scope": "sibling", "to": "problem-space" },
+      { "from": "design-package", "scope": "sibling", "to": "solution-space" },
+      { "from": "design-package", "scope": "sibling", "to": "spikes" },
+      { "from": "design-package", "scope": "sibling", "to": "story-map" },
+      { "from": "design-package", "scope": "sibling", "to": "roadmap" },
+      { "from": "design-package", "scope": "sibling", "to": "implementation-details" },
+      { "from": "design-package", "scope": "sibling", "to": "knowledge" }
     ]
   }
 }
 \`\`\`
 
-This has a real cost: a package nobody wires in gets ZERO structural checking — worse than
-the shared-glob version for the honest "forgot a piece" case, since it's simply invisible
-rather than flagged. Doing this in the SAME PR that creates the package (the same discipline
-this repo already applies to changesets — see the release convention) is what makes the
-tradeoff worth it. If your project scripts a check for this (walking \`docs/design/*/\` and
-verifying every package has a matching \`checks.coverage\` kind), run it before shipping.
+Use a single \`*\` (not \`**\`) between \`docs/design/\` and the filename — \`**\` can match ZERO
+segments, which would also match \`docs/design/_SUMMARY.md\` itself (a parent index, not a
+package). A real bug found only by running this against real content, not by reading the
+glob and assuming it was right.
 
-## Name relationships precisely, not decoratively
+## Name relationships precisely, and let the reader understand WHY
 
 If a doc cites another for a REASON beyond membership (a claim justified by a spike, a
 roadmap realizing a story-map concept), add a real \`{from, to, name}\` rule, not just prose.
@@ -253,6 +258,12 @@ as its foundation), \`derived_from\` (one doc's structure literally comes from a
 \`sourced_from\` (content copied/restated from elsewhere) are NOT interchangeable. A generic
 name picked for how it sounds, not checked against the content, is worse than no name at all
 — it looks rigorous without being rigorous.
+
+Add a real \`description\` too — \`name\` alone is only a disambiguating label (its own purpose
+is telling two same-pair rules apart, nothing more); it explains nothing to a reader who
+hits \`no link ("grounded_by") to a "spikes"-kind doc\` with no prior context. \`description\`
+renders as a real guidance line right under that message — write the ACTUAL fix ("cite the
+spike that backs this claim"), not a restatement of the rule name.
 
 ## Stress-test your own package before trusting it
 

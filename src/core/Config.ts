@@ -77,6 +77,22 @@ const CoverageTargetInputSchema = Schema.Union([
 })
 
 const CoverageRuleInputSchema = Schema.Struct({
+  // Found refuting whether this schema's own vocabulary (`name` values like
+  // `grounded_by`/`builds_on`/`derived_from` — see docs/design/CONVENTION.md's
+  // reference list) actually GUIDES anyone: `name` alone only ever fed a
+  // disambiguating label into the report (`no link ("grounded_by") to a
+  // "spikes"-kind doc`) — a reader hitting that with no prior context has no
+  // way to know what "grounded_by" MEANS or how to fix it without separately
+  // finding and reading CONVENTION.md. `description` is real, in-context
+  // guidance rendered directly in `formatCoverageReport` (../../program/
+  // structure/CheckCoverage.ts) alongside the bare label, closing that gap
+  // for real rather than leaving the vocabulary as config-only metadata.
+  description: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        'Human-readable guidance shown in the report when this rule is unmet — what the relationship means and how to satisfy it, not just its name.',
+    }),
+  ),
   from: Schema.String,
   // Optional discriminant, not just documentation: two rules sharing the
   // same (from, to) pair but different meanings (e.g. issue #28's own
@@ -89,6 +105,27 @@ const CoverageRuleInputSchema = Schema.Struct({
     Schema.String.annotate({
       description:
         'Distinguishes this rule from another sharing the same from/to pair (e.g. "implements" vs "verified_by"). Two rules on the same pair with no name, or the same name, are treated as one.',
+    }),
+  ),
+  // Issue found dogfooding checks.coverage itself for structural design-
+  // package completeness (docs/design/CONVENTION.md): a WILDCARD kind glob
+  // (`**/docs/design/*/spikes.md`, matching every package) lets a `from` doc
+  // in one package satisfy its rule by linking to a DIFFERENT package's `to`
+  // doc — real, verified capturability, not theoretical (a fully hollow
+  // package cross-linking a real sibling's docs passed with zero warnings).
+  // The only fix that didn't require per-package config duplication (a
+  // separately-confirmed real cost: `.cairnrc.json` growing without bound as
+  // packages accumulate, one hand-copied kind/rule block per package) is
+  // this: `scope: 'sibling'` restricts satisfaction to a `to`-kind doc in
+  // the EXACT SAME parent directory as the `from` doc, so one wildcard-glob
+  // kind pair works correctly for every package at once, present and future,
+  // with zero additional config per package. Optional, defaulting to
+  // today's unscoped ("anywhere in the corpus") behavior — existing configs
+  // written before this field existed keep meaning exactly what they did.
+  scope: Schema.optionalKey(
+    Schema.Literal('sibling').annotate({
+      description:
+        'Restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc — closes real cross-directory capturability for a wildcard kind glob shared across many instances (e.g. one glob matching every design package). Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus.',
     }),
   ),
   to: CoverageTargetInputSchema,
@@ -328,10 +365,18 @@ export type CoverageTarget = string | { readonly external: 'path' }
 export const isKindTarget = (target: CoverageTarget): target is string => typeof target === 'string'
 
 export interface CoverageRule {
+  /** Real, in-context guidance shown in the report when unmet — see
+   * `CoverageRuleInputSchema`'s own comment for why this exists alongside
+   * `name`. */
+  readonly description?: string
   readonly from: string
   /** Distinguishes this rule from another sharing the same `from`/`to` pair
    * but a different meaning — see `CoverageRuleInputSchema`'s own comment. */
   readonly name?: string
+  /** `'sibling'` restricts satisfaction to a same-parent-directory `to`-kind
+   * doc — see `CoverageRuleInputSchema`'s own comment for why. Absent means
+   * today's default: satisfied by a `to`-kind doc anywhere in the corpus. */
+  readonly scope?: 'sibling'
   readonly to: CoverageTarget
   /** Defaults to `{ by: 'link' }` when absent — every rule written before
    * this field existed already meant that. */

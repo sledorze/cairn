@@ -100,10 +100,20 @@ export const resolveRuleEdges = ({
         // (resolve against the caller's pre-checked existence set — see
         // `ResolveRuleEdgesArgs.externalExists`'s own comment for why this
         // stays a lookup here, not a filesystem call).
-        const satisfied = isKindTarget(rule.to)
+        const kindSatisfied = isKindTarget(rule.to)
           ? (docsByPath.get(targetPath)?.kinds.includes(rule.to) ?? false)
           : externalExists.has(targetPath)
-        if (satisfied) {
+        // `scope: 'sibling'` (see CoverageRuleInputSchema's own comment for
+        // the capturability finding this closes): a wildcard `to`-kind glob
+        // matching many instances (e.g. every design package's spikes.md)
+        // must not let doc A's rule be satisfied by doc B's sibling — only a
+        // target sharing doc A's own parent directory counts. `{ external:
+        // 'path' }` targets have no kind classification to scope by (no
+        // sibling GROUP to belong to in the first place), so `scope` is a
+        // deliberate no-op for them, not an oversight.
+        const scopeSatisfied =
+          rule.scope !== 'sibling' || !isKindTarget(rule.to) || path.dirname(targetPath) === fromDir
+        if (kindSatisfied && scopeSatisfied) {
           satisfiedBy.push({ node, targetPath })
         }
       }

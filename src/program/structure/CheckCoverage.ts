@@ -105,7 +105,7 @@ export const checkCoverage = ({
     const mdFiles = yield* readMarkdownCorpus(dfs, roots, ignore, trackedFiles)
 
     // Deduped by every field that can distinguish two rules on the same
-    // kind pair — found via adversarial review, in three rounds so far.
+    // kind pair — found via adversarial review, in FOUR rounds so far.
     // Round 1: an accidentally (or programmatically) duplicated rule entry
     // produced a duplicate `missing` report line for the exact same
     // violation, pure noise. Round 2 (a real regression the first fix
@@ -118,14 +118,21 @@ export const checkCoverage = ({
     // here meant two same-pair rules differing only in `via` would
     // silently collapse the moment a second `via.by` variant existed —
     // dormant today (only `by: 'link'` is valid), a landmine for the next
-    // one. Every discriminating field of `CoverageRule` (`name`, `via.by`)
-    // MUST appear in this key — if a future field is added to
-    // `CoverageRule` to distinguish otherwise-identical rules, add it here
-    // too, or this exact class of silent data loss reappears a third time.
+    // one. Round 4: adding `scope` (real capturability fix — see
+    // `CoverageRuleInputSchema`'s own comment) hit the SAME landmine on
+    // sight — caught before it shipped this time, not after, by applying
+    // this comment's own standing warning rather than re-discovering it.
+    // `description` deliberately does NOT appear here: purely cosmetic
+    // report text, never changes what the rule actually checks, so two
+    // rules differing ONLY in `description` really are the same rule.
+    // Every OTHER discriminating field of `CoverageRule` (`name`, `via.by`,
+    // `scope`) MUST appear in this key — if a future field is added to
+    // distinguish otherwise-identical rules, add it here too, or this exact
+    // class of silent data loss reappears a fifth time.
     const uniqueRules = [
       ...new Map(
         rules.map((r) => [
-          `${r.name ?? ''}\u0000${r.from}\u0000${isKindTarget(r.to) ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}`,
+          `${r.name ?? ''}\u0000${r.from}\u0000${isKindTarget(r.to) ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}\u0000${r.scope ?? ''}`,
           r,
         ]),
       ).values(),
@@ -272,6 +279,13 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
               fr: `    ✗ aucun lien${named} vers un fichier existant (requis pour le type « ${rule.from} »)`,
             }),
       )
+      // Real, in-context guidance — see CoverageRuleInputSchema's own comment
+      // for why this exists alongside `name`: a bare rule name/label doesn't
+      // tell an unfamiliar reader what the relationship MEANS or how to fix
+      // it. Absent for a rule with no `description` — never a blank line.
+      if (rule.description !== undefined) {
+        lines.push(`      ${rule.description}`)
+      }
     }
   }
   if (result.orphans.length > 0) {

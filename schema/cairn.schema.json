@@ -36,10 +36,19 @@
     "CairnCoverageRule": {
       "type": "object",
       "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable guidance shown in the report when this rule is unmet — what the relationship means and how to satisfy it, not just its name."
+        },
         "from": { "type": "string" },
         "name": {
           "type": "string",
           "description": "Distinguishes this rule from another sharing the same from/to pair (e.g. \"implements\" vs \"verified_by\"). Two rules on the same pair with no name, or the same name, are treated as one."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["sibling"],
+          "description": "Restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc — closes real cross-directory capturability for a wildcard kind glob shared across many instances (e.g. one glob matching every design package). Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus."
         },
         "to": { "$ref": "#/$defs/CairnCoverageTarget" },
         "via": { "$ref": "#/$defs/CairnCoverageRequirement" }

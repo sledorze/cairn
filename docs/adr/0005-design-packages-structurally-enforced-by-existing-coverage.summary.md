@@ -1,23 +1,25 @@
-# ADR 0005 — design packages via existing checks.coverage — summary
+# ADR 0005 — design packages via checks.coverage — summary
 
-Working on #101's own design package surfaced a real question:
-hand-authored Markdown files with no consistent heading schema and no
-config representation — nothing enforced a design package having all
-its required pieces.
+Working on #101's own design package surfaced a real question: hand-authored Markdown files
+with no consistent heading schema and no config representation — nothing enforced a design
+package having all its required pieces.
 
-**Decision:** no new config primitive. `checks.coverage`'s existing
-`kinds`/`rules` mechanism already expresses "every design-package
-`_SUMMARY.md` must link to a doc of each required role" — declare each
-role as a `kind` by glob, add one rule per role. Materialized in this
-repo's own `.cairnrc.json`; full reasoning and a real falsification in
-`docs/design/CONVENTION.md`.
+**Original decision:** no new config primitive — `checks.coverage`'s existing `kinds`/
+`rules` mechanism expresses "every design-package `_SUMMARY.md` must link to a doc of each
+required role." Accepted "not scoped per-package" as a documented limitation.
 
-**Consequences:** reusable by any cairn consumer (copy-pasteable
-config, kind-based not filename-based); a real, documented limitation
-(rules aren't scoped per-package — verified via a throwaway cross-
-linking test package); no schema/CLI/module changes needed at all —
-the whole "implementation" is a config block plus documentation.
+**Amendment: that gap needed closing for real.** A throwaway hollow package cross-linking a
+real sibling's docs passed cleanly, zero warnings — severe, not theoretical. A first fix
+(per-package hand-scoped kind ids, no core change) closed it but reopened the ORIGINAL
+problem: accidental incompleteness in any unconfigured package went silently uncaught, and
+`.cairnrc.json` grew without bound per package. The real fix needed the core change this ADR
+originally avoided: `scope: "sibling"` on `CoverageRule` (`core/Config.ts`, `core/structure/
+Coverage.ts`) — satisfied only by a same-directory `to`-kind doc. One generic, wildcard-glob
+block now closes both gaps at once, for every package present and future, zero per-package
+config ever again.
 
-**Alternatives considered:** a dedicated `checks.designPackage`
-primitive — rejected as premature generality duplicating machinery
-`checks.coverage` already provides.
+Also caught, on first write: adding `scope` without adding it to `checkCoverage`'s rule-
+dedup key would have silently collapsed two same-pair rules — the FOURTH occurrence of this
+exact bug class, caught this time by the key's own standing warning comment. A separate
+`description` field shipped alongside `scope`: `name` only ever fed a bare label into the
+report, never real guidance — `description` renders actual fix guidance under the message.

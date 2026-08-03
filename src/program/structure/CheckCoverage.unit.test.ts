@@ -355,6 +355,28 @@ describe('checkCoverage()', () => {
     expect(result.missing).toHaveLength(2)
   })
 
+  // Round 4 of the dedup key's own recurring bug (see its file-level
+  // comment) — this time caught BEFORE shipping, not after: `scope` is a
+  // real, legal field (unlike the `via`/object-`to` tests above, which
+  // simulate a not-yet-real variant via cast) — two rules on the same pair
+  // differing ONLY in `scope: 'sibling'` vs. unscoped must report as two
+  // distinct obligations, not silently collapse to one.
+  it('never collapses two same-pair rules that differ only in `scope`', async () => {
+    const layer = makeTestDocsFs({
+      '/r/features/f1.md': { content: '# Feature, no links', mtimeMs: 1 },
+    })
+    const differingOnlyByScope: CoverageRule[] = [
+      { from: 'feature', to: 'decision' },
+      { from: 'feature', scope: 'sibling', to: 'decision' },
+    ]
+    const result = await Effect.runPromise(
+      checkCoverage({ base: '/r', kinds: KINDS, roots: ['/r'], rules: differingOnlyByScope }).pipe(
+        Effect.provide(layer),
+      ),
+    )
+    expect(result.missing).toHaveLength(2)
+  })
+
   // Adversarial finding: a chain of rules (feature -> decision -> spec) —
   // 'decision' is BOTH a rule.to (orphan-checkable) AND a rule.from (must
   // itself satisfy its own outbound rule). No special-casing needed; this
@@ -745,6 +767,49 @@ describe('formatCoverageReport()', () => {
       unmatchedKinds: [],
     })
     expect(lines).toContain('    ✗ no link to a "decision"-kind doc (required by kind "spec")')
+  })
+
+  // Real gap found refuting whether this schema's own vocabulary
+  // (`name` values like `grounded_by`) actually guides anyone: `name` alone
+  // only ever fed a disambiguating label into the report, with no
+  // explanation of what it means — `description` closes that for real.
+  it('renders the rule’s `description`, when present, as guidance right after the missing-coverage line', () => {
+    const lines = formatCoverageReport({
+      checked: 1,
+      missing: [
+        {
+          path: '/r/design/pkg/solution-space.md',
+          rule: {
+            description: 'A cost/feasibility claim needs real evidence — cite the spike that backs it.',
+            from: 'solution-space',
+            name: 'grounded_by',
+            to: 'spikes',
+          },
+        },
+      ],
+      orphans: [],
+      unmatchedKinds: [],
+    })
+    expect(lines).toEqual([
+      '❌ 1 doc(s) missing required coverage:',
+      '  /r/design/pkg/solution-space.md',
+      '    ✗ no link ("grounded_by") to a "spikes"-kind doc (required by kind "solution-space")',
+      '      A cost/feasibility claim needs real evidence — cite the spike that backs it.',
+    ])
+  })
+
+  it('omits the guidance line entirely when the missing rule has no `description`, not a blank line', () => {
+    const lines = formatCoverageReport({
+      checked: 1,
+      missing: [{ path: '/r/specs/s1.md', rule: { from: 'spec', to: 'decision' } }],
+      orphans: [],
+      unmatchedKinds: [],
+    })
+    expect(lines).toEqual([
+      '❌ 1 doc(s) missing required coverage:',
+      '  /r/specs/s1.md',
+      '    ✗ no link to a "decision"-kind doc (required by kind "spec")',
+    ])
   })
 
   it('joins multiple kinds with ", " on an orphan finding — distinguishes from a bare concatenation', () => {

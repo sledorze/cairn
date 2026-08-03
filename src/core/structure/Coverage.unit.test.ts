@@ -178,6 +178,58 @@ describe('resolveRuleEdges()', () => {
       expect(edges[0]?.satisfiedBy).toHaveLength(1)
     })
   })
+
+  // Real capturability finding (docs/design/CONVENTION.md): a wildcard `to`-
+  // kind glob matching many instances (e.g. every design package's own
+  // spikes.md) lets doc A's rule be satisfied by doc B's sibling — verified
+  // concretely with a real throwaway package before this field existed.
+  describe('scope: "sibling"', () => {
+    it('is NOT satisfied by a to-kind doc in a DIFFERENT directory — the exact capturability gap this closes', () => {
+      const docs = [
+        doc('/r/design/pkg-a/roadmap.md', ['roadmap'], [ref('../pkg-b/spikes.md')]),
+        doc('/r/design/pkg-b/spikes.md', ['spikes']),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', scope: 'sibling', to: 'spikes' }],
+      })
+      expect(edges[0]?.satisfiedBy).toEqual([])
+    })
+
+    it('IS satisfied by a to-kind doc in the SAME directory', () => {
+      const docs = [
+        doc('/r/design/pkg-a/roadmap.md', ['roadmap'], [ref('./spikes.md')]),
+        doc('/r/design/pkg-a/spikes.md', ['spikes']),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', scope: 'sibling', to: 'spikes' }],
+      })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+
+    it('without `scope`, the SAME cross-directory link DOES satisfy — proves scope is opt-in, not a silent behavior change', () => {
+      const docs = [
+        doc('/r/design/pkg-a/roadmap.md', ['roadmap'], [ref('../pkg-b/spikes.md')]),
+        doc('/r/design/pkg-b/spikes.md', ['spikes']),
+      ]
+      const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'roadmap', to: 'spikes' }] })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+
+    it('is a deliberate no-op for an `{ external: "path" }` target — nothing to scope by', () => {
+      const docs = [doc('/r/design/pkg-a/roadmap.md', ['roadmap'], [ref('../../src/foo.ts')])]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        externalExists: new Set(['/r/src/foo.ts']),
+        rules: [{ from: 'roadmap', scope: 'sibling', to: { external: 'path' } }],
+      })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+  })
 })
 
 describe('collectExternalRefTargets()', () => {

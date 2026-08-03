@@ -127,6 +127,44 @@ describe('decodeConfig()', () => {
     ).toBeTruthy()
   })
 
+  // Closes a real, verified capturability gap: a wildcard `to`-kind glob
+  // matching many instances (e.g. every design package's own spikes.md) lets
+  // one instance's rule be satisfied by a DIFFERENT instance's sibling doc.
+  // See docs/design/CONVENTION.md's own "Is any of this actually
+  // capturable?" finding.
+  it('decodes a rule’s optional `scope: "sibling"`', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { id: 'roadmap', select: { by: 'path', glob: '**/docs/design/*/roadmap.md' } },
+            { id: 'spikes', select: { by: 'path', glob: '**/docs/design/*/spikes.md' } },
+          ],
+          rules: [{ from: 'roadmap', scope: 'sibling', to: 'spikes' }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('returns a Failure when a rule’s `scope` is not the recognised `"sibling"` literal', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
+                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'feature', scope: 'directory', to: 'decision' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
   it('returns a Failure on an unknown key inside `checks.coverage` or a kind selector', () => {
     expect(Result.isFailure(decodeConfig({ checks: { coverage: { kinds: [], rulez: [] } } }))).toBeTruthy()
     expect(

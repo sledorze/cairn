@@ -22,9 +22,6 @@ jobs:
       - run: pnpm build
       # Dogfood: the tool checks its own docs/ (summaries + dead links).
       - run: pnpm check
-      # docs/design/CONVENTION.md's own capturability finding: a design package nobody
-      # wires into .cairnrc.json's checks.coverage kinds gets zero structural checking.
-      - run: pnpm exec tsx ./scripts/check-design-package-onboarding.ts
 
   # Issue #111: fails a PR that touches a user-facing file (src/**, README.md —
   # see scripts/changeset-required-paths.regex) with no new .changeset/*.md in

@@ -21,7 +21,13 @@ existing `kinds`/`rules` mechanism already does this — no new config primitive
 A design package is a directory `docs/design/<slug>/` containing:
 
 - `_SUMMARY.md` — the package's own index, linking every child doc below.
-- `problem-space.md` — the failure/gap, root cause, constraints on any fix.
+- `problem-space.md` — what we're actually trying to address: the real need, market, or
+  context this work responds to, not just its technical symptom. A bug report or failed
+  spike is EVIDENCE the problem exists, not the problem itself — "`--refs` fails on every
+  unrelated edit" is a symptom; "citing real implementation from docs stops being viable
+  once citation and code-change frequency collide" is the actual need underneath it. Also
+  carries the root cause, constraints on any fix, and an honest evidence basis (how many
+  real reports this rests on — one anecdote, or corroborated context).
 - `solution-space.md` — candidate directions, evaluated and ranked; rejects recorded, not
   silently dropped.
 - `spikes.md` — feasibility evidence actually RUN, not assumed.
@@ -35,48 +41,57 @@ Any consumer of `cairn` can adopt this exact shape for their own design work by 
 cairn's own repo beyond the `docs/design/` path, which is itself just a convention, not a
 hardcoded assumption.
 
-## The config that enforces it — SCOPED per package, not a shared wildcard
+## The config that enforces it — ONE generic block, safe by construction
 
-**An earlier version of this section recommended shared, wildcard kind globs** (e.g.
-`"glob": "**/docs/design/*/spikes.md"`, matching ANY package). Stress-tested and found
-capturable — see "Is any of this actually capturable?" below for the full finding. The
-corrected, actually-recommended shape scopes every kind id and glob to ONE exact package
-path (replace `<slug>` with your own directory name, e.g. `101-refs-symbol-scoping`):
+**This section has been rewritten twice already, each time after a real, run — not
+assumed — finding.** First it recommended a shared wildcard glob (capturable — a hollow
+package could pass by cross-linking a sibling). Then it recommended per-package hand-scoped
+kind ids (closed capturability, but reopened the ORIGINAL "forgot a piece" gap for any new
+package nobody remembered to configure, and meant `.cairnrc.json` growing without bound as
+packages accumulate — a real, separately-confirmed cost). Both replaced by a real core
+feature, `scope: "sibling"` on a `CoverageRule` (`core/Config.ts`/`core/structure/
+Coverage.ts`): restricts rule satisfaction to a `to`-kind doc in the SAME parent directory
+as the `from` doc. One small, GENERIC, wildcard-based block now works correctly for every
+design package at once — present and future, at any nesting depth (`docs/design/<slug>/`,
+or `docs/design/<time-bucket>/<slug>/` if you organize by sprint/cycle/quarter later) — with
+**zero additional config, ever, per package**:
 
 ```json
 "checks": {
   "coverage": {
     "kinds": [
-      { "id": "<slug>-design-package", "select": { "by": "path", "glob": "**/docs/design/<slug>/_SUMMARY.md" } },
-      { "id": "<slug>-problem-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/problem-space.md" } },
-      { "id": "<slug>-solution-space", "select": { "by": "path", "glob": "**/docs/design/<slug>/solution-space.md" } },
-      { "id": "<slug>-spikes", "select": { "by": "path", "glob": "**/docs/design/<slug>/spikes.md" } },
-      { "id": "<slug>-story-map", "select": { "by": "path", "glob": "**/docs/design/<slug>/story-map.md" } },
-      { "id": "<slug>-roadmap", "select": { "by": "path", "glob": "**/docs/design/<slug>/roadmap.md" } },
-      { "id": "<slug>-implementation-details", "select": { "by": "path", "glob": "**/docs/design/<slug>/implementation-details.md" } },
-      { "id": "<slug>-knowledge", "select": { "by": "path", "glob": "**/docs/design/<slug>/knowledge.md" } }
+      { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
+      { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
+      { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
+      { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
+      { "id": "story-map", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
+      { "id": "roadmap", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
+      { "id": "implementation-details", "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" } },
+      { "id": "knowledge", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
     ],
     "rules": [
-      { "from": "<slug>-design-package", "to": "<slug>-problem-space" },
-      { "from": "<slug>-design-package", "to": "<slug>-solution-space" },
-      { "from": "<slug>-design-package", "to": "<slug>-spikes" },
-      { "from": "<slug>-design-package", "to": "<slug>-story-map" },
-      { "from": "<slug>-design-package", "to": "<slug>-roadmap" },
-      { "from": "<slug>-design-package", "to": "<slug>-implementation-details" },
-      { "from": "<slug>-design-package", "to": "<slug>-knowledge" }
+      { "from": "design-package", "scope": "sibling", "to": "problem-space" },
+      { "from": "design-package", "scope": "sibling", "to": "solution-space" },
+      { "from": "design-package", "scope": "sibling", "to": "spikes" },
+      { "from": "design-package", "scope": "sibling", "to": "story-map" },
+      { "from": "design-package", "scope": "sibling", "to": "roadmap" },
+      { "from": "design-package", "scope": "sibling", "to": "implementation-details" },
+      { "from": "design-package", "scope": "sibling", "to": "knowledge" }
     ]
   }
 }
 ```
 
-**Still kind-based, not filename-based** within one package: a rule is satisfied by ANY doc
-matching the `to` kind's glob, so an author is free to name their OWN files however they
+The mandatory single `*` (not `**`) between `docs/design/` and the filename matters: an
+earlier attempt used `**`, which — being able to match ZERO segments — accidentally matched
+`docs/design/_SUMMARY.md` itself (the PARENT index, not a package) as a "design-package". A
+real bug, caught only by running this against the actual repo, not by reading the glob and
+assuming it was right.
+
+**Still kind-based, not filename-based**: a rule is satisfied by ANY doc matching the `to`
+kind's glob IN THE SAME DIRECTORY, so an author is free to name their own files however they
 like (this repo's own `problem-space.md`/`solution-space.md`/... naming is one convention,
-not a requirement `checks.coverage` itself imposes). What changed is scope, not naming
-freedom: the glob no longer reaches across package boundaries. This costs real reusability
-— a new package can't just reuse a shared block, it needs its own scoped one (see "Is any
-of this actually capturable?" for why, and the onboarding-guard script that keeps this
-manageable as more packages appear).
+not a requirement `checks.coverage` itself imposes).
 
 ## Materialized and falsified for real, not just designed on paper
 
@@ -135,64 +150,77 @@ as its own scoped design package — filed as a real GitHub issue first, the sam
 #108 were — once there's real product-issue content (this repo's own, or a consumer's) to
 verify the model against, not before.
 
-## Is any of this actually capturable? — a real, severe finding
+## Is any of this actually capturable? — a real finding, closed by a real core feature
 
-Stress-tested directly: created a throwaway second package
-(`docs/design/999-fake-test-package/`) containing NOTHING but a `_SUMMARY.md` that
-cross-linked every one of the real package's docs — zero real content of its own. Against
-the ORIGINAL config (shared, wildcard kind ids — `spikes` matching
-`**/docs/design/*/spikes.md`, any package), this fake package passed `checks.coverage`
-**cleanly, with zero warnings.** `capturable` was not a theoretical worry; it was real and
-severe — an author (or a tool generating filler to satisfy a gate) could get a fully green
-check without writing a single real word.
+Stress-tested directly, three times, each round finding something real:
 
-**Fixed by scoping every kind id and glob to the exact real package path** (`101-` prefix,
-exact filenames, no `*` wildcard — see the config above). Re-ran the identical stress test
-against the corrected config: the fake package's `_SUMMARY.md` no longer matches ANY kind
-at all (its path isn't `docs/design/101-refs-symbol-scoping/_SUMMARY.md`), so cross-package
-satisfaction is now structurally impossible for this package's rules.
+1. **A shared wildcard kind is capturable.** A throwaway second package containing NOTHING
+   but a `_SUMMARY.md` that cross-linked every one of the real package's docs — zero real
+   content of its own — passed `checks.coverage` **cleanly, with zero warnings**, under a
+   plain wildcard kind glob (`spikes` matching `**/docs/design/*/spikes.md`, any package).
+   Not theoretical: an author (or a tool generating filler to satisfy a gate) could get a
+   fully green check without writing a single real word.
+2. **Scoping per-package by hand closes that, but reopens the original gap.** An interim fix
+   gave every kind id an exact, package-specific path (`101-spikes`, no wildcard). Re-ran the
+   attack — correctly rejected. But a THIRD throwaway package — genuinely new, genuinely
+   incomplete, never added to `.cairnrc.json` — got **zero warnings, completely invisible**.
+   The scoped fix traded a rare adversarial gap for a common accidental one: any new package
+   nobody remembers to hand-configure is silently unchecked, worse than not having the check
+   at all for that package. It also meant `.cairnrc.json` growing without bound — one
+   hand-copied 8-kind/7-rule block per package, forever.
+3. **The real fix: `scope: "sibling"` on a `CoverageRule`.** A genuinely new
+   `checks.coverage` capability (`core/Config.ts`, `core/structure/Coverage.ts`) — a rule
+   marked `scope: "sibling"` is satisfied only by a `to`-kind doc sharing the `from` doc's
+   own parent directory. One generic, wildcard-glob config block (above) now closes BOTH
+   findings at once: a hollow cross-linking package fails (no sibling of its own to link to),
+   AND a brand-new, never-configured package is checked automatically (the wildcard glob
+   already matches it) — verified by re-running both attacks against the final config: both
+   correctly caught, with zero manual `.cairnrc.json` changes for either scenario.
 
-**This fix has its own honest cost, found the same way — stress-tested, not assumed.**
-Created a THIRD throwaway package: genuinely new, genuinely incomplete (only a
-`problem-space.md`, missing all 6 other required pieces), never added to `.cairnrc.json`.
-Result: **zero warnings, completely invisible to `checks.coverage`.** The scoped fix closes
-the adversarial gap but reopens the ORIGINAL gap this whole convention exists to catch —
-honest, accidental incompleteness — for any package nobody remembers to onboard. Scoped
-kinds require a human to explicitly wire up `.cairnrc.json` for every new package; nothing
-currently makes that step visible or mandatory the way `pnpm changeset` is gated on every
-user-facing PR (see this repo's own `scripts/check-changeset.sh`).
-
-**Closed for the buildable-now option; the deeper one stays future work.** Two candidate
-directions were identified:
-
-1. A genuinely new `checks.coverage` selector relation — "matches a doc of this kind IN THE
-   SAME PARENT DIRECTORY as the FROM doc" — would make wildcard kinds safe again without
-   per-package hand-scoping. A real core-engine change (`core/structure/Coverage.ts`'s
-   `resolveRuleEdges`, `core/Config.ts`'s `KindSelectorInputSchema`), not a config tweak —
-   deserves its own problem-space/solution-space treatment, deliberately NOT built here.
-2. **Built:** `scripts/check-design-package-onboarding.ts` — a repo-level guard (mirroring
-   `scripts/check-changeset.sh`'s own "gate every PR" precedent, reusing `core/glob.ts`'s
-   own matcher so it stays consistent with how `checks.coverage` itself matches) that scans
-   `docs/design/*/` for real packages and fails loudly if any has no matching
-   `checks.coverage` kind. Wired into `lefthook.yml`'s pre-push AND `.github/workflows/ci.yml`
-   — same shared-script-not-two-copies shape the changeset gate already established. Verified
-   by the same falsification discipline as everything else here: a real unconfigured package
-   makes it fail with an actionable message; removing that package makes it pass again.
-
-Adding a design package's `.cairnrc.json` block is still, additionally, a REQUIRED step in
-the SAME PR that creates the package — the guard above is the automated backstop for anyone
-who forgets, not a replacement for doing it deliberately.
+This made a repo-level onboarding-guard script (an earlier, interim mitigation for finding
+2, scanning `docs/design/*/` and failing if a package had no matching kind) **provably dead
+code** — with a wildcard kind, that check can structurally never fail again — so it was
+removed rather than left as confusing, pointless cruft (verified before removal: created a
+package under a totally unrelated name, confirmed the script still reported "all onboarded,
+OK" — it could no longer distinguish onboarded from not).
 
 **Materialized as a real, shipped skill, not just this repo's own docs.** `cairn init
---agent claude` now scaffolds a second skill file
-(`.claude/skills/cairn-design-package/SKILL.md`, sourced from `DESIGN_PACKAGE_SKILL_BODY` in
-`src/init/content.ts`) teaching this entire discipline — the seven documents, scoped kinds,
-the onboarding-guard convention, precise verb naming, and self-stress-testing before trusting
-a package — to every future cairn consumer. Dogfooded for real: ran `cairn init --agent
-claude` against a scratch directory and confirmed the file writes with the expected content,
-plus a real integration test (`src/init/generate.integration.test.ts`) locking it in.
+--agent claude` scaffolds a second skill file (`.claude/skills/cairn-design-package/
+SKILL.md`, sourced from `DESIGN_PACKAGE_SKILL_BODY` in `src/init/content.ts`) teaching this
+entire discipline — the seven documents, sibling-scoped kinds, precise verb naming with real
+guidance text, and self-stress-testing before trusting a package — to every future cairn
+consumer. Dogfooded for real: ran `cairn init --agent claude` against a scratch directory
+and confirmed the file writes with the expected content, locked in with a real integration
+test (`src/init/generate.integration.test.ts`).
 
-## A vocabulary for rule names — checked against real content, not chosen for sound
+## A vocabulary for rule names — and words that actually reach the reader
+
+**A real gap, found by refuting whether the vocabulary below actually GUIDES anyone**:
+`rule.name` (e.g. `grounded_by`) only ever fed a bare, quoted, disambiguating label into the
+report — `no link ("grounded_by") to a "spikes"-kind doc` — its own code comment says so
+explicitly: it exists so two rules sharing a kind pair "don't collapse," not to explain
+anything. A reader hitting that message with no prior context has no way to know what
+`grounded_by` MEANS or how to fix it without separately finding and reading this doc.
+
+**Closed with a real, optional `description` field** (`core/Config.ts`'s `CoverageRule`),
+rendered directly under the missing-coverage line when present — real, in-context guidance,
+not a label to look up elsewhere:
+
+```
+❌ 1 doc(s) missing required coverage:
+  docs/design/101-refs-symbol-scoping/solution-space.md
+    ✗ no link ("grounded_by") to a "spikes"-kind doc (required by kind "solution-space")
+      A cost/feasibility/risk claim needs real evidence — cite the spike that backs it.
+```
+
+Adding `description` to `CoverageRule` also caught a real, adversarial-review-documented
+recurring bug on its own: `checkCoverage`'s rule-dedup key (`program/structure/
+CheckCoverage.ts`) has now collapsed two same-pair rules differing only by an undeduped
+field FOUR separate times across this feature's history — `scope` (added alongside
+`description`) hit the exact same landmine on first write, caught immediately by that key's
+own standing warning comment rather than shipping a fifth silent regression. `description`
+itself deliberately stays OUT of the key: purely cosmetic report text, never changes what a
+rule actually checks.
 
 `checks.coverage`'s `name` field exists precisely so two rules on the same kind pair can mean
 different things (`docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`'s own `implements`/`verified_by` precedent). Early drafts
