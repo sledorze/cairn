@@ -273,6 +273,7 @@ describe('checkLinks() against the real filesystem (DocsFsLive)', () => {
   // prove wouldn't occur) or on Windows (`chmod` doesn't enforce POSIX bits).
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
   const supportsPosixPermissions = process.platform !== 'win32' && !isRoot
+
   it.skipIf(!supportsPosixPermissions)(
     'a permission-denied doc is reported cleanly in `unreadable`, not a crash',
     async () => {
@@ -300,6 +301,7 @@ describe('checkLinks() against the real filesystem (DocsFsLive)', () => {
   // oracle issue #39 was written to close, just reached through a path
   // that's lexically in-bounds instead of a literal `../` traversal.
   const supportsSymlinks = process.platform !== 'win32'
+
   it.skipIf(!supportsSymlinks)(
     'reports broken for a link through a symlink whose real target escapes `base`, even though its own path is lexically in-base',
     async () => {
