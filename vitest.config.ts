@@ -53,6 +53,11 @@ export default defineConfig({
         statements: 99.17,
       },
     },
-    include: ['src/**/*.test.ts'],
+    // scripts/**/*.test.ts: a genuine exception to "tests live under src/" —
+    // issue #111's check-changeset.sh is dev tooling (excluded from coverage
+    // above, same as every other scripts/*.ts), but still needs a real,
+    // permanent test per this repo's own "convert every dogfooding proof
+    // into a test" rule, and belongs directly alongside the script it tests.
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
   },
 })

@@ -22,3 +22,18 @@ jobs:
       - run: pnpm build
       # Dogfood: the tool checks its own docs/ (summaries + dead links).
       - run: pnpm check
+
+  # Issue #111: fails a PR that touches a user-facing file (src/**, README.md —
+  # see scripts/changeset-required-paths.regex) with no new .changeset/*.md in
+  # the diff. Mirrors lefthook's own local pre-push `changeset` command (same
+  # script), so a contributor who skips/bypasses the local hook is still
+  # caught here. `pull_request`-only: a push to `main` is already merged, past
+  # the point this check can usefully block anything.
+  changeset-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: ./scripts/check-changeset.sh "origin/${{ github.base_ref }}"

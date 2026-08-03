@@ -65,8 +65,16 @@ ci:
 pre-push:
   piped: true
   commands:
-    checks:
+    # Issue #111: fails if a user-facing file changed (src/**, README.md — see
+    # scripts/changeset-required-paths.regex) with no new .changeset/*.md in the
+    # diff. Runs first — near-instant (a git diff + grep), so a missing
+    # changeset fails fast instead of waiting on the expensive steps below.
+    # Same shared-script-with-CI shape as `bench` further down.
+    changeset:
       priority: 1
+      run: ./scripts/check-changeset.sh
+    checks:
+      priority: 2
       run: unset $(git rev-parse --local-env-vars); pnpm typecheck && pnpm test && pnpm build
     # Coverage ratchet, local-only (not run in CI — see ci.yml, which calls
     # plain `pnpm test`): fails only if coverage regresses below the
@@ -74,15 +82,15 @@ pre-push:
     # numbers self-raise as coverage improves, so this never needs manual
     # bumping to stay meaningful.
     coverage:
-      priority: 2
+      priority: 3
       run: unset $(git rev-parse --local-env-vars); pnpm coverage
     docs:
-      priority: 3
+      priority: 4
       run: unset $(git rev-parse --local-env-vars); pnpm check
     # Perf regression gate: only runs when a hot-path file changed (see
     # scripts/bench-guard.sh), comparing the push's base ref against HEAD in a
     # scratch worktree on this machine — a same-runner, back-to-back comparison
     # so the threshold can be tight without CI-noise false positives.
     bench:
-      priority: 4
+      priority: 5
       run: ./scripts/bench-guard.sh
