@@ -139,10 +139,11 @@ summary links to every child") — is one-directional and real, not a cycle.
      around a callback. `GitUnavailableError` is its one named failure mode
      (never a silent fallback). Every invocation scrubs the canonical
      repository-pinning env vars and sets `GIT_CEILING_DIRECTORIES`
-     (`io/gitEnv.ts`) so a hook subprocess in a linked worktree, or a `base`
-     without its own `.git`, can never silently resolve to the wrong
-     repository (issue: a real incident on this repo's own working tree —
-     see `gitEnv.ts`'s own header comment for the full writeup). Like
+     ([`gitEnv.ts`](../src/io/gitEnv.ts)) so a hook subprocess in a linked
+     worktree, or a `base` without its own `.git`, can never silently resolve
+     to the wrong repository (issue: a real incident on this repo's own
+     working tree — see `gitEnv.ts`'s own header comment for the full
+     writeup). Like
      `DocsFsLive`, `GitFsLive` requires the Node platform's live
      `ChildProcessSpawner` (provided once by the caller via
      `NodeServices.layer`, e.g. in `cli.ts`) rather than baking it in — never
@@ -151,9 +152,11 @@ summary links to every child") — is one-directional and real, not a cycle.
 
 3. **[`program/`](../src/program/) — Effect programs that orchestrate IO around the pure core.**
    - **[`checks/`](../src/program/checks/)** — the `CheckPlugin` abstraction
-     (docs/adr/0003): `isEnabled`/`run`/`format`/`exitCode`, optional
+     (docs/adr/0003): [`CheckPlugin.ts`](../src/program/checks/CheckPlugin.ts)'s
+     `isEnabled`/`run`/`format`/`exitCode`, optional
      `jsonUnsupportedMessage`/`stamp`, plus the generic
-     `runCheckPlugin`/`rejectedJsonMessage` runner `cli.ts` drives every
+     [`runCheckPlugin.ts`](../src/program/checks/runCheckPlugin.ts)
+     (`runCheckPlugin`/`rejectedJsonMessage`) runner `cli.ts` drives every
      migrated check through. `links`/`refs`/`proseRefs`/`coverage`/
      `docCoverage` each export a plugin descriptor from their own file
      (below); `summaries`
@@ -242,12 +245,24 @@ DocCoverage.ts`'s pure functions.
      having solid program-level coverage. Exhaustive coverage of every flag COMBINATION and
      edge case still belongs to manual dogfooding — this only guarantees each flag has at
      least one real, behavior-asserting exercise.
-   - [`init/`](../src/init/) — scaffold agent guidance from a single convention body.
+   - [`init/`](../src/init/) — scaffold agent guidance from a single convention
+     body: [`content.ts`](../src/init/content.ts) holds the convention prose
+     itself, [`generate.ts`](../src/init/generate.ts) (`runInit`) writes it to
+     each requested agent target's own file location.
+   - [`index.ts`](../src/index.ts) — the package's public, programmatic API
+     surface (`import { ... } from '@sledorze/cairn'`), re-exporting the pure
+     planners and Effect programs the CLI itself uses, for anyone embedding
+     `cairn` rather than shelling out to it.
 
 Deliberately outside this layering: [`testSupport/`](../src/testSupport/) is
 test-only real-filesystem fixture tooling (`tempProject.ts`), excluded from
 the published build (`tsconfig.build.json`) — it isn't a fifth runtime layer,
-just infrastructure the `*.integration.test.ts` files share.
+just infrastructure the `*.integration.test.ts` files share. Likewise
+[`devTools/BenchCliCheck.ts`](../src/devTools/BenchCliCheck.ts) — the
+Effect-based core behind `scripts/bench-cli-check.ts` (the perf-regression
+gate `bench-guard.sh` runs; see this repo's own "Shipping one iteration well"
+guidance), kept in `src/` only so it gets real unit/integration test coverage
+like everything else, not because it's a fifth runtime layer either.
 
 ## Why content hashes, not mtimes
 
