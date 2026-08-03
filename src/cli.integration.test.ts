@@ -39,6 +39,7 @@
 
 import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -64,24 +65,30 @@ afterEach(() => {
 
 /** Runs the real CLI as a subprocess, `cwd`'d at `root` — never throws on a
  * non-zero exit (matching `execFileSync`'s own throw-on-nonzero behavior
- * would make asserting exit codes awkward), returns stdout + the real exit
- * code together. Distinguishes the CLI itself exiting non-zero (real
+ * would make asserting exit codes awkward), returns stdout + stderr + the
+ * real exit code together (`stderr` is where `CairnConfigError`'s own
+ * `Console.error` writes — most callers only need `stdout`, so this stays
+ * `''` on the success path rather than paying for a stderr capture nobody
+ * reads there). Distinguishes the CLI itself exiting non-zero (real
  * `stdout`, a real `status`) from the subprocess failing to even LAUNCH
  * (e.g. a missing/non-executable `tsx` binary in a broken environment —
  * `status: null`, `stdout: null`, an `error.code` like `ENOENT` instead) —
  * the latter throws here with a clear, named message instead of silently
  * returning `stdout: undefined` for a caller's `JSON.parse`/`.indexOf` to
  * fail on with an opaque, unrelated-looking error. */
-const runCli = (root: string, args: readonly string[]): { readonly exitCode: number; readonly stdout: string } => {
+const runCli = (
+  root: string,
+  args: readonly string[],
+): { readonly exitCode: number; readonly stderr: string; readonly stdout: string } => {
   try {
     const stdout = execFileSync(TSX, [CLI, ...args], { cwd: root, encoding: 'utf8' })
-    return { exitCode: 0, stdout }
+    return { exitCode: 0, stderr: '', stdout }
   } catch (error) {
-    const e = error as { code?: string; status: number | null; stdout: string | null }
+    const e = error as { code?: string; status: number | null; stderr: string | null; stdout: string | null }
     if (e.status === null) {
       throw new Error(`runCli: subprocess failed to launch (${TSX}): ${e.code ?? String(error)}`, { cause: error })
     }
-    return { exitCode: e.status, stdout: e.stdout ?? '' }
+    return { exitCode: e.status, stderr: e.stderr ?? '', stdout: e.stdout ?? '' }
   }
 }
 
@@ -165,6 +172,63 @@ describe('cli.ts (real subprocess) — zero resolved roots fails loudly', () => 
     })
     const result = runCli(p.root, ['check', '--summaries-only'])
     expect(result.exitCode).toBe(0)
+  })
+})
+
+// Issue #92: a `..`-free, non-absolute root pattern resolving to a symlink
+// escaping `cwd` must fail loudly with a clean, one-line message and exit
+// 1 — never a raw stack trace (the whole reason `expandRootsOrFail` lifts
+// `expandRoots`'s thrown Error into the same `CairnConfigError` channel
+// `loadConfigOrFail` already uses), and never a silent `0 checked` pass
+// (which the "zero resolved roots fails loudly" tests above already prove
+// exits 1 anyway — this is about the ERROR being informative, not just
+// non-zero).
+describe('cli.ts (real subprocess) — a root escaping cwd via a symlink fails loudly, not a stack trace', () => {
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  const supportsSymlinks = process.platform !== 'win32' && !isRoot
+
+  it.skipIf(!supportsSymlinks)(
+    'exits 1 with a clean, one-line message naming the symlink, not a raw stack trace',
+    () => {
+      const p = project('cli-root-escape')
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-root-escape-outside-'))
+      try {
+        fs.writeFileSync(path.join(outside, 'secret.md'), '# secret')
+        fs.symlinkSync(outside, path.join(p.root, 'docs'), 'dir')
+        const result = runCli(p.root, ['check'])
+        expect(result.exitCode).toBe(1)
+        expect(result.stderr).toContain('cairn: root "docs" resolves to')
+        expect(result.stderr).toContain('symlink')
+        // Never a raw stack trace — the message is the whole story, same
+        // "errorReported = false" discipline every other CairnConfigError
+        // already gets.
+        expect(result.stderr).not.toContain('at Object.<anonymous>')
+        expect(result.stderr).not.toContain('.ts:')
+      } finally {
+        fs.rmSync(outside, { force: true, recursive: true })
+      }
+    },
+  )
+
+  it('a legitimate sibling-root config (`..`-relative, outside cwd) still succeeds — no false positive', () => {
+    const p = project('cli-root-sibling-consumer')
+    const sibling = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-root-sibling-docs-'))
+    try {
+      fs.writeFileSync(path.join(sibling, 'big.md'), Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'))
+      const relative = path.relative(p.root, sibling)
+      fs.writeFileSync(
+        path.join(p.root, '.cairnrc.json'),
+        JSON.stringify({ checks: { summaries: false }, roots: [relative] }),
+      )
+      const result = runCli(p.root, ['check'])
+      // Real problem correctly found (no summary requirement, but the
+      // sibling root itself was genuinely scanned, not silently dropped
+      // the way PR #91's reverted attempt would have) — links-only report
+      // stays green since there are no links to check.
+      expect(result.exitCode).toBe(0)
+    } finally {
+      fs.rmSync(sibling, { force: true, recursive: true })
+    }
   })
 })
 

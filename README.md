@@ -346,6 +346,17 @@ match by case. The repair is narrow (exact case-insensitive match only, never fu
 ambiguous or unmatched anchor is left alone and still reported), but review the diff on your
 first post-upgrade `--fix` run if that distinction matters to you.
 
+**If you're upgrading past `0.6.x`**: a `roots` entry that can only legitimately resolve
+inside your project (no `..` segment anywhere and not an absolute path — e.g. the default
+`"docs"`) now fails loudly if it turns out to resolve via a **symlink pointing outside the
+project directory**, instead of silently scanning whatever the symlink points at. This closes
+a real security gap (a PR could otherwise replace a configured root with a symlink to reach
+content outside the repo) but is also a stricter check: if this happens after upgrading,
+either the directory really was unexpectedly replaced by a symlink (investigate before doing
+anything else), or you're intentionally symlinking a root somewhere else on purpose — in which
+case, express that with a `..`-relative or absolute `roots` entry instead (e.g.
+`roots: ["../shared-docs"]`), which is unaffected and always has been.
+
 ## The two summary kinds
 
 **File summaries** — every Markdown file longer than the threshold (default 30 lines) gets

@@ -234,7 +234,11 @@ export const CairnConfigSchema = Schema.Struct({
   ),
   roots: Schema.optionalKey(
     Schema.Array(Schema.String).annotate({
-      description: 'Documentation roots to scan (globs allowed). Default ["docs"].',
+      description:
+        'Documentation roots to scan (globs allowed). Default ["docs"]. A pattern with no ".." segment ' +
+        'anywhere and no absolute path must resolve inside the project directory — it fails loudly if ' +
+        'the resolved directory turns out to be a symlink pointing outside it. Use a ".." segment or an ' +
+        'absolute path to intentionally point a root outside the project (e.g. a monorepo sibling).',
     }),
   ),
   stampCommand: Schema.optionalKey(
