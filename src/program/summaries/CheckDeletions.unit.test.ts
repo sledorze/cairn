@@ -127,18 +127,21 @@ it.layer(
 )(
   "checkDeletions() — one deleted doc's content is not recoverable at the ref, alongside another that IS",
   (layerIt) => {
-    layerIt.effect("skips just the unrecoverable one, still reporting the other's finding", () =>
-      Effect.gen(function* () {
-        const result = yield* checkDeletions({ base: '/r', ref: 'HEAD', roots: ['/r/docs'] })
-        expect(result.checked).toBe(1)
-        expect(result.findings).toEqual([
-          {
-            orphanedHeadings: ['### Unique Section'],
-            orphanedLinkTargets: [],
-            path: '/r/docs/old.md',
-          },
-        ])
-      }),
+    layerIt.effect(
+      "skips just the unrecoverable one, still reporting the other's finding, and NAMES the skip (never silent — matches CheckLinks.ts's own unreadable-file precedent)",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* checkDeletions({ base: '/r', ref: 'HEAD', roots: ['/r/docs'] })
+          expect(result.checked).toBe(1)
+          expect(result.findings).toEqual([
+            {
+              orphanedHeadings: ['### Unique Section'],
+              orphanedLinkTargets: [],
+              path: '/r/docs/old.md',
+            },
+          ])
+          expect(result.skipped).toEqual(['/r/docs/corrupt.md'])
+        }),
     )
   },
 )
@@ -173,7 +176,7 @@ it.layer(
 
 describe('formatDeletionsReport() / deletionsExitCode()', () => {
   it('formatDeletionsReport() reports success when nothing is orphaned', () => {
-    const lines = formatDeletionsReport({ checked: 3, findings: [] })
+    const lines = formatDeletionsReport({ checked: 3, findings: [], skipped: [] })
     expect(lines).toEqual(['✅ No orphaned content found (3 deletion(s) checked).'])
   })
 
@@ -187,6 +190,7 @@ describe('formatDeletionsReport() / deletionsExitCode()', () => {
           path: '/r/docs/old.md',
         },
       ],
+      skipped: [],
     })
     expect(lines).toEqual([
       '⚠️  1 deleted doc(s) took content with them, found nowhere else:',
@@ -196,12 +200,39 @@ describe('formatDeletionsReport() / deletionsExitCode()', () => {
     ])
   })
 
-  it('deletionsExitCode() always returns 0, regardless of findings — informational only', () => {
-    expect(deletionsExitCode({ checked: 0, findings: [] })).toBe(0)
+  // Issue #106 "best value defaults" audit: a skipped (unrecoverable)
+  // deleted doc must never be silently absorbed — matches CheckLinks.ts's
+  // own established `unreadable` precedent. Both branches (nothing
+  // orphaned; something orphaned) must still surface it.
+  it('formatDeletionsReport() names a skipped (unrecoverable) deleted doc, never silently', () => {
+    const withoutFindings = formatDeletionsReport({ checked: 0, findings: [], skipped: ['/r/docs/corrupt.md'] })
+    expect(withoutFindings).toEqual([
+      '✅ No orphaned content found (0 deletion(s) checked).',
+      '⚠️  1 deleted doc(s) could not be read back at the ref (possibly corrupt) — not checked:',
+      '  /r/docs/corrupt.md',
+    ])
+
+    const withFindings = formatDeletionsReport({
+      checked: 1,
+      findings: [{ orphanedHeadings: ['### X'], orphanedLinkTargets: [], path: '/r/docs/old.md' }],
+      skipped: ['/r/docs/corrupt.md'],
+    })
+    expect(withFindings).toEqual([
+      '⚠️  1 deleted doc(s) took content with them, found nowhere else:',
+      '  /r/docs/old.md',
+      '    heading nowhere else: ### X',
+      '⚠️  1 deleted doc(s) could not be read back at the ref (possibly corrupt) — not checked:',
+      '  /r/docs/corrupt.md',
+    ])
+  })
+
+  it('deletionsExitCode() always returns 0, regardless of findings or skipped — informational only', () => {
+    expect(deletionsExitCode({ checked: 0, findings: [], skipped: [] })).toBe(0)
     expect(
       deletionsExitCode({
         checked: 1,
         findings: [{ orphanedHeadings: ['### X'], orphanedLinkTargets: [], path: '/r/docs/old.md' }],
+        skipped: ['/r/docs/corrupt.md'],
       }),
     ).toBe(0)
   })

@@ -28,7 +28,7 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 90.94,
+        branches: 90.96,
         // functions/statements: manually recalibrated (config.ts's move to
         // Effect's FileSystem service), not auto-raised.
         // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery

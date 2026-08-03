@@ -96,4 +96,42 @@ it.layer(CheckDeletionsLive)('checkDeletions() against a real git repository', (
         }
       }),
   )
+
+  // Issue #106 "best value defaults" audit: a corrupt git object for one
+  // DELETED doc (as opposed to the permission-denied CURRENT-corpus case
+  // above) must not just degrade gracefully for that one doc — it must be
+  // NAMED in `skipped`, matching `CheckLinks.ts`'s own established
+  // `unreadable` precedent, not silently absorbed into a smaller `checked`
+  // count. Converts the manual dogfooding proof (a real corrupted loose
+  // object, chmod'd writable then overwritten with garbage) into a
+  // permanent test.
+  layerIt.effect('a corrupt git object for one deleted doc is named in `skipped`, not silently absorbed', () =>
+    Effect.gen(function* () {
+      const p = project('deletions-corrupt-object', {
+        'docs/kept.md': '# Kept',
+        'docs/old1.md': '### Unique Section One\n\nOnly description of feature one.',
+        'docs/old2.md': '### Unique Section Two\n\nOnly description of feature two.',
+      })
+      git(p.root, 'init', '-q')
+      git(p.root, 'config', 'user.email', 'test@example.com')
+      git(p.root, 'config', 'user.name', 'Test')
+      git(p.root, 'add', '.')
+      git(p.root, 'commit', '-q', '-m', 'initial')
+      const old2Sha = git(p.root, 'rev-parse', 'HEAD:docs/old2.md').trim()
+      const objPath = path.join(p.root, '.git', 'objects', old2Sha.slice(0, 2), old2Sha.slice(2))
+      fs.rmSync(path.join(p.root, 'docs', 'old1.md'))
+      fs.rmSync(path.join(p.root, 'docs', 'old2.md'))
+      fs.chmodSync(objPath, 0o644)
+      fs.writeFileSync(objPath, 'garbage, not a real git object')
+
+      const result = yield* checkDeletions({ base: p.root, ref: 'HEAD', roots: [path.join(p.root, 'docs')] })
+      const old1Abs = path.join(p.root, 'docs', 'old1.md')
+      const old2Abs = path.join(p.root, 'docs', 'old2.md')
+      expect(result.checked).toBe(1)
+      expect(result.findings).toEqual([
+        { orphanedHeadings: ['### Unique Section One'], orphanedLinkTargets: [], path: old1Abs },
+      ])
+      expect(result.skipped).toEqual([old2Abs])
+    }),
+  )
 })

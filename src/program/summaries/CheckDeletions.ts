@@ -47,11 +47,20 @@ export interface CheckDeletionsArgs {
 
 export interface DeletionsResult {
   /** Deleted docs whose content was actually recoverable and compared —
-   * distinct from every path `listDeletedSince` reported, since a
-   * staged-but-never-committed path has nothing recoverable at `ref` and
-   * is silently skipped, not counted. */
+   * distinct from every path `listDeletedSince` reported; see `skipped`
+   * for the ones that weren't. */
   readonly checked: number
   readonly findings: readonly DeletedDocContentFinding[]
+  /** A deleted doc `listDeletedSince` reported but whose content couldn't
+   * be recovered at `ref` (a corrupt object, or genuinely nothing there —
+   * e.g. staged but never committed). Named explicitly, never silently
+   * absorbed into `checked` — matches `CheckLinks.ts`'s own established
+   * `unreadable` precedent for this exact codebase: a doc that can't be
+   * read is itself worth knowing about, not just invisible to the count
+   * (issue #106 audit: a repo with real git object corruption deserves to
+   * see that, not a quietly smaller `checked` number). Never affects
+   * `deletionsExitCode` — informational, like everything else here. */
+  readonly skipped: readonly string[]
 }
 
 /** Always 0 — informational only, by design (see this module's own header). */
@@ -121,15 +130,18 @@ export const checkDeletions = ({
     // doesn't cost every other deleted doc its own, otherwise-perfectly-
     // detectable finding (issue #106 adversarial review, second pass).
     const deletedDocs = new Map<string, string>()
+    const skipped: string[] = []
     for (const p of inScopeDeleted) {
       const content = yield* gitFs.readFileAtRef(base, ref, p).pipe(Effect.catch(() => Effect.succeed(null)))
-      if (content !== null) {
+      if (content === null) {
+        skipped.push(p)
+      } else {
         deletedDocs.set(p, content)
       }
     }
 
     const findings = findDeletedDocContent({ deletedDocs, remainingFiles })
-    return { checked: deletedDocs.size, findings }
+    return { checked: deletedDocs.size, findings, skipped: skipped.toSorted() }
   })
 
 export interface DeletionsReportOptions {
@@ -140,20 +152,20 @@ export interface DeletionsReportOptions {
  * informational — see `deletionsExitCode`. */
 export const formatDeletionsReport = (result: DeletionsResult, options: DeletionsReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
-  if (result.findings.length === 0) {
-    return [
-      pick(locale, {
-        en: `✅ No orphaned content found (${result.checked} deletion(s) checked).`,
-        fr: `✅ Aucun contenu orphelin trouvé (${result.checked} suppression(s) vérifiée(s)).`,
-      }),
-    ]
-  }
-  const lines: string[] = [
-    pick(locale, {
-      en: `⚠️  ${result.findings.length} deleted doc(s) took content with them, found nowhere else:`,
-      fr: `⚠️  ${result.findings.length} document(s) supprimé(s) ont emporté du contenu introuvable ailleurs :`,
-    }),
-  ]
+  const lines: string[] =
+    result.findings.length === 0
+      ? [
+          pick(locale, {
+            en: `✅ No orphaned content found (${result.checked} deletion(s) checked).`,
+            fr: `✅ Aucun contenu orphelin trouvé (${result.checked} suppression(s) vérifiée(s)).`,
+          }),
+        ]
+      : [
+          pick(locale, {
+            en: `⚠️  ${result.findings.length} deleted doc(s) took content with them, found nowhere else:`,
+            fr: `⚠️  ${result.findings.length} document(s) supprimé(s) ont emporté du contenu introuvable ailleurs :`,
+          }),
+        ]
   for (const finding of result.findings) {
     lines.push(`  ${finding.path}`)
     for (const heading of finding.orphanedHeadings) {
@@ -163,6 +175,17 @@ export const formatDeletionsReport = (result: DeletionsResult, options: Deletion
       lines.push(
         `    ${pick(locale, { en: 'link target nowhere else', fr: 'cible de lien introuvable ailleurs' })}: ${target}`,
       )
+    }
+  }
+  if (result.skipped.length > 0) {
+    lines.push(
+      pick(locale, {
+        en: `⚠️  ${result.skipped.length} deleted doc(s) could not be read back at the ref (possibly corrupt) — not checked:`,
+        fr: `⚠️  ${result.skipped.length} document(s) supprimé(s) n'ont pas pu être relus à cette référence (peut-être corrompus) — non vérifiés :`,
+      }),
+    )
+    for (const path of result.skipped) {
+      lines.push(`  ${path}`)
     }
   }
   return lines

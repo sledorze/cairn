@@ -173,8 +173,14 @@ Comparing against `HEAD` (the default) catches an uncommitted `rm`, suited to a 
 hook; comparing against a PR's base branch (e.g. `--deletions-since origin/main`) in CI
 catches every deletion the PR itself introduces, including ones already committed — the
 actual reported scenario ("deleted a doc, only noticed hours later"). Needs a real git
-repository; a path staged but never committed has nothing recoverable at the ref and is
-silently skipped, not reported as an error.
+repository; a deleted doc whose content can't be recovered at that ref (staged but never
+committed, or a genuinely corrupt git object) is never silently absorbed — it's named
+explicitly, matching the link checker's own `unreadable` precedent:
+
+```
+⚠️  1 deleted doc(s) could not be read back at the ref (possibly corrupt) — not checked:
+  docs/old.md
+```
 
 **Informational only, by design — never affects the exit code.** Deleting genuinely
 redundant documentation is a good thing that should stay cheap; this is a report to make a
