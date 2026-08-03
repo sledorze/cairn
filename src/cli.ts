@@ -19,8 +19,10 @@ import type { Overrides } from './config.ts'
 import { expandRoots, loadConfig, loadConfigWithSource, LOCALES } from './config.ts'
 import { AGENT_TARGETS, runInit } from './init/generate.ts'
 import { DocsFsLive } from './io/DocsFs.ts'
+import type { GitFsService } from './io/Git.ts'
 import { GitFs, GitFsLive } from './io/Git.ts'
 import type { CheckCliFlags } from './program/checks/CheckPlugin.ts'
+import type { CheckPluginRunOutcome } from './program/checks/runCheckPlugin.ts'
 import { rejectedJsonMessage, runCheckPlugin } from './program/checks/runCheckPlugin.ts'
 import type { LinkCheckResult } from './program/links/CheckLinks.ts'
 import { linksPlugin } from './program/links/CheckLinks.ts'
@@ -183,6 +185,21 @@ interface CheckParsed {
   readonly threshold: Option.Option<number>
 }
 
+/**
+ * Run a `GitFs` list method, falling back to `[]` when git is unavailable
+ * or `cwd` isn't a repository — both ordinary, expected situations for a
+ * tool that also works outside git entirely. Extracted (issue #106 DRY
+ * audit) after `gitIgnoredDirs`/`gitWorktreeDirs` below turned up as the
+ * exact same "call a GitFs method, swallow to `[]`" shape twice.
+ */
+const gracefulGitList = (
+  list: (gitFs: GitFsService) => Effect.Effect<readonly string[], unknown, never>,
+): Effect.Effect<readonly string[], never, GitFs> =>
+  Effect.gen(function* () {
+    const gitFs = yield* GitFs
+    return yield* list(gitFs)
+  }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
+
 /** `cairn check` (also the default action when no subcommand is given). */
 const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   const cwd = process.cwd()
@@ -246,24 +263,17 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
       )
     : undefined
 
-  // Issue #63: unlike `onlyGitTracked` above, this is an always-on default
-  // safety net, not an opt-in guarantee — so it degrades gracefully
-  // (falls back to `config.ignore` alone) rather than hard-failing when
-  // git is unavailable or `cwd` isn't a repository, both ordinary,
-  // expected situations for a tool that also works outside git entirely.
-  const gitIgnoredDirs = yield* Effect.gen(function* () {
-    const gitFs = yield* GitFs
-    return yield* gitFs.listIgnoredDirs(cwd)
-  }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
-
-  // Same always-on, gracefully-degrading treatment as `gitIgnoredDirs`
-  // above — a linked worktree (e.g. `.claude/worktrees/<name>`) nests a
-  // full second copy of the repo's own doc tree and must never be walked,
-  // whether or not the caller configured anything for it.
-  const gitWorktreeDirs = yield* Effect.gen(function* () {
-    const gitFs = yield* GitFs
-    return yield* gitFs.listWorktreeDirs(cwd)
-  }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
+  // Issue #63: unlike `onlyGitTracked` above, both of these are an
+  // always-on default safety net, not an opt-in guarantee — so each
+  // degrades gracefully (falls back to `config.ignore` alone) rather than
+  // hard-failing when git is unavailable or `cwd` isn't a repository, both
+  // ordinary, expected situations for a tool that also works outside git
+  // entirely. `gitWorktreeDirs`: a linked worktree (e.g.
+  // `.claude/worktrees/<name>`) nests a full second copy of the repo's own
+  // doc tree and must never be walked, whether or not the caller
+  // configured anything for it.
+  const gitIgnoredDirs = yield* gracefulGitList((gitFs) => gitFs.listIgnoredDirs(cwd))
+  const gitWorktreeDirs = yield* gracefulGitList((gitFs) => gitFs.listWorktreeDirs(cwd))
 
   const effectiveIgnore = [
     ...config.ignore,
@@ -284,6 +294,23 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   let code = 0
   let linksResult: LinkCheckResult | null = null
   let summariesResult: SummaryPlan | null = null
+
+  // Every `runCheckPlugin` call site (links/refs/proseRefs/coverage) prints
+  // its lines (if any) and folds its exit code into the running `code` the
+  // exact same way — extracted (issue #106 DRY audit) after this shape
+  // turned up identically 4 times. Links additionally captures its own
+  // `result` for `--json`'s report, kept as separate glue at that one call
+  // site rather than folded in here.
+  const reportOutcome = (outcome: CheckPluginRunOutcome<unknown>) =>
+    Effect.gen(function* () {
+      if (!outcome.ran) {
+        return
+      }
+      if (outcome.lines.length > 0) {
+        yield* Console.log(outcome.lines.join('\n'))
+      }
+      code = Math.max(code, outcome.code)
+    })
 
   // A config that resolves to checking literally nothing must fail loudly,
   // not report green — found adversarially (goal: "refute the DX for end
@@ -374,11 +401,8 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     // just above), not the ambiguous one `runCheckPlugin`'s own return type
     // no longer has.
     linksResult = linksOutcome.result
-    if (linksOutcome.lines.length > 0) {
-      yield* Console.log(linksOutcome.lines.join('\n'))
-    }
-    code = Math.max(code, linksOutcome.code)
   }
+  yield* reportOutcome(linksOutcome)
 
   if (config.checks.summaries && !parsed.linksOnly) {
     if (parsed.prune) {
@@ -452,31 +476,13 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
       const lines = yield* refsStamp(pluginArgs)
       yield* Console.log(lines.join('\n'))
     } else {
-      const outcome = yield* runCheckPlugin(refsPlugin, pluginArgs)
-      if (outcome.ran) {
-        if (outcome.lines.length > 0) {
-          yield* Console.log(outcome.lines.join('\n'))
-        }
-        code = Math.max(code, outcome.code)
-      }
+      yield* reportOutcome(yield* runCheckPlugin(refsPlugin, pluginArgs))
     }
   }
 
-  const proseOutcome = yield* runCheckPlugin(proseRefsPlugin, pluginArgs)
-  if (proseOutcome.ran) {
-    if (proseOutcome.lines.length > 0) {
-      yield* Console.log(proseOutcome.lines.join('\n'))
-    }
-    code = Math.max(code, proseOutcome.code)
-  }
+  yield* reportOutcome(yield* runCheckPlugin(proseRefsPlugin, pluginArgs))
 
-  const coverageOutcome = yield* runCheckPlugin(coveragePlugin, pluginArgs)
-  if (coverageOutcome.ran) {
-    if (coverageOutcome.lines.length > 0) {
-      yield* Console.log(coverageOutcome.lines.join('\n'))
-    }
-    code = Math.max(code, coverageOutcome.code)
-  }
+  yield* reportOutcome(yield* runCheckPlugin(coveragePlugin, pluginArgs))
 
   if (deletionsOutcome !== null) {
     if (deletionsOutcome.error !== null) {

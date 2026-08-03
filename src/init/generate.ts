@@ -81,6 +81,23 @@ const skillFile = (): string =>
     SKILL_BODY,
   ].join('\n')
 
+/**
+ * Insert `block` between the `AGENTS_START`/`AGENTS_END` markers if they're
+ * already present in `existing` (replacing whatever they currently wrap),
+ * else append `block` as a new section — never touching the rest of
+ * `existing`'s content either way.
+ *
+ * Extracted (issue #106 DRY audit) after this exact insert-or-replace
+ * shape turned up hand-duplicated between `upsertAgentsBlock` and
+ * `upsertClaudeMdImport` below — each still owns its own existence check,
+ * seed text for a brand-new file, and (for CLAUDE.md) the extra
+ * already-imported short-circuit, since those genuinely differ per file.
+ */
+const upsertMarkedBlock = (existing: string, block: string): string =>
+  existing.includes(AGENTS_START) && existing.includes(AGENTS_END)
+    ? existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
+    : `${existing.trimEnd()}\n\n${block}\n`
+
 /** Insert or replace the cairn block in AGENTS.md, leaving other content intact. */
 const upsertAgentsBlock = (cwd: string, written: string[]): Effect.Effect<void, unknown, FileSystem.FileSystem> =>
   Effect.gen(function* () {
@@ -89,12 +106,7 @@ const upsertAgentsBlock = (cwd: string, written: string[]): Effect.Effect<void, 
     const block = `${AGENTS_START}\n\n${CONVENTION_BODY.trimEnd()}\n\n${AGENTS_END}`
     let next: string
     if (yield* fs.exists(file)) {
-      const existing = yield* fs.readFileString(file)
-      if (existing.includes(AGENTS_START) && existing.includes(AGENTS_END)) {
-        next = existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
-      } else {
-        next = `${existing.trimEnd()}\n\n${block}\n`
-      }
+      next = upsertMarkedBlock(yield* fs.readFileString(file), block)
     } else {
       next = `# AGENTS.md\n\n${block}\n`
     }
@@ -121,10 +133,7 @@ const upsertClaudeMdImport = (
         skipped.push(file)
         return
       }
-      const next =
-        existing.includes(AGENTS_START) && existing.includes(AGENTS_END)
-          ? existing.replace(new RegExp(`${AGENTS_START}[\\s\\S]*?${AGENTS_END}`), block)
-          : `${existing.trimEnd()}\n\n${block}\n`
+      const next = upsertMarkedBlock(existing, block)
       yield* fs.writeFileString(file, next.endsWith('\n') ? next : `${next}\n`)
     } else {
       yield* fs.writeFileString(file, `${block}\n`)
