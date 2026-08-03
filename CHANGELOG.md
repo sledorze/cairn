@@ -1,5 +1,41 @@
 # @sledorze/cairn
 
+## 0.7.0
+
+### Minor Changes
+
+- 605797a: `checks.coverage` rules can now target `{ "external": "path" }` instead of a declared doc kind — closes the third check from issue #28's v1 scope: doc→code reference resolution. A rule like
+
+  ```json
+  "rules": [{ "from": "spec", "to": { "external": "path" }, "name": "verified_by" }]
+  ```
+
+  is satisfied only when a `spec` doc links to a path that really exists on disk (source code, a test, anything — not just another scanned/kind-classified doc). Unlike a kind-based `to`, this never makes its target eligible for orphan reporting.
+
+  This is a **stricter** check for anyone already using `checks.coverage` with a rule whose `to` they intend to change to `{ "external": "path" }` — existing configs (every `to` still a plain kind-id string) are completely unaffected, and no existing rule silently changes meaning.
+
+- 8b44b29: Added `cairn check --report-deletions` (closes #106): link-completeness and content hashing both assume tracked content persists, so deleting a doc on the correct belief that it's pure duplication could silently lose a heading or outbound reference that existed nowhere else — every other check stayed green afterward. `--report-deletions` compares the working tree against a git ref (`--deletions-since`, default `HEAD`) and reports which of a deleted doc's headings/link targets survive in no remaining doc.
+
+  Informational only, by design — it never affects the exit code. Deleting genuinely redundant documentation is a good thing that should stay cheap; this makes a lossy deletion visible, it doesn't block it. Needs a real git repository.
+
+- 185788f: `roots` entries that can only legitimately resolve inside the project directory (no `..` segment anywhere or absolute path) now fail loudly with a clear error if the resolved directory turns out to be a symlink pointing outside the project — closing a gap where a malicious PR could replace a configured root (e.g. `docs/`) with a symlink to reach content outside the repository.
+
+  This is a **stricter** check: if you rely on a plain `roots` entry (e.g. the default `"docs"`) resolving via a symlink to somewhere outside your project directory, `cairn check` will now fail with `cairn: root "..." resolves to "...", a symlink pointing OUTSIDE the project directory`. If that's intentional, express it with a `..`-relative or absolute path instead — those are unaffected and continue to work exactly as before (this is how a legitimate monorepo sibling-docs setup, e.g. `roots: ["../shared-docs"]`, is already expected to be configured).
+
+### Patch Changes
+
+- 6077f61: `--prose-refs` was labelled a "migration aid" in `--help`, the README, and scaffolded agent guidance — discouraging exactly the permanent, ongoing use it was actually safe for (closes #105). A citation that still resolves is always silent, so only genuine drift is ever reported; wording across `--help`, the README, `AGENTS.md`/scaffolded skill files, and code comments now states that permanent/ongoing use is supported, not just a one-time migration step. No behavior change — text only.
+- 94f3fc6: `checks.coverage` — a config-only opt-in check with no CLI flag of its own — is now mentioned in `cairn check --help` and `cairn --help` (closes #104). Previously it was invisible to anyone who hadn't already read the README or the JSON schema by hand.
+- 70a7206: Fixed link-completeness rejecting a link from a parent `_SUMMARY.md` straight to a child directory's own `_SUMMARY.md` (closes #103). Previously only a bare directory link (e.g. `[docs/](./docs)`) satisfied the check; `[docs/](./docs/_SUMMARY.md)` was reported as a missing child link even though it points at the curated index — the more precise, GitHub-rendering-friendly destination, and exactly the artifact whose content hash the summary tree tracks for that child. Both link forms now count.
+
+  This is a **loosening**: a repo that previously carried both links (the documented workaround) is unaffected; a repo that only ever wrote the bare directory link is also unaffected. No existing passing config can newly fail.
+
+- f75f07a: Fixed `ignore` glob patterns silently failing to match when written root-relative with no leading `**/` — the form anyone actually writes for a top-level path, e.g. `.agents/**` or `docs/SKIP.md` (closes #102). Previously only a pattern that either equalled the absolute filesystem path or was `**/`-prefixed (able to absorb an arbitrary prefix) actually excluded anything; every other pattern matched nothing, with no warning, leaving `cairn check` demanding summaries for directories the config believed were excluded.
+
+  `ignore` patterns are now matched against both the absolute path (unchanged, so any pattern that already worked keeps working) and the path relative to the containing root — for directory pruning and for every checker's file-level `ignore` filter (links, refs, prose-refs, coverage, summaries) alike.
+
+  This can newly EXCLUDE content from a repo's scan: if your `ignore` config already contains a pattern that happened to do nothing before (silently), that pattern may now correctly prune matching files/directories. Review your `ignore` list if `cairn check` reports fewer files checked after upgrading.
+
 ## 0.6.0
 
 ### Minor Changes
