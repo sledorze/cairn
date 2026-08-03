@@ -72,7 +72,7 @@ never writes into content either.
 | `cairn check --migrate-stamps`            | Optional: same self-healing `--stamp` already does, as its own named step  |
 | `cairn check --refs --stamp`              | Opt-in: record each real reference target's content hash                   |
 | `cairn check --refs`                      | Opt-in: report references whose target content has drifted since           |
-| `cairn check --prose-refs`                | Opt-in, migration aid: flag a drifted bare-backtick file citation in prose |
+| `cairn check --prose-refs`                | Opt-in, safe for permanent use: flag a drifted bare-backtick file citation |
 | `cairn init --agent claude\|copilot\|all` | Scaffold agent guidance files                                              |
 
 ### Link checking
@@ -124,11 +124,15 @@ Docs often cite a source file inline in backticks, with no `[text](path)` syntax
 "see `` `src/services/auth.ts` `` for the implementation." Neither the link checker above nor
 anything else notices when that file moves or is renamed; the citation just quietly goes stale.
 
-`cairn check --prose-refs` is a separate, **opt-in migration aid** — not a permanent second
-link checker. A citation that still resolves is **always silent**: no noise on ordinary prose,
-full stop. Only a citation that has genuinely drifted (moved, renamed, or deleted) is reported,
-and the message doesn't just say "broken" — it names the exact Markdown link syntax that would
-make the reference structurally checkable going forward:
+`cairn check --prose-refs` is a separate, **opt-in** check — not folded into the default
+`checks.links` gate, since it targets a different citation style (backticks, no `[text](path)`
+syntax). It is **not** a one-time migration step, though: a citation that still resolves is
+**always silent** — no noise on ordinary prose, full stop — so a consuming repo can safely
+wire `--prose-refs` into its own permanent, ongoing gate (CI, a pre-commit hook, whatever
+already runs `checks.links`), not just a one-off migration pass (issue #105). Only a citation
+that has genuinely drifted (moved, renamed, or deleted) is reported, and the message doesn't
+just say "broken" — it names the exact Markdown link syntax that would make the reference
+structurally checkable going forward:
 
 ```
 ✗ `src/services/gone.ts` (no longer resolves) → consider a link: [`src/services/gone.ts`](../src/services/gone.ts)

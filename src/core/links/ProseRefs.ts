@@ -39,9 +39,9 @@ const LINK_TEXT_RE = /!?\[([^\]]{0,2000})\]\([^)\s]{1,2000}(?:\s+"[^"]{0,2000}")
  * not this module's: found via dimension-coverage review that without this,
  * an already-broken real link got reported TWICE (once by the link checker,
  * once again by `--prose-refs` suggesting the exact link that already
- * exists and is already broken) — directly undercutting this feature's own
- * "migration aid, not a second parallel checker" purpose. Masking the link
- * TEXT span (not the whole link — the URL itself may legitimately differ
+ * exists and is already broken) — directly undercutting this check's own
+ * purpose as a DISTINCT concern from `CheckLinks.ts`, not a duplicate of
+ * it. Masking the link TEXT span (not the whole link — the URL itself may legitimately differ
  * from the citation) before candidate extraction removes the double-report
  * at the source, the same masking discipline `maskFencedCode` already uses.
  */

@@ -105,8 +105,8 @@ describe('extractProseRefs()', () => {
   // Found via the same review: a backtick-styled citation inside a REAL
   // Markdown link's text is already CheckLinks.ts's concern — double-
   // reporting it (once by the link checker, once again by --prose-refs
-  // suggesting the exact link that already exists) undercuts this
-  // feature's own "migration aid, not a second parallel checker" purpose.
+  // suggesting the exact link that already exists) undercuts this check's
+  // own purpose as a distinct concern from CheckLinks.ts, not a duplicate.
   it("does not double-extract a backtick citation that is already inside a real Markdown link's text", () => {
     expect(extractProseRefs('See [`src/services/gone.ts`](../src/services/gone.ts) for details.')).toEqual([])
   })
