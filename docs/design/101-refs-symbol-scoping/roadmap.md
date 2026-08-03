@@ -6,7 +6,7 @@ uses everywhere else (`AGENTS.md`'s "Shipping one iteration well," `CheckDocCove
 real-CLI dogfooding pass): a real repro, a real fix, a real before/after check.
 
 **Why Release 1 ships separately instead of going straight to Release 2, stated honestly:**
-`spikes.md` already confirms Release 2's core mechanism (the `createScanner`-based
+[`spikes.md`](./spikes.md) already confirms Release 2's core mechanism (the `createScanner`-based
 export-boundary finder) is real and low-cost BEFORE this roadmap was written — so "Release
 1 first because Release 2 is too risky to attempt yet" is NOT the actual justification, and
 this document shouldn't imply it is. The real justification is narrower: Release 1 needs
@@ -95,7 +95,7 @@ citation that only cares about one of them (`solution-space.md`'s own "only clea
 justified once real usage of B surfaces this" gate).
 
 **Hard requirement before this ships, not optional polish:** rename resilience.
-`story-map.md`'s "renaming a cited symbol should be an actionable error, not a silent
+[`story-map.md`](./story-map.md)'s "renaming a cited symbol should be an actionable error, not a silent
 false-pass" story is THE gating story for this release — Release 1/2 have no equivalent
 failure mode (a whole-file or export-SET target can't "disappear" the way one specific
 named symbol can). Ship only once this has its own real test proving a renamed-away anchor

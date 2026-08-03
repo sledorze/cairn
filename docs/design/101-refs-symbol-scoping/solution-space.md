@@ -27,8 +27,9 @@ is simple enough for a linear scan to be provably correct. Locating an arbitrary
 declaration's balanced-brace end across template literals, nested functions, and
 brace-like characters inside comments/strings is a meaningfully HARDER shape than fence
 masking — not provably safe with a comparable linear scan, which is why this option
-requires a real parser rather than reusing that file's technique. (Spike 4 in
-`spikes.md` confirms a real, low-cost, standalone parser primitive exists for this.)
+requires a real parser rather than reusing that file's technique. ([Spike 4](./spikes.md)
+confirms a real, low-cost, standalone parser primitive exists for this — and its own
+correction, mid-review, is what narrowed this section's cost estimate below.)
 
 **Pros:** most PRECISE — a change to an unrelated symbol in the same file never counts;
 lets a doc cite a specific, narrow claim. Directly matches the issue's own second
@@ -60,8 +61,8 @@ that gap. This genuinely needs real evidence from actual false-positive/false-ne
 cases before deciding, not a choice made speculatively in this document.
 
 **Requires:** the same real-parser dependency as (A), but a meaningfully cheaper walk —
-finding every top-level `export`-keyword-prefixed declaration in one pass (spike 4 in
-`spikes.md`), never needing to resolve which ONE specific symbol a particular citation
+finding every top-level `export`-keyword-prefixed declaration in one pass ([spike 4](./spikes.md)),
+never needing to resolve which ONE specific symbol a particular citation
 names the way (A) does. Whether that walk stops at each declaration's signature or
 continues through its full body (the open question above) doesn't change this shape —
 either way it's one linear pass locating declaration boundaries, not per-citation symbol

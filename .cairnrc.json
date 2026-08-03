@@ -28,7 +28,13 @@
         { "from": "design-package", "to": "story-map" },
         { "from": "design-package", "to": "roadmap" },
         { "from": "design-package", "to": "implementation-details" },
-        { "from": "design-package", "to": "knowledge" }
+        { "from": "design-package", "to": "knowledge" },
+        { "from": "solution-space", "to": "spikes", "name": "grounded_by" },
+        { "from": "roadmap", "to": "spikes", "name": "grounded_by" },
+        { "from": "implementation-details", "to": "spikes", "name": "grounded_by" },
+        { "from": "problem-space", "to": "spikes", "name": "grounded_by" },
+        { "from": "knowledge", "to": "spikes", "name": "grounded_by" },
+        { "from": "roadmap", "to": "story-map", "name": "derived_from" }
       ]
     },
     "docCoverage": {

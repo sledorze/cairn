@@ -84,7 +84,7 @@ the issue has zero comments and zero reactions from anyone else — there is no 
 that another cairn user has hit this, asked for it, or even runs `--refs` at all. That
 doesn't make the report wrong (the repro is concrete and the failure mode is real,
 verified by reading the actual code), but a 3-release roadmap culminating in a new
-dependency on an explicitly-`unstable` API (see `spikes.md`) is a real investment to
+dependency on an explicitly-`unstable` API (see [`spikes.md`](./spikes.md)) is a real investment to
 justify off a single, self-reported anecdote — worth saying outright rather than implying
 broader corroboration exists.
 

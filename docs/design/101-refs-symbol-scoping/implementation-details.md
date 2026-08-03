@@ -94,7 +94,7 @@ wiring cost LOWER than an earlier draft implied, not an open design question.
 
 `core/`, IO-free, matching this repo's `core/` policy since it's pure text-in/ranges-out)
 
-Built on `spikes.md` spike 4's confirmed-viable primitive: `typescript/unstable/ast`'s
+Built on [`spikes.md`](./spikes.md) spike 4's confirmed-viable primitive: `typescript/unstable/ast`'s
 `createScanner`, tokenizing the file's text and locating each `ExportKeyword` token, then
 scanning forward to that statement's end (the scanner's own token stream already correctly
 skips over string/template/comment content — no separate brace-counting needed, unlike

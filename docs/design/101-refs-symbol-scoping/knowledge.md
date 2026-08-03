@@ -45,7 +45,7 @@ package:
 
 1. Re-run spike 4's `createScanner` probe against the CURRENT `typescript` version in
    `package.json` — `unstable/*` surfaces can change without a semver-major bump on the
-   classic API (spike 5's own risk note). Use the CORRECTED signature from `spikes.md`
+   classic API (spike 5's own risk note). Use the CORRECTED signature from [`spikes.md`](./spikes.md)
    (`createScanner(true, 0)`, `SyntaxKind.EndOfFile` not `EndOfFileToken`), and actually run
    it to completion, not just read it.
 2. Grep the ACTUAL current `CheckRefs.ts`/`RefStore.ts` before trusting this doc's
