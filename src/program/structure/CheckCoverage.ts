@@ -31,9 +31,9 @@
 
 import { Effect } from 'effect'
 
-import type { CoverageRule, KindDef } from '../../core/Config.ts'
-import { isKindTarget, isUrlTarget } from '../../core/Config.ts'
-import { matchesAny } from '../../core/glob.ts'
+import type { CoverageRule, CoverageTarget, KindDef } from '../../core/Config.ts'
+import { isKindTarget, isTargetArray, isUrlTarget, targetsOf } from '../../core/Config.ts'
+import { matchesAny, matchesGlob } from '../../core/glob.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
@@ -67,6 +67,27 @@ export interface CoverageResult {
    * report classes are drawn from, same "what did this actually look at"
    * transparency `RefsCheckResult.checked` already gives. */
   readonly checked: number
+  /** A `scope: { under: '...' }` value used by at least one rule that
+   * matched ZERO scanned docs at all — of ANY kind, not just the rule's own
+   * `to` kind (see `checkCoverage`'s own comment for why the wider check).
+   * Sorted, de-duplicated `under` strings. A real, self-found gap
+   * (docs/design/CONVENTION.md's "Judging this convention" Claim 2,
+   * docs/design/review-prompts.md section 4's own adversarial
+   * self-judgment): `under` was validated against neither the declared
+   * kind ids (which DO get a decode-time cross-field check, see
+   * `CoverageInputSchema` in ../../core/Config.ts) nor `roots` — a typo'd
+   * or out-of-`roots` `under` decoded successfully and then silently,
+   * permanently reported every `from`-kind doc using it as missing
+   * coverage, with nothing pointing at the real cause. Not decode-time
+   * checkable: `roots` and `checks.coverage` are sibling top-level fields
+   * that can be set in DIFFERENT `extends` layers (`../../config.ts`'s
+   * `resolveLayer`), so a single-layer schema decode never sees both at
+   * once — this is why the fix lives here, once every layer is folded and
+   * the real doc corpus is actually scanned, mirroring `unmatchedKinds`'s
+   * own precedent below (a non-fatal hint, never `coverageExitCode`,
+   * exactly because a legitimate mid-rollout `under` with no docs YET
+   * looks identical to a typo'd one from inside this one check alone). */
+  readonly emptyScopeUnders: readonly string[]
   readonly missing: readonly MissingCoverage[]
   readonly orphans: readonly OrphanDoc[]
   /** A declared kind id that matched zero scanned docs — found by
@@ -137,10 +158,18 @@ export const checkCoverage = ({
     // `scope`) MUST appear in this key — if a future field is added to
     // distinguish otherwise-identical rules, add it here too, or this exact
     // class of silent data loss reappears a sixth time.
+    // Round 6: `to` grew alternation (`targetsOf` in ../../core/Config.ts) —
+    // `to` can now be a single target OR an array of them. The previous
+    // `isKindTarget(r.to) ? r.to : JSON.stringify(r.to)` branch assumed `to`
+    // was never an array; `JSON.stringify(['a', 'b'])` and the plain string
+    // `'a'` (the old true branch) are already textually distinct, so
+    // simplifying to an UNCONDITIONAL `JSON.stringify(r.to)` both fixes the
+    // array case and removes a branch — one fewer place for the next
+    // `to`-shape change to have to remember this key exists at all.
     const uniqueRules = [
       ...new Map(
         rules.map((r) => [
-          `${r.name ?? ''}\u0000${r.from}\u0000${isKindTarget(r.to) ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}\u0000${JSON.stringify(r.scope) ?? ''}`,
+          `${r.name ?? ''}\u0000${r.from}\u0000${JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}\u0000${JSON.stringify(r.scope) ?? ''}`,
           r,
         ]),
       ).values(),
@@ -214,7 +243,11 @@ export const checkCoverage = ({
     // `{ external: 'path' }` names no kind at all, so it's filtered out
     // here too — an external-only rule's `from` kind must never become
     // orphan-checkable just because it appears on some rule's `to` side.
-    const orphanCandidateKinds = new Set(uniqueRules.map((r) => r.to).filter(isKindTarget))
+    // `to` may be an array of alternatives (`targetsOf`) — every KIND
+    // alternative is orphan-candidate-eligible, not just a single scalar
+    // `to`, since a doc satisfying the rule via any one alternative still
+    // makes every kind-shaped alternative a real, referenceable target.
+    const orphanCandidateKinds = new Set(uniqueRules.flatMap((r) => targetsOf(r.to)).filter(isKindTarget))
     const orphans: OrphanDoc[] = []
     for (const doc of docs) {
       if (matchesAny(doc.path, exempt)) {
@@ -231,12 +264,50 @@ export const checkCoverage = ({
     const matchedKindIds = new Set(docs.flatMap((d) => d.kinds))
     const unmatchedKinds = [...new Set(kinds.map((k) => k.id))].filter((id) => !matchedKindIds.has(id))
 
-    return { checked: docs.length, missing, orphans, unmatchedKinds }
+    // See `CoverageResult.emptyScopeUnders`'s own comment for the full
+    // rationale. Checked against `allDocs` (every scanned markdown file,
+    // regardless of kind) rather than just `docs`/the rule's own `to` kind
+    // deliberately: the question isn't "does the rule's target kind exist
+    // under here" (that's exactly what `missing`/`unmatchedKinds` already
+    // report, precisely and per-rule) — it's the narrower, structural "does
+    // this DIRECTORY exist anywhere in the scanned corpus at all," which a
+    // typo'd or out-of-`roots` `under` fails regardless of which kind was
+    // meant to live there.
+    const underValues = new Set(
+      uniqueRules
+        .map((r) => r.scope)
+        .filter((s): s is { readonly under: string } => typeof s === 'object' && s !== null)
+        .map((s) => s.under),
+    )
+    const emptyScopeUnders = [...underValues]
+      .filter((under) => {
+        const trimmed = under.replaceAll(/^\/+|\/+$/g, '')
+        return !allDocs.some((d) => matchesGlob(d.path, `**/${trimmed}/**`))
+      })
+      .toSorted()
+
+    return { checked: docs.length, emptyScopeUnders, missing, orphans, unmatchedKinds }
   })
 
 export interface CoverageReportOptions {
   readonly locale?: Locale
 }
+
+/** One target's noun phrase, used only inside an alternation (`to: [...]`)
+ * report line's "to ANY of: ..." list — the single-target report line below
+ * keeps its own, differently-worded, pre-existing phrasing verbatim (a
+ * deliberate choice: changing that wording would be a needless behavior
+ * change to every existing single-`to` config's report output, exactly what
+ * this whole feature promises NOT to do). */
+const describeCoverageTarget = (target: CoverageTarget, locale: Locale): string =>
+  isKindTarget(target)
+    ? pick(locale, { en: `a "${target}"-kind doc`, fr: `un document de type « ${target} »` })
+    : isUrlTarget(target)
+      ? pick(locale, {
+          en: `a link matching "${target.pattern}"`,
+          fr: `un lien correspondant à « ${target.pattern} »`,
+        })
+      : pick(locale, { en: 'an existing file', fr: 'un fichier existant' })
 
 /** Human-readable report lines (pure, so it's unit-tested independently of any IO). */
 export const formatCoverageReport = (result: CoverageResult, options: CoverageReportOptions = {}): string[] => {
@@ -253,6 +324,14 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       fr: `⚠️  le type « ${id} » n’a correspondu à aucun document analysé — vérifiez son glob par rapport à \`roots\`, ou une simple faute de frappe.`,
     }),
   )
+  // Same non-fatal-hint treatment as `unmatchedWarnings` above, for the same
+  // reason — see `CoverageResult.emptyScopeUnders`'s own doc comment.
+  const emptyScopeWarnings = result.emptyScopeUnders.map((under) =>
+    pick(locale, {
+      en: `⚠️  scope { under: "${under}" } matched 0 scanned docs of any kind — check it for a typo, that it names a directory under a configured \`root\`, or that no docs simply exist there yet.`,
+      fr: `⚠️  la portée { under : « ${under}» } n’a correspondu à aucun document analysé, quel que soit son type — vérifiez une faute de frappe, que ce chemin se trouve bien sous une \`root\` configurée, ou qu’aucun document n’y existe encore.`,
+    }),
+  )
   if (result.missing.length === 0 && result.orphans.length === 0) {
     lines.push(
       pick(locale, {
@@ -260,6 +339,7 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
         fr: `✅ Couverture OK (${result.checked} document(s) vérifié(s)).`,
       }),
       ...unmatchedWarnings,
+      ...emptyScopeWarnings,
     )
     return lines
   }
@@ -281,21 +361,31 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
         // real-file `{ external: 'path' }`, or a `{ external: 'url',
         // pattern }` — the pattern itself is shown so a reader isn't left
         // guessing which external URL is required (`description`, below,
-        // still carries the WHY).
-        isKindTarget(rule.to)
+        // still carries the WHY). A rule with an ARRAY `to` (alternation —
+        // see `targetsOf`'s own comment in ../../core/Config.ts) gets a
+        // fourth, distinct line listing every alternative, so a reader can
+        // tell "must link X" (a single required target) apart from "must
+        // link EITHER X OR Y" (any one suffices) at a glance, not just by
+        // re-deriving it from the config.
+        isTargetArray(rule.to)
           ? pick(locale, {
-              en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
-              fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
+              en: `    ✗ no link${named} to ANY of: ${rule.to.map((t) => describeCoverageTarget(t, locale)).join(', or ')} (required by kind "${rule.from}")`,
+              fr: `    ✗ aucun lien${named} vers L’UN des éléments suivants : ${rule.to.map((t) => describeCoverageTarget(t, locale)).join(', ou ')} (requis pour le type « ${rule.from} »)`,
             })
-          : isUrlTarget(rule.to)
+          : isKindTarget(rule.to)
             ? pick(locale, {
-                en: `    ✗ no link${named} matching "${rule.to.pattern}" (required by kind "${rule.from}")`,
-                fr: `    ✗ aucun lien${named} correspondant à « ${rule.to.pattern} » (requis pour le type « ${rule.from} »)`,
+                en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
+                fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
               })
-            : pick(locale, {
-                en: `    ✗ no link${named} to an existing file (required by kind "${rule.from}")`,
-                fr: `    ✗ aucun lien${named} vers un fichier existant (requis pour le type « ${rule.from} »)`,
-              }),
+            : isUrlTarget(rule.to)
+              ? pick(locale, {
+                  en: `    ✗ no link${named} matching "${rule.to.pattern}" (required by kind "${rule.from}")`,
+                  fr: `    ✗ aucun lien${named} correspondant à « ${rule.to.pattern} » (requis pour le type « ${rule.from} »)`,
+                })
+              : pick(locale, {
+                  en: `    ✗ no link${named} to an existing file (required by kind "${rule.from}")`,
+                  fr: `    ✗ aucun lien${named} vers un fichier existant (requis pour le type « ${rule.from} »)`,
+                }),
       )
       // Real, in-context guidance — see CoverageRuleInputSchema's own comment
       // for why this exists alongside `name`: a bare rule name/label doesn't
@@ -317,7 +407,7 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       lines.push(`  ${p} (${docKinds.join(', ')})`)
     }
   }
-  lines.push(...unmatchedWarnings)
+  lines.push(...unmatchedWarnings, ...emptyScopeWarnings)
   return lines
 }
 

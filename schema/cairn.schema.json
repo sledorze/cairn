@@ -71,6 +71,13 @@
       ],
       "description": "A declared kind id (a doc-kind target), `{ external: \"path\" }` — a link must resolve to a real file on disk, not to a scanned doc — or `{ external: \"url\", pattern }` — a link's raw href must contain `pattern`."
     },
+    "CairnCoverageTargetOrAlternatives": {
+      "anyOf": [
+        { "$ref": "#/$defs/CairnCoverageTarget" },
+        { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageTarget" } }
+      ],
+      "description": "A single coverage target (satisfied by any one matching link), or an ARRAY of targets (satisfied by a link matching ANY ONE of them — alternation/OR, e.g. `to: [\"spikes\", \"external-evidence\"]`). A non-empty array only — see each element's own `CairnCoverageTarget` shape."
+    },
     "CairnCoverageRequirement": {
       "type": "object",
       "properties": { "by": { "type": "string", "enum": ["link"] } },
@@ -91,12 +98,12 @@
           "description": "Distinguishes this rule from another sharing the same from/to pair (e.g. \"implements\" vs \"verified_by\"). Two rules on the same pair with no name, or the same name, are treated as one."
         },
         "scope": { "$ref": "#/$defs/CairnCoverageRuleScope" },
-        "to": { "$ref": "#/$defs/CairnCoverageTarget" },
+        "to": { "$ref": "#/$defs/CairnCoverageTargetOrAlternatives" },
         "via": { "$ref": "#/$defs/CairnCoverageRequirement" }
       },
       "required": ["from", "to"],
       "additionalProperties": false,
-      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk, or, when `to` is `{ external: \"url\", pattern }`, to a URL containing `pattern`."
+      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk, or, when `to` is `{ external: \"url\", pattern }`, to a URL containing `pattern`. `to` may also be an ARRAY of targets, satisfied by a link matching ANY ONE of them (alternation/OR)."
     },
     "CairnDocCoverageGroup": {
       "type": "object",

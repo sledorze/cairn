@@ -59,3 +59,17 @@ the new `{ under }` capability itself found it closes the stated gap cleanly (ve
 CLI dogfood and a falsified dedup-key regression test, "Round 5" of `CheckCoverage.ts`'s own
 recurring bug), but surfaced one new, narrower, un-closed gap: `under` has no validation
 against the config's real `roots`, unlike `from`/`to` kind ids.
+
+**5. Closing `under`-vs-`roots`, and `to` alternation (N-of-M/OR)**: `under` is now validated
+at `checkCoverage` RUN time, not decode time (`roots`/`checks.coverage` can live in different
+`extends` layers, so no single-layer decode sees both) — a typo'd or out-of-corpus `under` now
+surfaces as a non-fatal `emptyScopeUnders` warning, mirroring `unmatchedKinds`'s own precedent;
+dogfooded both directions with the real CLI. Separately, `to` may now be a non-empty ARRAY of
+targets, satisfied by a link matching ANY ONE of them (`targetsOf`) — closes the OR/alternation
+reading of the N-of-M gap, additive, "Round 6" of the dedup-key's recurring bug fixed alongside
+it. An independent, context-free adversarial pass (a fresh agent given only the diff) found no
+crash or silent-wrong-pass bug in either; found two low-severity, non-exit-code cosmetic dedup
+edge cases (order-sensitive array `to`, untrimmed-vs-trimmed `under` dedup) left unfixed and
+recorded, and one pre-existing (not newly introduced) JSON-Schema `minItems` discoverability gap
+shared with the existing `under` non-empty check. General N-of-M cardinality (not just OR) stays
+open, recorded explicitly rather than claimed closed by the narrower alternation shipped here.

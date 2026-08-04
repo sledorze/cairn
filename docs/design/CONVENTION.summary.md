@@ -34,12 +34,15 @@ holds for a developer reader (a captured report line is specific and actionable)
 NOT hold for a product reader (this repo's own `problem-space.md`/`story-map.md`/
 `roadmap.md` are dev-shaped content wearing product-sounding filenames; `checks.coverage`
 enforces link existence only, never content). Schema expressiveness does NOT fully hold
-either: `CoverageRequirement.by` is still single-variant, N-of-M alternation and a freshness
-rule are still unexpressible; `scope` now has a SECOND variant, `{ under: 'some/dir' }`
-— closing the sibling/corpus-wide granularity gap this doc originally named — but `under`
-itself has no validation against the config's real `roots`, a new, narrower, un-closed gap
-found while closing the old one; `CoverageTarget` has three variants (a URL target closed
-another real gap), but only via a plain substring match, not a real URL grammar. Six
+either: `CoverageRequirement.by` is still single-variant, but `to` can now be a non-empty
+ARRAY of targets satisfied by ANY ONE of them, closing the OR/alternation reading of the N-of-M
+gap (general N-of-M cardinality, e.g. "at least 2 of 3," remains unmodeled); a freshness rule
+is still unexpressible; `scope` now has a SECOND variant, `{ under: 'some/dir' }` — closing the
+sibling/corpus-wide granularity gap this doc originally named — and `under` itself is now
+validated too, though at `checkCoverage` run time rather than decode time (`roots` and
+`checks.coverage` can live in different `extends` layers, so no single-layer decode sees both
+at once); `CoverageTarget` has three variants (a URL target closed another real gap), but only
+via a plain substring match, not a real URL grammar. Six
 measurable checks (product-term lexicon ratio, persona audit, evidence-source classifier,
 schema variant census, self-reported-gap closure tracking, hedge-language census) track both
 gaps as numbers over time; the schema variant census and hedge-language census are now

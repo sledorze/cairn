@@ -114,6 +114,44 @@ const CoverageTargetInputSchema = Schema.Union([
   identifier: 'CairnCoverageTarget',
 })
 
+// `CoverageRule.to` was a single `CoverageTarget` (satisfied by ANY ONE
+// matching link — its own natural "at least one" meaning) until this
+// variant: `CONVENTION.md`'s "Judging this convention" Claim 2 named a real
+// gap, closed here — `CoverageRequirement.by` had no N-of-M/alternation
+// construct, so a doc that should satisfy a rule by linking to EITHER a
+// `spikes`-kind doc OR an `external-evidence`-kind doc had no way to say
+// so; two separate rules on the same `from` are always AND'd, never OR'd.
+// Rather than growing `CoverageRequirement.by` a new variant (which would
+// still need a NEW field naming which OTHER rule it alternates with, a much
+// bigger shape change), the minimal fix is here, on `to` itself: a rule
+// with `to` as an ARRAY of targets is satisfied by a link matching ANY ONE
+// of them — the same "at least one" semantics a single target already had,
+// just widened over a set. Purely additive: the plain, non-array
+// `CoverageTargetInputSchema` shape (first union member, unchanged) keeps
+// decoding and behaving exactly as it did — every existing single-`to`
+// config is unaffected. See `targetsOf` (below) for the one place every
+// consumer normalises `to` into a uniform list, and
+// `../structure/Coverage.ts`'s `matchNode` for the actual OR-satisfaction
+// resolution.
+// Extracted to a named function (not inlined into the `Schema.check`),
+// matching `checkUnderNotEmpty`'s own precedent just above — purely to keep
+// call nesting within oxlint's `max-nested-calls`, no behavior difference.
+const checkToArrayNotEmpty = (targets: readonly unknown[]): string | undefined =>
+  targets.length === 0
+    ? "`to` must not be an empty array — a rule with zero alternatives can never be satisfied, the same permanently-unsatisfiable trap an out-of-scope `under` falls into (see `ScopeUnderPathSchema`'s own comment)"
+    : undefined
+
+const toArrayNotEmptyFilter = Schema.makeFilter(checkToArrayNotEmpty)
+
+const CoverageTargetOrAlternativesInputSchema = Schema.Union([
+  CoverageTargetInputSchema,
+  Schema.Array(CoverageTargetInputSchema).pipe(Schema.check(toArrayNotEmptyFilter)),
+]).annotate({
+  description:
+    'A single coverage target (satisfied by any one matching link), or an ARRAY of targets (satisfied by a link matching ANY ONE of them — alternation/OR, e.g. `to: ["spikes", "external-evidence"]`). A non-empty array only — see each element\'s own `CairnCoverageTarget` shape.',
+  identifier: 'CairnCoverageTargetOrAlternatives',
+})
+
 // Adversarial review, before this shipped: `Coverage.ts`'s own
 // `scopeSatisfied` trims leading/trailing slashes off `under` before
 // building `**/${under}/**` — an `under` that trims to the EMPTY string
@@ -226,11 +264,11 @@ const CoverageRuleInputSchema = Schema.Struct({
         '`"sibling"` restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc. `{ under: "some/dir" }` restricts it to a `to`-kind doc nested anywhere below that project-relative directory — narrower than the unscoped corpus-wide default, broader than `"sibling"`. Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus.',
     }),
   ),
-  to: CoverageTargetInputSchema,
+  to: CoverageTargetOrAlternativesInputSchema,
   via: Schema.optionalKey(CoverageRequirementInputSchema),
 }).annotate({
   description:
-    'Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: "path" }`, to a real file on disk, or, when `to` is `{ external: "url", pattern }`, to a URL containing `pattern`.',
+    'Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: "path" }`, to a real file on disk, or, when `to` is `{ external: "url", pattern }`, to a URL containing `pattern`. `to` may also be an ARRAY of targets, satisfied by a link matching ANY ONE of them (alternation/OR).',
   identifier: 'CairnCoverageRule',
 })
 
@@ -269,10 +307,21 @@ const CoverageInputSchema = Schema.Struct({
             issues.push({ issue: `references undeclared kind "${rule.from}"`, path: ['rules', i, 'from'] })
           }
           // `to` names no kind at all when it's `{ external: 'path' }` — the
-          // undeclared-kind check only applies to the plain kind-id string shape.
-          if (isKindTarget(rule.to) && !declaredIds.has(rule.to)) {
-            issues.push({ issue: `references undeclared kind "${rule.to}"`, path: ['rules', i, 'to'] })
-          }
+          // undeclared-kind check only applies to the plain kind-id string
+          // shape. `to` may also be an ARRAY of alternatives (see
+          // `CoverageTargetOrAlternativesInputSchema`'s own comment) — every
+          // element gets the same undeclared-kind check, each pinned to its
+          // own array index so a typo in the SECOND alternative doesn't read
+          // as pointing at the whole `to` field.
+          const toTargets = Array.isArray(rule.to) ? rule.to : [rule.to]
+          toTargets.forEach((target, j) => {
+            if (isKindTarget(target) && !declaredIds.has(target)) {
+              issues.push({
+                issue: `references undeclared kind "${target}"`,
+                path: Array.isArray(rule.to) ? ['rules', i, 'to', j] : ['rules', i, 'to'],
+              })
+            }
+          })
           // `description` is mandatory ONLY when `name` is set — deliberately
           // NOT for every rule (refuted: an unnamed rule's report line, "no
           // link to a 'X'-kind doc," is already fully self-explanatory —
@@ -492,6 +541,30 @@ export const isKindTarget = (target: CoverageTarget): target is string => typeof
 export const isUrlTarget = (target: CoverageTarget): target is { readonly external: 'url'; readonly pattern: string } =>
   !isKindTarget(target) && target.external === 'url'
 
+/** Normalises `CoverageRule.to` (a single target, or an array of
+ * alternatives — see `CoverageTargetOrAlternativesInputSchema`'s own
+ * comment) into a uniform, non-empty list — the ONE place every consumer
+ * (`../structure/Coverage.ts`'s `matchNode`, `../../program/structure/
+ * CheckCoverage.ts`'s dedup key and orphan-candidate/external-candidate
+ * collection) turns "one target or many" into "a list of targets to try,"
+ * matching `isKindTarget`/`isUrlTarget`'s own centralization precedent
+ * above: a future consumer of `to` needs this ONE function updated, not a
+ * `Array.isArray(rule.to) ? rule.to : [rule.to]` re-derived at every call
+ * site. */
+export const targetsOf = (to: CoverageTarget | readonly CoverageTarget[]): readonly CoverageTarget[] =>
+  isTargetArray(to) ? to : [to]
+
+/** A trusted type predicate (not just `Array.isArray` inline) — TS doesn't
+ * reliably narrow a `T | readonly T[]` union back down to the bare `T` in
+ * the `false` branch of an inline `Array.isArray(...)` check (confirmed:
+ * `../program/structure/CheckCoverage.ts`'s report formatter hit exactly
+ * this), so both `targetsOf` above and every OTHER consumer that needs to
+ * branch on "array of alternatives or a single target" go through this one
+ * named, exported predicate instead of repeating an inline `Array.isArray`
+ * that silently fails to narrow. */
+export const isTargetArray = (to: CoverageTarget | readonly CoverageTarget[]): to is readonly CoverageTarget[] =>
+  Array.isArray(to)
+
 export interface CoverageRule {
   /** Real, in-context guidance shown in the report when unmet — see
    * `CoverageRuleInputSchema`'s own comment for why this exists alongside
@@ -507,7 +580,12 @@ export interface CoverageRule {
    * `CoverageRuleInputSchema`'s own comment for why. Absent means today's
    * default: satisfied by a `to`-kind doc anywhere in the corpus. */
   readonly scope?: 'sibling' | { readonly under: string }
-  readonly to: CoverageTarget
+  /** A single target (satisfied by any one matching link), or an ARRAY of
+   * targets — satisfied by a link matching ANY ONE of them (alternation/OR,
+   * e.g. requiring a link to EITHER a `spikes`-kind doc OR an
+   * `external-evidence`-kind doc). See `targetsOf` for how every consumer
+   * normalises this into a uniform list. */
+  readonly to: CoverageTarget | readonly CoverageTarget[]
   /** Defaults to `{ by: 'link' }` when absent — every rule written before
    * this field existed already meant that. */
   readonly via?: CoverageRequirement

@@ -388,6 +388,71 @@ describe('resolveRuleEdges()', () => {
   })
 })
 
+// The gap this closes (docs/design/CONVENTION.md's "Judging this
+// convention" Claim 2): `to` accepting an ARRAY of targets, satisfied by a
+// link matching ANY ONE of them — alternation/OR, not the AND-only
+// semantics multiple separate rules on the same `from` already had.
+describe('to: [...] — alternation/OR over multiple targets', () => {
+  it('is satisfied by a link to EITHER of two kind alternatives — first alternative', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./spikes.md')]),
+      doc('/r/design/pkg/spikes.md', ['spikes']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'roadmap', to: ['spikes', 'evidence'] }] })
+    expect(edges[0]?.satisfiedBy).toHaveLength(1)
+  })
+
+  it('is satisfied by a link to EITHER of two kind alternatives — second alternative', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./evidence.md')]),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'roadmap', to: ['spikes', 'evidence'] }] })
+    expect(edges[0]?.satisfiedBy).toHaveLength(1)
+  })
+
+  // FALSIFIED: the same doc with NEITHER alternative linked is unsatisfied
+  // — confirms this isn't a vacuous always-satisfied alternation.
+  it('is unsatisfied when the doc links to neither alternative', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./unrelated.md')]),
+      doc('/r/design/pkg/spikes.md', ['spikes']),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+      doc('/r/design/pkg/unrelated.md', ['other']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'roadmap', to: ['spikes', 'evidence'] }] })
+    expect(edges[0]?.satisfiedBy).toEqual([])
+  })
+
+  it('mixes a kind alternative with an `{ external: "url", pattern }` alternative — satisfied via the URL branch', () => {
+    const docs = [doc('/r/design/pkg/roadmap.md', ['roadmap'], [urlRef('https://github.com/example/repo/issues/101')])]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [
+        { from: 'roadmap', to: ['spikes', { external: 'url', pattern: 'https://github.com/example/repo/issues/' }] },
+      ],
+    })
+    expect(edges[0]?.satisfiedBy).toHaveLength(1)
+  })
+
+  // `scope: 'sibling'` still applies PER kind-target alternative — a link to
+  // a DIFFERENT directory's kind-matching doc must not satisfy, even though
+  // it's one of several alternatives.
+  it('still honors `scope: "sibling"` per kind alternative', () => {
+    const docs = [
+      doc('/r/design/pkg-a/roadmap.md', ['roadmap'], [ref('../pkg-b/spikes.md')]),
+      doc('/r/design/pkg-b/spikes.md', ['spikes']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', scope: 'sibling', to: ['spikes', 'evidence'] }],
+    })
+    expect(edges[0]?.satisfiedBy).toEqual([])
+  })
+})
+
 describe('collectExternalRefTargets()', () => {
   it('collects the resolved target path of every ref under a from-kind doc whose rule has an external `to`', () => {
     const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../../src/foo.ts'), ref('../../src/bar.ts', 2)])]
@@ -423,6 +488,15 @@ describe('collectExternalRefTargets()', () => {
       [{ from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } }],
     )
     expect(targets).toEqual([])
+  })
+
+  // `to` may be an array of alternatives — a `from` kind is still an
+  // external-candidate source when only ONE of its several alternatives is
+  // `{ external: 'path' }`, not just when the sole `to` is.
+  it('collects a candidate when a `from` kind’s array `to` includes an `{ external: "path" }` alternative among others', () => {
+    const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../src/foo.ts')])]
+    const targets = collectExternalRefTargets(docs, [], [{ from: 'spec', to: ['decision', { external: 'path' }] }])
+    expect(targets).toEqual(['/r/src/foo.ts'])
   })
 
   it('never collects a ref under a doc matching `exempt`', () => {

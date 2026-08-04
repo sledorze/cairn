@@ -57,7 +57,7 @@ test('run() fails with a clear, named error (not a raw destructure TypeError) wh
 })
 
 test('coveragePlugin.format() delegates to formatCoverageReport()', () => {
-  const result = { checked: 1, missing: [], orphans: [], unmatchedKinds: [] }
+  const result = { checked: 1, emptyScopeUnders: [], missing: [], orphans: [], unmatchedKinds: [] }
   expect(coveragePlugin.format(result, { locale: 'en' })).toEqual(formatCoverageReport(result, { locale: 'en' }))
 })
 

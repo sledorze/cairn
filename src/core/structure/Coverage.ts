@@ -16,8 +16,8 @@
 
 import * as nodePath from 'node:path'
 
-import type { CoverageRule } from '../Config.ts'
-import { isKindTarget, isUrlTarget } from '../Config.ts'
+import type { CoverageRule, CoverageTarget } from '../Config.ts'
+import { isKindTarget, isUrlTarget, targetsOf } from '../Config.ts'
 import { matchesAny, matchesGlob } from '../glob.ts'
 import type { DocMetadata, StructureNode } from './DocMetadata.ts'
 
@@ -68,14 +68,17 @@ export interface ResolveRuleEdgesArgs {
   readonly rules: readonly CoverageRule[]
 }
 
-/** Whether one `node` satisfies `rule` for a doc rooted at `fromDir` — pulled
- * out of `resolveRuleEdges`'s own triple-nested loop purely to keep that
- * loop's own block nesting shallow (oxlint's `max-depth`); no behavior
- * change from having this inline. Returns the satisfying target (for
- * `SatisfyingRef.targetPath`) or `null` when `node` doesn't satisfy `rule`
- * at all (wrong node tag, wrong target, whatever the reason). */
-const matchNode = (
+/** Whether one `node` satisfies `rule` AGAINST ONE SPECIFIC `target` (one
+ * element of `targetsOf(rule.to)`) for a doc rooted at `fromDir` — pulled
+ * out of `matchNode`'s own loop purely to keep block nesting shallow
+ * (oxlint's `max-depth`); no behavior change from having this inline for a
+ * rule with a single, non-array `to` (the only case that existed before
+ * alternation). Returns the satisfying target (for `SatisfyingRef.targetPath`)
+ * or `null` when `node` doesn't satisfy `target` at all (wrong node tag,
+ * wrong target, whatever the reason). */
+const matchNodeAgainstTarget = (
   rule: CoverageRule,
+  target: CoverageTarget,
   node: StructureNode,
   fromDir: string,
   docsByPath: ReadonlyMap<string, DocMetadata>,
@@ -86,20 +89,20 @@ const matchNode = (
   // lookup, just a raw substring match against a `urlRef` node's own href
   // (see `StructureNode`'s own comment in ./DocMetadata.ts for why URL
   // targets are a distinct tag from `ref`).
-  if (isUrlTarget(rule.to)) {
-    return node.tag === 'urlRef' && node.target.includes(rule.to.pattern) ? node.target : null
+  if (isUrlTarget(target)) {
+    return node.tag === 'urlRef' && node.target.includes(target.pattern) ? node.target : null
   }
   if (node.tag !== 'ref') {
     return null
   }
   const targetPath = path.resolve(fromDir, node.target)
-  // `rule.to` is either a declared kind id (resolve against the
+  // `target` is either a declared kind id (resolve against the
   // already-classified doc graph, no IO) or `{ external: 'path' }` (resolve
   // against the caller's pre-checked existence set — see
   // `ResolveRuleEdgesArgs.externalExists`'s own comment for why this stays a
   // lookup here, not a filesystem call).
-  const kindSatisfied = isKindTarget(rule.to)
-    ? (docsByPath.get(targetPath)?.kinds.includes(rule.to) ?? false)
+  const kindSatisfied = isKindTarget(target)
+    ? (docsByPath.get(targetPath)?.kinds.includes(target) ?? false)
     : externalExists.has(targetPath)
   // `scope: 'sibling'` (see CoverageRuleInputSchema's own comment for the
   // capturability finding this closes): a wildcard `to`-kind glob matching
@@ -121,12 +124,39 @@ const matchNode = (
   // comment). A leading/trailing slash on `under` is trimmed so
   // `"docs/design/team-b"` and `"/docs/design/team-b/"` behave identically.
   const scopeSatisfied =
-    rule.scope === undefined || !isKindTarget(rule.to)
+    rule.scope === undefined || !isKindTarget(target)
       ? true
       : rule.scope === 'sibling'
         ? path.dirname(targetPath) === fromDir
         : matchesGlob(targetPath, `**/${rule.scope.under.replaceAll(/^\/+|\/+$/g, '')}/**`)
   return kindSatisfied && scopeSatisfied ? targetPath : null
+}
+
+/** Whether one `node` satisfies `rule` for a doc rooted at `fromDir` —
+ * satisfied when the node matches ANY ONE of `rule.to`'s targets
+ * (`targetsOf`'s own "alternation/OR" semantics — see
+ * `CoverageTargetOrAlternativesInputSchema`'s own comment in ../Config.ts).
+ * For a rule with a single, non-array `to` (every rule written before this
+ * field existed already means that), `targetsOf` returns a one-element
+ * list, so this loops exactly once — identical behavior to the pre-
+ * alternation code this replaces. Returns the FIRST satisfying target, not
+ * every one — matches this function's own pre-existing "first satisfying
+ * result wins" contract for a single target; `resolveRuleEdges` below still
+ * collects one `SatisfyingRef` per NODE, not per (node, target) pair. */
+const matchNode = (
+  rule: CoverageRule,
+  node: StructureNode,
+  fromDir: string,
+  docsByPath: ReadonlyMap<string, DocMetadata>,
+  externalExists: ReadonlySet<string>,
+): string | null => {
+  for (const target of targetsOf(rule.to)) {
+    const result = matchNodeAgainstTarget(rule, target, node, fromDir, docsByPath, externalExists)
+    if (result !== null) {
+      return result
+    }
+  }
+  return null
 }
 
 /** For every (doc, rule) pair where `doc.kinds` includes `rule.from` and
@@ -189,8 +219,14 @@ export const collectExternalRefTargets = (
   // — `{ external: 'url', pattern }` (../Config.ts) matches a `urlRef` node
   // directly in `resolveRuleEdges`, no IO involved, so a `from` kind used
   // ONLY by a url rule must not pull every OTHER (unrelated, same-kind) ref
-  // in that doc into the filesystem-check candidate set.
-  const externalFromKinds = new Set(rules.filter((r) => !isKindTarget(r.to) && !isUrlTarget(r.to)).map((r) => r.from))
+  // in that doc into the filesystem-check candidate set. A rule's `to` may
+  // be an array of alternatives (`targetsOf`) — `.some(...)` here means "at
+  // least one alternative needs a real-file check," so a `from` kind is
+  // still included even when only ONE of its several `to` alternatives is
+  // `{ external: 'path' }`.
+  const externalFromKinds = new Set(
+    rules.filter((r) => targetsOf(r.to).some((t) => !isKindTarget(t) && !isUrlTarget(t))).map((r) => r.from),
+  )
   if (externalFromKinds.size === 0) {
     return []
   }

@@ -372,3 +372,100 @@ for why that standing rule (get an independent, context-free read rather than tr
 re-read) exists: the author's own first-pass self-judgment, run immediately after writing the
 capability, missed a bug a fresh reviewer with no investment in the design found on a first
 pass.
+
+## 5. Closing the `under`-vs-`roots` validation gap, and `to` alternation (N-of-M/OR) — a second
+
+round validated the SAME way
+
+Two of Claim 2's remaining named gaps in one task: (a) `under` had zero validation against the
+config's own `roots` (recorded open at the end of section 4 above); (b) `CoverageRequirement.by`
+had no N-of-M/alternation construct at all — two rules on the same `from` were always AND'd,
+never OR'd.
+
+**(a) `under`-vs-`roots`, closed at RUN time, not decode time.** Investigated first, per this
+task's own instruction: `roots` and `checks.coverage` are SIBLING top-level fields in
+`CairnConfigSchema`, and `../config.ts`'s `resolveLayer`/`layerConfig` can set them in DIFFERENT
+`extends` layers — a single-layer schema decode never sees both at once, so a `CoverageInputSchema`-
+or even `CairnConfigSchema`-level cross-field check (the shape `from`/`to` kind-id validation
+already uses) cannot see the real, fully-merged `roots` the way it sees `kinds`. Fixed instead in
+`checkCoverage` (`../../program/structure/CheckCoverage.ts`), once every layer is folded and the
+real doc corpus is actually scanned: for every distinct `under` value any rule uses, check whether
+ANY scanned doc (of ANY kind, not just the rule's own `to` kind — the narrower, more useful
+structural question "does this directory exist in the corpus at all") matches
+`**/<trimmed-under>/**`. Zero matches → `CoverageResult.emptyScopeUnders`, a new non-fatal warning
+line (never `coverageExitCode`), mirroring `unmatchedKinds`'s own precedent exactly (a kind
+matching 0 docs is also just a hint, since mid-rollout is a legitimate zero-docs state).
+Dogfooded for real against a throwaway fixture (`scope: { under: "docs/desing/pkg" }`, a real
+typo) with the real bundled CLI (`dist/cli.js`): reports
+`⚠️  scope { under: "docs/desing/pkg" } matched 0 scanned docs of any kind — check it for a typo,
+that it names a directory under a configured \`root\`, or that no docs simply exist there yet.`alongside the (separately real) missing-coverage finding it explains; fixing the typo to`"docs/design/pkg"`makes the warning disappear on the next run, confirmed both directions.
+Falsified via the same revert/restore discipline as every other fix here: reverting`CheckCoverage.ts`'s `emptyScopeUnders`computation makes the new tests fail with`[]`instead of
+the expected typo'd value (6 tests,`CheckCoverage.unit.test.ts`), restoring makes them pass again.
+
+**(b) `to` alternation.** Closed additively on `CoverageRule.to` itself, not by growing
+`CoverageRequirement.by` a new variant (which would still need a NEW field naming which OTHER rule
+it alternates with — a much bigger shape change than this gap needs): `to` may now be a single
+`CoverageTarget` (unchanged) OR a non-empty ARRAY of them, satisfied by a link matching ANY ONE
+element (`targetsOf`, `src/core/Config.ts`; `matchNode`'s per-target loop, `src/core/structure/
+Coverage.ts`). Every existing consumer of `rule.to` (`matchNode`, `collectExternalRefTargets`'s
+external-candidate set, `CheckCoverage.ts`'s dedup key, `orphanCandidateKinds`, and the report
+formatter) was updated to go through `targetsOf`/the new array branch — confirmed by grepping the
+whole repo for every other `.to`/`isKindTarget(`/`isUrlTarget(` call site outside the three touched
+files (none found, per the independent review below). Real example:
+`{ from: 'roadmap', to: ['spikes', 'evidence'] }` — a `roadmap` doc satisfies coverage by linking
+to EITHER a `spikes`-kind doc OR an `evidence`-kind doc, dogfooded with the real bundled CLI:
+missing when neither is linked, clean the moment either one is. `schema/cairn.schema.json`
+regenerated (`CairnCoverageTargetOrAlternatives`), a changeset added, and the Round-6 dedup-key
+fix (`JSON.stringify(r.to)` unconditionally, replacing the old `isKindTarget(r.to) ? r.to :
+JSON.stringify(r.to)` ternary that assumed `to` was never an array) is itself covered by a
+falsified test, per `CheckCoverage.ts`'s own standing 5-rounds-so-far warning comment.
+
+**Independent, context-free adversarial pass (a fresh agent, no prior context beyond the diff and
+a description of both features, told to try to break them — same discipline as section 4's own
+second-reviewer step).** Findings, reported verbatim rather than summarized away:
+
+- **Real, but pre-existing, not novel**: `schema/cairn.schema.json`'s new array-`to` branch has no
+  `minItems: 1`, so an EDITOR's JSON Schema validation (not `cairn`'s own decoder) would silently
+  accept `to: []` even though `decodeConfig` rejects it for real. Checked against the file's own
+  history: the identical gap already exists for `scope: { under }`'s non-empty check (`Schema.check`
+  filters never propagate into the generated JSON Schema in this codebase's setup) — not a
+  regression this task introduced, a pre-existing limitation of how `scripts/generate-schema.ts`
+  derives the schema. Not fixed here (would need a broader change to how filter constraints
+  propagate into `Schema.toJsonSchemaDocument`, out of this task's scope) — recorded as a known,
+  pre-existing gap rather than silently left undocumented, matching this file's own "hedge
+  language" discipline.
+- **Real, low-severity, not fixed**: the dedup key's `JSON.stringify(r.to)` is order-sensitive for
+  an array `to` — two rules that are semantically the same OR-set but list alternatives in a
+  different order (`['spikes', 'evidence']` vs `['evidence', 'spikes']`) don't dedupe, producing a
+  cosmetic duplicate report line, never a wrong pass/fail or exit code. Separately, a scalar
+  `to: 'foo'` and a single-element array `to: ['foo']` (semantically identical) hash to different
+  keys (`"foo"` vs `["foo"]`) for the same reason. Judged not worth fixing: normalizing (sorting)
+  the array before stringifying adds real complexity for a self-inflicted, cosmetic-only edge case
+  no real config has hit; recorded here rather than silently accepted with no record.
+- **Ruled out, explicitly investigated**: `emptyScopeUnders`'s dedup is by raw (untrimmed) `under`
+  string, so two rules writing `"docs/design"` and `"/docs/design/"` (the same directory,
+  differently formatted) could each independently produce a warning line — cosmetic duplication
+  only, same severity class as the dedup-key finding above, not fixed for the same reason.
+  `isTargetArray`'s explicit predicate was checked for being redundant boilerplate and ruled NOT
+  redundant: `Array.isArray` genuinely fails to narrow a `T | readonly T[]` union in the negative
+  branch under this codebase's TS setup (confirmed: removing it and inlining `Array.isArray`
+  reproduces the exact `tsc` error this task hit and fixed in `formatCoverageReport`). `matchNode`'s
+  "first satisfying target wins" was checked against `resolveRuleEdges`'s own per-NODE (not
+  per-target) `satisfiedBy` collection and found to preserve the exact pre-existing
+  one-node-to-one-match contract — no cardinality assumption elsewhere in the codebase broken.
+
+**Verdict**: (a) closes the STATED gap — a typo'd or out-of-corpus `under` is no longer silent —
+verified by construction (real CLI dogfood both directions, a falsified test). It is knowingly
+NOT a decode-time guarantee the way the kind-id cross-field check is (a real, disclosed
+architectural difference from that precedent, not an oversight); a doc that legitimately doesn't
+exist yet under a correctly-spelled `under` looks identical to a typo, the same accepted ambiguity
+`unmatchedKinds` already lives with. (b) closes the STATED alternation gap for the minimal,
+additive shape asked for (an array `to`, OR-satisfaction) — it does NOT implement general N-of-M
+cardinality (e.g. "at least 2 of these 3 alternatives must be linked"), which the gap's original
+name ("N-of-M/alternation") could be read as promising; recorded here explicitly as the
+narrower-than-the-name reading actually shipped, matching `CONVENTION.md`'s own "Self-reported-gap
+closure tracking" discipline — a future "true N-of-M with a minimum count" request is a real,
+still-open, narrower gap underneath this one, not silently claimed closed by this task. The
+independent adversarial pass found only cosmetic, non-exit-code-affecting edge cases in both, no
+crash, no false-negative silently swallowing a real violation, and confirmed the TypeScript
+narrowing justification in the new code comments is accurate rather than defensive over-engineering.

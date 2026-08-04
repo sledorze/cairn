@@ -194,15 +194,23 @@ no scheme/host/path-segment structure, no wildcard, so a pattern that's too loos
 `github.com`) silently accepts a link to the wrong repo); `scope` has two variants (`'sibling'`
 or `{ under: 'some/dir' }`, both narrower than absent/corpus-wide — the sibling/corpus-wide
 granularity gap this claim originally named is closed, see "Self-reported-gap closure
-tracking" below, but a further one is real and un-closed: `under` is a plain string with zero
-validation against the config's own `roots`, so a typo'd or out-of-scope `under` decodes
-successfully and then silently, permanently reports every rule using it as unsatisfiable —
-`from`/`to` kind ids get exactly this validation via `CoverageInputSchema`'s cross-field check,
-`under` does not); `CoverageRequirement.by` is a single variant (`'link'`, meaning "at
-least one" — no `minCount`/N-of-M/alternation construct, so two rules on the same `from` are
-always AND'd, never OR'd); and nothing in the schema touches dates/mtimes at all, so a "doc
-must be re-validated after N months" freshness rule is outside its vocabulary entirely, not
-just unconfigured.
+tracking" below, and the `under`-vs-`roots` gap named in an earlier review round is now closed
+too, though NOT the way the kind-id cross-field check closes its own equivalent gap: `roots`
+and `checks.coverage` are sibling top-level fields that can be set in different `extends`
+layers, so no single-layer schema decode can see both at once the way `CoverageInputSchema`'s
+cross-field check sees `kinds`/`rules` together — the fix lives at `checkCoverage` RUN time
+instead (`program/structure/CheckCoverage.ts`'s `emptyScopeUnders`), once every layer is folded
+and the real doc corpus is scanned: a typo'd or out-of-corpus `under` is now a non-fatal warning
+naming the exact value, not silent. See `review-prompts.md` section 5 for the real dogfood/
+falsification evidence and an independent adversarial pass's findings on both this and the next
+gap); `CoverageRequirement.by` is still a single variant (`'link'`), but the N-of-M/alternation
+gap this named is now PARTIALLY closed a different way, on `to` rather than `by`: `to` may be a
+single target (unchanged) or a non-empty ARRAY of targets, satisfied by a link matching ANY ONE
+of them (`targetsOf`, `core/Config.ts`) — closes the "either A or B" (OR/alternation) reading of
+this gap, but not general N-of-M cardinality (e.g. "at least 2 of these 3"), which remains
+unmodeled and is recorded as such rather than claimed closed (`review-prompts.md` section 5); and
+nothing in the schema touches dates/mtimes at all, so a "doc must be re-validated after N months"
+freshness rule is outside its vocabulary entirely, not just unconfigured.
 
 A prompt for re-checking these two claims later, and reusable checklists for applying the
 same kind of review to `checks.coverage` in any other domain, live in
@@ -243,17 +251,22 @@ not prose:**
 
 - **Self-reported-gap closure tracking**: this doc originally named two open gaps
   (URL-pattern target, product-issue/vision layer); a third (sibling/corpus-wide scope
-  granularity) was named later, in Claim 2's own re-review. Two of the three are now closed
-  (`CoverageTarget`'s third variant; `CoverageRule.scope`'s `{ under: '...' }` variant, see
-  `review-prompts.md`'s section 4 for the real dogfood/falsification evidence) — closing the
-  second one surfaced a new, narrower, un-closed gap in its place (`under` has no validation
-  against `roots`, recorded in Claim 2 above and in `review-prompts.md`'s own adversarial
-  self-judgment), which is itself the expected shape of this tracking: closing a gap can
-  reveal a smaller one underneath, and that smaller one gets recorded rather than glossed
-  over, not treated as the original gap secretly still open. The product-issue/vision layer
-  remains open. On a fixed cadence (e.g. every time this doc is next substantively edited),
-  check whether a remaining gap has a real filed GitHub issue; an item surviving multiple such
-  checks with no filed issue is a signal the "future work" framing has gone stale, not active.
+  granularity) was named later, in Claim 2's own re-review. Three of the running total are now
+  closed (`CoverageTarget`'s third variant; `CoverageRule.scope`'s `{ under: '...' }` variant,
+  see `review-prompts.md`'s section 4 for the real dogfood/falsification evidence) — closing the
+  scope-granularity gap surfaced a new, narrower one in its place (`under` had no validation
+  against `roots`), which is itself the expected shape of this tracking: closing a gap can
+  reveal a smaller one underneath, recorded rather than glossed over. That narrower gap is now
+  ALSO closed, though at run time rather than decode time (a real architectural difference from
+  the kind-id cross-field check's own decode-time guarantee, not an oversight — `roots` and
+  `checks.coverage` can live in different `extends` layers, so no single-layer decode can see
+  both), and the N-of-M/alternation gap is PARTIALLY closed (the OR/alternation reading, via an
+  array `to`; general N-of-M cardinality remains open) — see `review-prompts.md`'s section 5 for
+  the real dogfood/falsification evidence and an independent adversarial pass's findings on both.
+  The product-issue/vision layer and the narrower N-of-M-cardinality gap remain open. On a fixed
+  cadence (e.g. every time this doc is next substantively edited), check whether a remaining gap
+  has a real filed GitHub issue; an item surviving multiple such checks with no filed issue is a
+  signal the "future work" framing has gone stale, not active.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release

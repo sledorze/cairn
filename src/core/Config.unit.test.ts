@@ -598,6 +598,113 @@ describe('decodeConfig()', () => {
     expect(Result.isSuccess(decodeConfig(raw))).toBeTruthy()
   })
 
+  // The gap this closes: `CoverageRequirement.by` had no N-of-M/alternation
+  // construct — a rule could only require a link to ONE specific kind (or
+  // one external target), never "either A or B" (see docs/design/
+  // CONVENTION.md's "Judging this convention" Claim 2). `to` accepting an
+  // ARRAY of targets is the minimal, additive fix: satisfied by a link
+  // matching ANY ONE of the array's elements.
+  describe('`to` accepting an array of targets — alternation/OR', () => {
+    it('decodes a rule’s `to` as an array of two kind ids', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              {
+                description: 'A roadmap doc.',
+                id: 'roadmap',
+                select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+              },
+              {
+                description: 'A feasibility-spike doc.',
+                id: 'spikes',
+                select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+              },
+              {
+                description: 'An external-evidence doc.',
+                id: 'external-evidence',
+                select: { by: 'path', glob: '**/docs/design/*/external-evidence.md' },
+              },
+            ],
+            rules: [{ from: 'roadmap', to: ['spikes', 'external-evidence'] }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('decodes an array `to` mixing a kind id and an `{ external: "url", pattern }` alternative', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [
+              {
+                from: 'spec',
+                to: ['decision', { external: 'url', pattern: 'https://github.com/example/repo/issues/' }],
+              },
+            ],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('returns a Failure when `to` is an empty array — a rule with zero alternatives can never be satisfied', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [{ from: 'spec', to: [] }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when an array `to` names an undeclared kind id, pinned to its own array index', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [{ from: 'spec', to: ['decision', 'nonexistent'] }],
+          },
+        },
+      })
+      if (!Result.isFailure(result)) {
+        throw new Error('expected a Failure')
+      }
+      expect(result.failure.message).toContain('references undeclared kind "nonexistent"')
+    })
+
+    // Purely additive: a plain (non-array) `to` — every existing config —
+    // must keep decoding and behaving exactly as it did before this variant
+    // existed.
+    it('still decodes a plain (non-array) `to` unchanged after adding array alternation', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [{ from: 'spec', to: 'decision' }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+  })
+
   it('returns a Failure on a wrong-typed field instead of silently reverting to the default', () => {
     expect(Result.isFailure(decodeConfig({ roots: 'docs' }))).toBeTruthy()
     expect(Result.isFailure(decodeConfig({ thresholdLines: 'many' }))).toBeTruthy()
