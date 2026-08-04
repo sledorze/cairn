@@ -321,6 +321,13 @@ describe('loadConfig()', () => {
     expect(config.checks.proseRefs).toEqual({ ignore: ['from-local/*.ts'] })
   })
 
+  it('defaults `checks.proseRefs.ignore` to an empty array when the section is present but `ignore` is not', async () => {
+    const cwd = mkTmp('cairn-proserefs-empty-section-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { proseRefs: {} } }))
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.proseRefs).toEqual({ ignore: [] })
+  })
+
   it('re-disables `checks.coverage` with `false` when a local config overrides an `extends` preset that enabled it', async () => {
     const cwd = mkTmp('cairn-extends-coverage-disable-')
     fs.writeFileSync(
