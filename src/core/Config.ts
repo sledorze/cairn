@@ -671,6 +671,32 @@ const FreshnessOrDisabledSchema = Schema.Union([FreshnessInputSchema, Schema.Lit
 // base config) in `layerConfig`, below.
 const CoverageOrDisabledSchema = Schema.Union([CoverageInputSchema, Schema.Literal(false)])
 
+// REX feedback (dogfooding, issue-tracked as a real false-positive report):
+// a doc that itself documents a path FORMAT — a table of sample paths, a
+// prose example naming a fictitious filename — has no way to write that
+// example without `--prose-refs` treating it as a real citation to verify.
+// `ignore` here is the config-level escape hatch: exact backticked text (or
+// a glob over it) that's always illustrative, never a citation, matched
+// before existence is ever checked — same shape as the top-level `ignore`
+// field already uses for excluding files from scanning, applied instead to
+// the cited TEXT itself.
+const ProseRefsInputSchema = Schema.Struct({
+  ignore: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description:
+        'Backticked prose citations (exact text, or a glob over it) to always treat as illustrative — never ' +
+        'checked for existence, same as a citation that already resolves. For a path-shaped example in a format ' +
+        'table or a case study using a fictitious filename, not for excluding real, resolvable citations. ' +
+        'Matched against the literal backticked text (e.g. `src/a.ts`), not a filesystem path.',
+    }),
+  ),
+}).annotate({
+  description:
+    'Tuning for `--prose-refs` (a CLI-flag opt-in check; this config section only tunes it, it does not enable ' +
+    'it — absent means no ignore list, not disabled).',
+  identifier: 'CairnProseRefsConfig',
+})
+
 const ChecksInputSchema = Schema.Struct({
   coverage: Schema.optionalKey(CoverageOrDisabledSchema),
   docCoverage: Schema.optionalKey(DocCoverageOrDisabledSchema),
@@ -678,6 +704,7 @@ const ChecksInputSchema = Schema.Struct({
   links: Schema.optionalKey(
     Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
   ),
+  proseRefs: Schema.optionalKey(ProseRefsInputSchema),
   summaries: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Enable summary freshness checking (content-hash based). Default true.',
@@ -943,6 +970,10 @@ export interface FreshnessConfig {
   readonly rules: readonly FreshnessRule[]
 }
 
+export interface ProseRefsConfig {
+  readonly ignore: readonly string[]
+}
+
 export interface ChecksConfig {
   /** `null` = disabled (the default) — presence of `checks.coverage` in a
    * config file is itself the opt-in, not a separate boolean flag. */
@@ -953,6 +984,10 @@ export interface ChecksConfig {
    * `docCoverage` above. */
   readonly freshness: FreshnessConfig | null
   readonly links: boolean
+  /** Never `null` — unlike `coverage`/`docCoverage`/`freshness`, this doesn't
+   * gate whether `--prose-refs` runs (the CLI flag alone does that); it only
+   * tunes its ignore list, so an empty list is the only "off" state. */
+  readonly proseRefs: ProseRefsConfig
   readonly summaries: boolean
 }
 
@@ -993,7 +1028,14 @@ export interface Overrides {
 }
 
 export const DEFAULT_CONFIG: ResolvedConfig = {
-  checks: { coverage: null, docCoverage: null, freshness: null, links: true, summaries: true },
+  checks: {
+    coverage: null,
+    docCoverage: null,
+    freshness: null,
+    links: true,
+    proseRefs: { ignore: [] },
+    summaries: true,
+  },
   ignore: ['**/node_modules/**'],
   locale: 'en',
   naming: DEFAULT_NAMING,
@@ -1080,6 +1122,13 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
           ? null
           : { rules: layer.checks.freshness.rules },
     links: layer.checks?.links ?? base.checks.links,
+    // Not the three-way undefined/false/replace pattern above — `proseRefs`
+    // has no disabled state (see `ChecksConfig.proseRefs`'s own comment), so
+    // an absent `checks.proseRefs` in this layer simply inherits `base`, and
+    // a present one replaces `ignore` wholesale (same as `roots`/top-level
+    // `ignore` do), never merges array-by-array with the base's list.
+    proseRefs:
+      layer.checks?.proseRefs === undefined ? base.checks.proseRefs : { ignore: layer.checks.proseRefs.ignore ?? [] },
     summaries: layer.checks?.summaries ?? base.checks.summaries,
   },
   naming: {
