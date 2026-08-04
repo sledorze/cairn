@@ -707,8 +707,8 @@ describe('decodeConfig()', () => {
 
   // The still-open half of the N-of-M/alternation gap `to: [...]` (above)
   // only ever closed the OR/"any one" reading of (docs/design/
-  // CONVENTION.md's "Judging this convention" Claim 2, docs/design/
-  // review-prompts.md section 5): `{ atLeast: { n, of } }` requires at
+  // CONVENTION.md's "Judging this convention" Claim 2,
+  // docs/design/review-findings.md section 3): `{ atLeast: { n, of } }` requires at
   // least `n` DISTINCT `of`-targets to each have their own satisfying
   // link, and `{ any: [...] }` is the explicit, named spelling of the
   // bare-array form.

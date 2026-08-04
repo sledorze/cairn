@@ -72,7 +72,7 @@ export interface CoverageResult {
    * `to` kind (see `checkCoverage`'s own comment for why the wider check).
    * Sorted, de-duplicated `under` strings. A real, self-found gap
    * (docs/design/CONVENTION.md's "Judging this convention" Claim 2,
-   * docs/design/review-prompts.md section 4's own adversarial
+   * docs/design/review-findings.md section 2's own adversarial
    * self-judgment): `under` was validated against neither the declared
    * kind ids (which DO get a decode-time cross-field check, see
    * `CoverageInputSchema` in ../../core/Config.ts) nor `roots` — a typo'd

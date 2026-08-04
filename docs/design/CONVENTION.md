@@ -201,7 +201,7 @@ layers, so no single-layer schema decode can see both at once the way `CoverageI
 cross-field check sees `kinds`/`rules` together — the fix lives at `checkCoverage` RUN time
 instead (`program/structure/CheckCoverage.ts`'s `emptyScopeUnders`), once every layer is folded
 and the real doc corpus is scanned: a typo'd or out-of-corpus `under` is now a non-fatal warning
-naming the exact value, not silent. See `review-prompts.md` section 5 for the real dogfood/
+naming the exact value, not silent. See `review-findings.md` section 3 for the real dogfood/
 falsification evidence and an independent adversarial pass's findings on both this and the next
 gap); `CoverageRequirement.by` is still a single variant (`'link'`), but the N-of-M/alternation
 gap this named is now CLOSED, on `to` rather than `by`, in two increments: `to` may be a single
@@ -213,8 +213,8 @@ which closed the "either A or B" (OR/alternation) reading of this gap first; and
 satisfying link, which closes the general N-of-M cardinality reading the first increment
 deliberately left open (e.g. "at least 2 of these 3" — a single link is not enough, unlike the
 OR shape). "All of these" needed no separate variant: it's `n: of.length` over the same shape,
-not a fourth `to` case. See `review-prompts.md` section 5 for the OR-only increment's dogfood/
-falsification evidence and its independent adversarial pass, and section 6 for the `atLeast`
+not a fourth `to` case. See `review-findings.md` section 3 for the OR-only increment's dogfood/
+falsification evidence and its independent adversarial pass, and section 4 for the `atLeast`
 increment's own.
 
 The dates/mtimes gap this paragraph originally named is now CLOSED, but NOT inside
@@ -227,7 +227,7 @@ to that doc"). Bolting a `maxAgeDays` onto `CoverageRule` would have repeated th
 "one bespoke variant per round" growth pattern the "Noted-but-deferred structural observation"
 paragraph below already flags as a design smell for `scope` — so it's wired independently
 instead, the same way `checks.docCoverage` itself is independent of `checks.coverage` rather
-than a field grafted onto it. See `review-prompts.md` section 7 for the real dogfood/
+than a field grafted onto it. See `review-findings.md` section 5 for the real dogfood/
 falsification evidence, including the falsestart origin below.
 
 **The falsestart context.** This gap wasn't hypothetical — it's the SAME real incident
@@ -277,7 +277,7 @@ name, exactly the failure mode `CoverageRequirement.by`'s own comment already wa
 a different field (room for a REAL future variant is fine; a speculative one designed before its
 second concrete instance exists is not). Two named, independently-motivated union variants are
 also not yet a maintenance burden: each was added, tested, and dogfooded on its own (see
-`review-prompts.md` sections 4 and 5), and `scripts/coverage-metrics.ts`'s schema variant census
+`review-findings.md` sections 2 and 3), and `scripts/coverage-metrics.ts`'s schema variant census
 already tracks `CoverageRule.scope`'s variant count over time, so a THIRD ad hoc variant showing
 up later would itself be visible, measurable evidence — not a silent surprise. **What would
 justify revisiting it**: a genuine third scope-relation requirement surfacing from REAL use (a
@@ -290,7 +290,9 @@ silently generalizing prematurely or silently ignoring a structurally-valid crit
 
 A prompt for re-checking these two claims later, and reusable checklists for applying the
 same kind of review to `checks.coverage` in any other domain, live in
-[`review-prompts.md`](./review-prompts.md).
+[`review-prompts.md`](./review-prompts.md); the real, dated evidence from every round of
+actually running those prompts against this repo (and others) lives in
+[`review-findings.md`](./review-findings.md).
 
 **Measurable checks, compiled from both claims above — track these as numbers over time,
 not prose:**
@@ -308,10 +310,20 @@ not prose:**
   classify each citation as GitHub-issue-only versus interview/survey/support-ticket-volume/
   analytics; flag packages where 100% of cited evidence is a single maintainer-filed issue.
 - **Schema variant census**: count `KindSelector.by`, `CoverageTarget`,
-  `CoverageRequirement.by`, and `CoverageRule.scope`'s Literal/Union variants — computed for
-  real by `scripts/coverage-metrics.ts` (`pnpm run coverage-metrics`) rather than
-  hand-counted, since a prior round of this same review hand-counted `KindSelector.by` as 1
-  and it silently went stale the moment `by: "frontmatter"` was added. Current real output:
+  `CoverageRequirement.by`, `CoverageRule.scope`, and `CoverageRule.to`'s Literal/Union
+  variants — computed for real by `scripts/coverage-metrics.ts` (`pnpm run
+coverage-metrics`) rather than hand-counted, since a prior round of this same review
+  hand-counted `KindSelector.by` as 1 and it silently went stale the moment
+  `by: "frontmatter"` was added. `CoverageRule.to` was added as its own tracked counter in
+  this round: the N-of-M/alternation gap (sections 5-6 below) grew `to`
+  (`CoverageTargetOrAlternativesInputSchema`) from a single target to 4 variants (single,
+  array, `{ any }`, `{ atLeast }`) — `CoverageRequirement.by` was the field this doc
+  originally expected that growth to land on, but it stayed a single `'link'` literal
+  throughout (see that field's own comment in `Config.ts`: growing `by` would have needed an
+  extra field naming which OTHER rule to alternate with, a bigger shape change than the gap
+  needed) — so without a dedicated `to` counter, this exact growth would have been invisible
+  to this census even though it's the single largest variant-count change tracked here.
+  Current real output:
 
   ```
   Schema variant census (src/core/Config.ts):
@@ -319,6 +331,7 @@ not prose:**
     CoverageTarget:           3
     CoverageRequirement.by:   1
     CoverageRule.scope:       2
+    CoverageRule.to:          4
   ```
 
   Keep a running log of real requests that needed a variant that doesn't exist yet — a
@@ -329,7 +342,7 @@ not prose:**
   (URL-pattern target, product-issue/vision layer); a third (sibling/corpus-wide scope
   granularity) was named later, in Claim 2's own re-review. Three of the running total are now
   closed (`CoverageTarget`'s third variant; `CoverageRule.scope`'s `{ under: '...' }` variant,
-  see `review-prompts.md`'s section 4 for the real dogfood/falsification evidence) — closing the
+  see `review-findings.md`'s section 2 for the real dogfood/falsification evidence) — closing the
   scope-granularity gap surfaced a new, narrower one in its place (`under` had no validation
   against `roots`), which is itself the expected shape of this tracking: closing a gap can
   reveal a smaller one underneath, recorded rather than glossed over. That narrower gap is now
@@ -338,20 +351,62 @@ not prose:**
   `checks.coverage` can live in different `extends` layers, so no single-layer decode can see
   both), and the N-of-M/alternation gap is now FULLY closed, in two increments (the
   OR/alternation reading first, via an array `to`/`{ any }`; then general N-of-M cardinality,
-  via `{ atLeast: { n, of } }`) — see `review-prompts.md`'s section 5 for the OR-only
+  via `{ atLeast: { n, of } }`) — see `review-findings.md`'s section 3 for the OR-only
   increment's real dogfood/falsification evidence and an independent adversarial pass's
-  findings, and section 6 for the `atLeast` increment's own. A related structural critique
+  findings, and section 4 for the `atLeast` increment's own. A related structural critique
   (unifying `scope`'s two variants into one general path-relation primitive) was raised in the
   SAME round `atLeast` closed and deliberately NOT built — see the dedicated "Noted-but-deferred
   structural observation" paragraph above; recorded as considered-and-declined, a third category
   distinct from both "closed" and "open" in this tracking. The dates/mtimes (freshness) gap
   named in this same re-review is now ALSO closed — as its own separate `checks.freshness`
   check, deliberately NOT a `CoverageRule` field, per the dedicated paragraph above; see
-  `review-prompts.md` section 7 for its real dogfood/falsification evidence. The
+  `review-findings.md` section 5 for its real dogfood/falsification evidence. The
   product-issue/vision layer remains open. On a fixed cadence (e.g. every time this doc is next
   substantively edited), check whether a remaining gap has a real filed GitHub issue; an item
   surviving multiple such checks with no filed issue is a signal the "future work" framing has
   gone stale, not active.
+- **JSON-Schema cross-field-constraint gap — investigated for real, partially closed, and the
+  remainder now precisely explained rather than left as a vague "pre-existing" note.**
+  `schema/cairn.schema.json` (generated by `scripts/generate-schema.ts` via `effect`'s
+  `Schema.toJsonSchemaDocument`) only ever reflected SINGLE-FIELD constraints (e.g.
+  `atLeast.n`'s own `minimum: 1`) — every CROSS-FIELD/cross-element decode-time check in
+  `core/Config.ts` (the `to` array's non-empty check, `atLeast.n <= atLeast.of.length` plus its
+  no-duplicate-target check, `under`'s non-empty-after-trim check, and the top-level
+  undeclared-kind-id/description-mandatory-when-named check) was invisible to an editor's JSON
+  Schema autocomplete/tooltip, even though `cairn check` still caught the real violation at
+  runtime. Investigated directly against `effect@4.0.0-beta.102`'s own source, not assumed:
+  `internal/schema/toJsonSchemaDocument.ts`'s `compileCheck` unconditionally drops a
+  `Schema.Filter` that carries no `toJsonSchema` annotation callback
+  (`if (check._tag === "Filter") return undefined`) — confirmed by a standalone
+  `Schema.toJsonSchemaDocument` probe reproducing exactly this silent drop. What the same
+  function ALSO does, confirmed by the same probe: when a filter's `annotations` DOES carry a
+  `toJsonSchema` callback — even a no-op `() => ({})` — `compileCheck` takes its other branch,
+  which merges in `collectJsonSchemaAnnotations(annotations, ...)`, and that function DOES read
+  a plain `description` string. So a real, honest, additive fix exists and is now applied
+  (`Config.ts`'s `jsonSchemaHint` helper, used by all four cross-field filters above): each now
+  carries a `description` + no-op `toJsonSchema` annotation, which shows up in
+  `schema/cairn.schema.json` as an `allOf: [{ description: "..." }]` fragment an editor's
+  tooltip renders as prose. This closes the DISCOVERABILITY half of the gap (a reader can now
+  see the constraint exists and what it means) but deliberately NOT the STRUCTURAL half:
+  `cairn`'s own filters express arbitrary predicates (element-to-element duplicate checks,
+  one-field-compared-to-another's-length checks) that plain JSON Schema draft 2020-12 keywords
+  (`minItems`, `dependentSchemas`, `if`/`then`) cannot encode for the general case even in
+  principle, and `Schema.toJsonSchemaDocument` makes no attempt to special-case an arbitrary
+  user-supplied filter predicate into a structural fragment — an editor still cannot flag the
+  violation before `cairn check` runs; only after this fix can it at least SAY what the rule is.
+  A real, sharp-edged pitfall was found and fixed while implementing this, not merely
+  disclosed: `.annotate()` chained directly after `.pipe(Schema.check(...))` on the SAME schema
+  node overwrites that check's own `description` rather than adding a second, separate one (the
+  two descriptions silently collapse to whichever is applied last) — caught for real via the
+  same standalone probe (`ScopeUnderPathSchema`'s `under` field lost its own filter's hint this
+  way on first write); fixed by reordering to `.annotate()` BEFORE `.pipe(Schema.check(...))`,
+  confirmed both descriptions now coexist in `schema/cairn.schema.json`'s
+  `CairnCoverageRuleScopeUnder.properties.under`. An independent adversarial pass and its own
+  steelman surfaced one real, narrower follow-up this framing understated: `atLeast.of`'s
+  no-duplicate-target half specifically IS expressible via the standard `uniqueItems: true`
+  JSON Schema keyword — not attempted in this round, a genuine smaller open item, distinct from
+  the `n <= of.length`/undeclared-kind-id checks which remain unexpressible in plain JSON
+  Schema. Full investigation, falsification, and adversarial pass: `review-findings.md` section 6.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release

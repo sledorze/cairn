@@ -106,9 +106,34 @@ const countInlineLiterals = (declText: string): number => {
   return matches === null ? 0 : matches.length
 }
 
+/** Thrown when `countUnionVariants` reports "not a union" for a schema this
+ * script assumes is one — a tagged subclass (not a bare `new Error(...)`) so
+ * a caller could `instanceof`-narrow it, matching this repo's own
+ * no-raw-error discipline even in a plain Node script outside the Effect
+ * runtime this rule was written for. */
+class SchemaShapeMismatchError extends Error {
+  constructor(declarationName: string) {
+    super(`coverage-metrics: expected ${declarationName} to be a Schema.Union`)
+    this.name = 'SchemaShapeMismatchError'
+  }
+}
+
+/** Returns `count` unless it's `undefined`, in which case it throws a typed
+ * `SchemaShapeMismatchError` naming `declarationName` — the single place every
+ * "is this declaration really a Schema.Union" assertion in
+ * `computeSchemaVariantCensus` goes through, so no call site repeats a raw
+ * `throw new Error(...)`. */
+const expectVariantCount = (count: number | undefined, declarationName: string): number => {
+  if (count === undefined) {
+    throw new SchemaShapeMismatchError(declarationName)
+  }
+  return count
+}
+
 interface SchemaVariantCensus {
   readonly coverageRequirementByVariants: number
   readonly coverageRuleScopeVariants: number
+  readonly coverageRuleToVariants: number
   readonly coverageTargetVariants: number
   readonly kindSelectorVariants: number
 }
@@ -124,10 +149,23 @@ export const computeSchemaVariantCensus = (configSource: string): SchemaVariantC
   // inline literals, and `scope` now is too, so it's counted the same way as
   // the other two named unions instead of via the inline-literal fallback.
   const coverageRuleScopeDecl = extractDecl(configSource, 'CoverageRuleScopeInputSchema')
+  // `CoverageRule.to` (`CoverageTargetOrAlternativesInputSchema`) is the
+  // field that ACTUALLY grew when the N-of-M/alternation gap was closed
+  // (`review-prompts.md` sections 5-6: a bare array, `{ any }`, `{ atLeast }`
+  // were all added here) — not `CoverageRequirementInputSchema.by`, which a
+  // prior round of this same review initially expected to grow and which in
+  // fact stayed a single `'link'` literal throughout (see that field's own
+  // comment in `Config.ts`: growing `by` would have needed an extra field
+  // naming which OTHER rule to alternate with, a bigger shape change than
+  // the gap needed). Tracked as its own named counter so this specific
+  // growing dimension is measured directly, instead of being invisible
+  // under a label (`CoverageRequirement.by`) that never actually moves.
+  const coverageRuleToDecl = extractDecl(configSource, 'CoverageTargetOrAlternativesInputSchema')
 
   const kindSelectorVariants = countUnionVariants(kindSelectorDecl)
   const coverageTargetVariants = countUnionVariants(coverageTargetDecl)
   const coverageRuleScopeVariants = countUnionVariants(coverageRuleScopeDecl)
+  const coverageRuleToVariants = countUnionVariants(coverageRuleToDecl)
   if (kindSelectorVariants === undefined) {
     throw new Error('coverage-metrics: expected KindSelectorInputSchema to be a Schema.Union')
   }
@@ -138,9 +176,15 @@ export const computeSchemaVariantCensus = (configSource: string): SchemaVariantC
     throw new Error('coverage-metrics: expected CoverageRuleScopeInputSchema to be a Schema.Union')
   }
 
+  const coverageRuleToVariantsChecked = expectVariantCount(
+    coverageRuleToVariants,
+    'CoverageTargetOrAlternativesInputSchema',
+  )
+
   return {
     coverageRequirementByVariants: countInlineLiterals(coverageRequirementDecl),
     coverageRuleScopeVariants,
+    coverageRuleToVariants: coverageRuleToVariantsChecked,
     coverageTargetVariants,
     kindSelectorVariants,
   }
@@ -200,6 +244,7 @@ const formatReport = (census: SchemaVariantCensus, hedges: HedgeLanguageCensus):
     `  ${pad('CoverageTarget:', 26)}${census.coverageTargetVariants}`,
     `  ${pad('CoverageRequirement.by:', 26)}${census.coverageRequirementByVariants}`,
     `  ${pad('CoverageRule.scope:', 26)}${census.coverageRuleScopeVariants}`,
+    `  ${pad('CoverageRule.to:', 26)}${census.coverageRuleToVariants}`,
     '',
     'Hedge-language census (docs/**/*.md, excluding .cairn/):',
     ...HEDGE_PHRASES.map((phrase) => `  ${pad(`"${phrase}":`, 26)}${hedges.perPhrase[phrase]}`),

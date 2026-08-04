@@ -23,6 +23,34 @@ import type { KindDef } from './structure/DocMetadata.ts'
 import type { Naming } from './summaries/DocSummaries.ts'
 import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './summaries/DocSummaries.ts'
 
+// Every cross-field/cross-element `Schema.makeFilter` in this file (the `to`
+// array's non-empty check, `atLeast`'s `n <= of.length`/no-duplicate check,
+// `under`'s non-empty-after-trim check, and `CoverageInputSchema`'s own
+// undeclared-kind/description-mandatory check below) enforces a constraint
+// `Schema.toJsonSchemaDocument` (`scripts/generate-schema.ts`) cannot express
+// STRUCTURALLY — investigated for real against `effect@4.0.0-beta.102`'s own
+// source (`internal/schema/toJsonSchemaDocument.ts`'s `compileCheck`): a
+// `Schema.Filter` with no `toJsonSchema` annotation callback is silently
+// dropped from the generated JSON Schema entirely (`if (check._tag ===
+// "Filter") return undefined`), which is the gap `docs/design/CONVENTION.md`
+// previously described only vaguely ("pre-existing, not newly introduced").
+// What IS real and available, confirmed by reading `compileCheck` and
+// proving it with a standalone `Schema.toJsonSchemaDocument` run: a filter
+// carrying a `toJsonSchema` callback — even a no-op `() => ({})` — makes
+// `compileCheck` take its OTHER branch, which also merges in
+// `collectJsonSchemaAnnotations(annotations, ...)` — and THAT function does
+// read a plain `description` string. The result is an `allOf: [{
+// description: "..." }]` fragment attached to the surrounding struct/array,
+// which an editor's JSON Schema tooltip renders as prose — not a structural
+// guarantee (no editor can flag the violation before `cairn check` runs),
+// but a real, honest improvement over total silence. This helper is the one
+// place that pattern is applied, so every cross-field check gets the same
+// treatment rather than each call site reinventing the no-op callback.
+const jsonSchemaHint = (description: string): Schema.Annotations.Filter => ({
+  description,
+  toJsonSchema: () => ({}),
+})
+
 // `by: 'path'` (glob-only) or `by: 'frontmatter'` (a flat YAML frontmatter
 // field/value match) — see `KindSelector`'s own comment in
 // `../structure/DocMetadata.ts` for why `by: 'frontmatter'` was added: this
@@ -141,7 +169,12 @@ const checkToArrayNotEmpty = (targets: readonly unknown[]): string | undefined =
     ? "`to` must not be an empty array — a rule with zero alternatives can never be satisfied, the same permanently-unsatisfiable trap an out-of-scope `under` falls into (see `ScopeUnderPathSchema`'s own comment)"
     : undefined
 
-const toArrayNotEmptyFilter = Schema.makeFilter(checkToArrayNotEmpty)
+const toArrayNotEmptyFilter = Schema.makeFilter(
+  checkToArrayNotEmpty,
+  jsonSchemaHint(
+    "An array `to` must be non-empty — a rule with zero alternatives can never be satisfied. Enforced at decode time; not visible here as a structural `minItems`, see `jsonSchemaHint`'s own comment for why.",
+  ),
+)
 
 // `{ any: [...] }` — the explicit, named form of the bare-array alternation
 // shape just above (`to: ['spikes', 'evidence']`). Added alongside the new
@@ -150,7 +183,7 @@ const toArrayNotEmptyFilter = Schema.makeFilter(checkToArrayNotEmpty)
 // these" counterpart instead of a bare array meaning one thing and a
 // labelled object meaning another. Deliberately NOT a replacement for the
 // bare array: that shape already shipped (docs/design/CONVENTION.md, docs/
-// design/review-prompts.md section 5) and every config written against it
+// design/review-findings.md section 3) and every config written against it
 // must keep decoding and behaving exactly as it did — `to: [...]` and
 // `to: { any: [...] }` are two spellings of the identical "at least one of
 // these" semantics, both supported, neither deprecated.
@@ -164,7 +197,7 @@ const AnyTargetInputSchema = Schema.Struct({
 
 // `{ atLeast: { n, of } }` — the still-open half of the N-of-M/alternation
 // gap `docs/design/CONVENTION.md`'s "Judging this convention" Claim 2 and
-// `docs/design/review-prompts.md` section 5 both named and left unclosed:
+// `docs/design/review-findings.md` section 3 both named and left unclosed:
 // the bare-array/`any` shape only ever expresses "at least ONE of these";
 // nothing could express "at least N of these" for N > 1, nor an explicit
 // "every one of these" distinct from N separately-AND'd rules on the same
@@ -215,7 +248,12 @@ const checkAtLeastSane = (v: { readonly n: number; readonly of: readonly unknown
   return undefined
 }
 
-const atLeastSaneFilter = Schema.makeFilter(checkAtLeastSane)
+const atLeastSaneFilter = Schema.makeFilter(
+  checkAtLeastSane,
+  jsonSchemaHint(
+    "`atLeast.of` must be non-empty and contain no duplicate target, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here.",
+  ),
+)
 
 const AtLeastNSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1))).annotate({
   description:
@@ -261,12 +299,28 @@ const checkUnderNotEmpty = (s: string): string | undefined =>
     ? '`under` must not be empty, or only slashes — an empty scope would silently match every doc in the corpus, the opposite of what `scope` exists to restrict'
     : undefined
 
-const underNotEmptyFilter = Schema.makeFilter(checkUnderNotEmpty)
+const underNotEmptyFilter = Schema.makeFilter(
+  checkUnderNotEmpty,
+  jsonSchemaHint(
+    '`under` must not be empty, or only slashes, once leading/trailing slashes are trimmed — an empty scope would silently match every doc in the corpus.',
+  ),
+)
 
-const ScopeUnderPathSchema = Schema.String.pipe(Schema.check(underNotEmptyFilter)).annotate({
+// `.annotate()` BEFORE `.pipe(Schema.check(...))`, not after: confirmed by a
+// standalone `Schema.toJsonSchemaDocument` probe (see `jsonSchemaHint`'s own
+// comment) that `.annotate()` chained directly after a `.check()` on the SAME
+// schema node overwrites that check's own `description` annotation rather
+// than adding a second, separate one — the two `description`s would
+// otherwise silently collapse into whichever one is applied last, exactly
+// the "one gets silently dropped" failure this whole `jsonSchemaHint` effort
+// exists to avoid. Annotating first keeps both: the base-type description
+// below AND `underNotEmptyFilter`'s own cross-field-adjacent hint, each in
+// their own place in the generated JSON Schema (verified in
+// `schema/cairn.schema.json`'s `CairnCoverageRuleScopeUnder.properties.under`).
+const ScopeUnderPathSchema = Schema.String.annotate({
   description:
     'A non-empty project-relative directory path (no globs) — a rule so scoped is satisfied only by a `to`-kind doc whose resolved path is nested anywhere below this directory.',
-})
+}).pipe(Schema.check(underNotEmptyFilter))
 
 // See `CoverageRuleInputSchema`'s own `scope` field comment for the full
 // "narrower than corpus-wide, broader than sibling" motivation. A separate
@@ -375,6 +429,85 @@ const CoverageRuleInputSchema = Schema.Struct({
 // Consequences section, which originally documented this as an accepted
 // gap before it was closed here). Caught loudly at decode time instead of
 // discovered by a confused user reading an always-red report.
+// Cross-field check body extracted to a named function (not inlined into
+// `Schema.check`) purely to keep call nesting within oxlint's
+// `max-nested-calls` once this filter also needed to pass a `jsonSchemaHint`
+// as its second argument — no behavior difference from when this was inline.
+const checkCoverageCrossFields = (coverage: {
+  readonly kinds: readonly { readonly id: string }[]
+  readonly rules: readonly {
+    readonly description?: string | undefined
+    readonly from: string
+    readonly name?: string | undefined
+    readonly to: unknown
+  }[]
+}): readonly Schema.FilterIssue[] => {
+  const declaredIds = new Set(coverage.kinds.map((k) => k.id))
+  const issues: Schema.FilterIssue[] = []
+  coverage.rules.forEach((rule, i) => {
+    if (!declaredIds.has(rule.from)) {
+      issues.push({ issue: `references undeclared kind "${rule.from}"`, path: ['rules', i, 'from'] })
+    }
+    // `to` names no kind at all when it's `{ external: 'path' }` — the
+    // undeclared-kind check only applies to the plain kind-id string
+    // shape. `to` may also be an ARRAY of alternatives, `{ any: [...] }`,
+    // or `{ atLeast: { n, of } }` (see
+    // `CoverageTargetOrAlternativesInputSchema`'s own comment) — every
+    // element of whichever shape gets the same undeclared-kind check,
+    // each pinned to its own path (including array index) so a typo in
+    // one alternative doesn't read as pointing at the whole `to` field.
+    const toTargetEntries: { readonly path: readonly (number | string)[]; readonly target: unknown }[] = Array.isArray(
+      rule.to,
+    )
+      ? rule.to.map((target, j) => ({ path: ['rules', i, 'to', j], target }))
+      : typeof rule.to === 'object' && rule.to !== null && 'any' in rule.to && Array.isArray(rule.to.any)
+        ? rule.to.any.map((target: unknown, j: number) => ({ path: ['rules', i, 'to', 'any', j], target }))
+        : typeof rule.to === 'object' &&
+            rule.to !== null &&
+            'atLeast' in rule.to &&
+            typeof rule.to.atLeast === 'object' &&
+            rule.to.atLeast !== null &&
+            'of' in rule.to.atLeast &&
+            Array.isArray(rule.to.atLeast.of)
+          ? rule.to.atLeast.of.map((target: unknown, j: number) => ({
+              path: ['rules', i, 'to', 'atLeast', 'of', j],
+              target,
+            }))
+          : [{ path: ['rules', i, 'to'], target: rule.to }]
+    toTargetEntries.forEach(({ path: targetPath, target }) => {
+      if (typeof target === 'string' && !declaredIds.has(target)) {
+        issues.push({
+          issue: `references undeclared kind "${target}"`,
+          path: targetPath,
+        })
+      }
+    })
+    // `description` is mandatory ONLY when `name` is set — deliberately
+    // NOT for every rule (refuted: an unnamed rule's report line, "no
+    // link to a 'X'-kind doc," is already fully self-explanatory —
+    // forcing a description there produces restated filler, exactly
+    // the decorative-not-genuine text this field exists to avoid). A
+    // NAMED rule (e.g. `grounded_by`) uses vocabulary a reader can't
+    // infer from the bare label alone — found for real: `name` only
+    // ever fed a disambiguating label into the report, never
+    // explained anything (see `description`'s own comment above).
+    // Enforced at decode time, not left to authorial discipline, so
+    // the next named rule can't silently reintroduce the exact gap
+    // `description` was added to close.
+    if (rule.name !== undefined && rule.description === undefined) {
+      issues.push({
+        issue: `named rule "${rule.name}" has no description — a bare name doesn't explain what it means to a reader`,
+        path: ['rules', i, 'description'],
+      })
+    }
+  })
+  return issues
+}
+
+const coverageCrossFieldsHint = jsonSchemaHint(
+  "Cross-field constraints, checked at decode time and NOT visible as JSON Schema structure: every rule's `from`/`to` must reference a declared `kinds[].id`, and a named rule (`name` set) must also carry a `description`.",
+)
+
 const CoverageInputSchema = Schema.Struct({
   exempt: Schema.optionalKey(
     Schema.Array(Schema.String).annotate({
@@ -389,71 +522,7 @@ const CoverageInputSchema = Schema.Struct({
       'Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it.',
     identifier: 'CairnCoverageConfig',
   })
-  .pipe(
-    Schema.check(
-      Schema.makeFilter((coverage) => {
-        const declaredIds = new Set(coverage.kinds.map((k) => k.id))
-        const issues: Schema.FilterIssue[] = []
-        coverage.rules.forEach((rule, i) => {
-          if (!declaredIds.has(rule.from)) {
-            issues.push({ issue: `references undeclared kind "${rule.from}"`, path: ['rules', i, 'from'] })
-          }
-          // `to` names no kind at all when it's `{ external: 'path' }` — the
-          // undeclared-kind check only applies to the plain kind-id string
-          // shape. `to` may also be an ARRAY of alternatives, `{ any: [...] }`,
-          // or `{ atLeast: { n, of } }` (see
-          // `CoverageTargetOrAlternativesInputSchema`'s own comment) — every
-          // element of whichever shape gets the same undeclared-kind check,
-          // each pinned to its own path (including array index) so a typo in
-          // one alternative doesn't read as pointing at the whole `to` field.
-          const toTargetEntries: { readonly path: readonly (number | string)[]; readonly target: unknown }[] =
-            Array.isArray(rule.to)
-              ? rule.to.map((target, j) => ({ path: ['rules', i, 'to', j], target }))
-              : typeof rule.to === 'object' && rule.to !== null && 'any' in rule.to && Array.isArray(rule.to.any)
-                ? rule.to.any.map((target: unknown, j: number) => ({ path: ['rules', i, 'to', 'any', j], target }))
-                : typeof rule.to === 'object' &&
-                    rule.to !== null &&
-                    'atLeast' in rule.to &&
-                    typeof rule.to.atLeast === 'object' &&
-                    rule.to.atLeast !== null &&
-                    'of' in rule.to.atLeast &&
-                    Array.isArray(rule.to.atLeast.of)
-                  ? rule.to.atLeast.of.map((target: unknown, j: number) => ({
-                      path: ['rules', i, 'to', 'atLeast', 'of', j],
-                      target,
-                    }))
-                  : [{ path: ['rules', i, 'to'], target: rule.to }]
-          toTargetEntries.forEach(({ path: targetPath, target }) => {
-            if (typeof target === 'string' && !declaredIds.has(target)) {
-              issues.push({
-                issue: `references undeclared kind "${target}"`,
-                path: targetPath,
-              })
-            }
-          })
-          // `description` is mandatory ONLY when `name` is set — deliberately
-          // NOT for every rule (refuted: an unnamed rule's report line, "no
-          // link to a 'X'-kind doc," is already fully self-explanatory —
-          // forcing a description there produces restated filler, exactly
-          // the decorative-not-genuine text this field exists to avoid). A
-          // NAMED rule (e.g. `grounded_by`) uses vocabulary a reader can't
-          // infer from the bare label alone — found for real: `name` only
-          // ever fed a disambiguating label into the report, never
-          // explained anything (see `description`'s own comment above).
-          // Enforced at decode time, not left to authorial discipline, so
-          // the next named rule can't silently reintroduce the exact gap
-          // `description` was added to close.
-          if (rule.name !== undefined && rule.description === undefined) {
-            issues.push({
-              issue: `named rule "${rule.name}" has no description — a bare name doesn't explain what it means to a reader`,
-              path: ['rules', i, 'description'],
-            })
-          }
-        })
-        return issues
-      }),
-    ),
-  )
+  .pipe(Schema.check(Schema.makeFilter(checkCoverageCrossFields, coverageCrossFieldsHint)))
 
 // Issue #108: `checks.coverage` only ever asks doc→doc questions ("does a
 // doc of kind X link to a doc of kind Y") — nothing checks that a SOURCE

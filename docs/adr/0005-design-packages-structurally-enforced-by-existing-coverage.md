@@ -251,8 +251,8 @@ for real: the same CLI that previously accepted `scope: { under: '/' }` and sile
 cross-satisfied an unrelated doc now refuses to load that config at all.
 
 A third, narrower gap was found in the course of closing the first one, applying the
-adversarial-judge prompt to this task's own capability (`docs/design/review-prompts.md`'s
-section 4) — this one recorded as open, not fixed here: `under` is otherwise a plain string
+adversarial-judge prompt to this task's own capability (`docs/design/review-findings.md`'s
+section 2) — this one recorded as open, not fixed here: `under` is otherwise a plain string
 with **zero validation against the config's real `roots`** — unlike `from`/`to` kind ids, which
 `CoverageInputSchema`'s existing cross-field check already rejects at decode time when
 undeclared (this ADR's own Decision section, and docs/adr/0002's Consequences, record exactly
@@ -264,3 +264,105 @@ needs either a `CairnConfigSchema`-level cross-field check (a different point in
 tree) or a runtime hint mirroring `unmatchedKinds`'s own non-fatal-warning precedent. Recorded
 as open, not glossed over, matching this ADR's own established practice for every other
 self-reported gap above.
+
+## Amendment: the `under`-vs-`roots` gap closed at run time, and `to` gains OR alternation
+
+The `under`-vs-`roots` gap the previous amendment recorded as open is closed — but at
+`checkCoverage` RUN time (`program/structure/CheckCoverage.ts`), not decode time: `roots` and
+`checks.coverage` are sibling top-level fields that can be set in different `extends` layers, so
+no single-layer schema decode can see both the way `CoverageInputSchema`'s existing `from`/`to`
+kind-id check sees `kinds`/`rules` together. Once every layer is folded and the real doc corpus
+is scanned, a distinct `under` value matching zero scanned docs of any kind now surfaces as a
+new, non-fatal `CoverageResult.emptyScopeUnders` warning — mirroring `unmatchedKinds`'s own
+precedent (a kind matching 0 docs is a hint, not a hard failure, since mid-rollout is a
+legitimate zero-docs state). Dogfooded for real against a throwaway typo'd fixture
+(`under: "docs/desing/pkg"`) with the real bundled CLI: the warning names the exact typo'd
+value; fixing the typo makes it disappear. Falsified: reverting `emptyScopeUnders` makes the new
+tests fail with `[]` instead of the typo'd value; restoring makes them pass again.
+
+Separately, in the same task, `CoverageRule.to` — not `CoverageRequirement.by`, which stayed a
+single `'link'` literal — gained the ability to be a non-empty ARRAY of targets, satisfied by a
+link matching ANY ONE of them (`targetsOf`, `core/Config.ts`): the OR/alternation reading of the
+N-of-M gap `docs/design/CONVENTION.md`'s Claim 2 named. Real example:
+`{ from: 'roadmap', to: ['spikes', 'evidence'] }` is satisfied by linking either kind. Every
+existing consumer of `rule.to` was routed through the new `targetsOf`, and the rule-dedup key
+(`program/structure/CheckCoverage.ts`) was made unconditional (`JSON.stringify(r.to)` always,
+not only for object-shaped `to`) to avoid a sixth instance of that file's own standing
+dedup-key-omission bug class. `schema/cairn.schema.json` regenerated, a changeset added.
+
+An independent, context-free adversarial pass (a fresh agent given only the diff) found no
+crash or silently-wrong-pass bug in either fix. It found two low-severity, non-exit-code
+cosmetic gaps, recorded rather than fixed: the dedup key is order-sensitive for an array `to`
+(`['spikes','evidence']` vs `['evidence','spikes']` don't dedupe), and `emptyScopeUnders`'s own
+dedup is by untrimmed `under` string. It also confirmed one JSON-Schema gap is pre-existing, not
+newly introduced by this task: the generated `schema/cairn.schema.json` has no `minItems: 1` on
+the new array-`to` branch, the same limitation the existing `under` non-empty check already has
+— `Schema.check` filters don't propagate into the generated JSON Schema in this codebase's
+current setup (see `docs/design/CONVENTION.md`'s tracked-gaps text for the precise reason).
+General N-of-M cardinality (not just "any one of these") remained explicitly open after this
+amendment — closed by the next one. Full evidence: `docs/design/review-findings.md` section 3.
+
+## Amendment: the general N-of-M/`atLeast` gap closed, and a vacuity safeguard catches a real bug in its own feature
+
+The narrower N-of-M reading the previous amendment left open — "at least N of these, N > 1" —
+is closed: `to` gains a third quantifier, `{ atLeast: { n, of } }`, satisfied when at least `n`
+of `of`'s targets EACH have their own satisfying link (not `n` links to the same target); an
+explicit `{ any: [...] }` spelling of the existing array/OR shape ships alongside it, purely for
+naming symmetry. "All of these" needs no separate variant — it's `n: of.length` over the same
+shape. `RuleEdge` gains a `satisfied` boolean field, since `satisfiedBy.length > 0` alone can no
+longer answer "is this rule met" once a rule can require a minimum count across several distinct
+targets. Dogfooded for real with the bundled CLI: reports missing when only one of a required
+two targets is linked, goes silent the moment a second is added.
+
+Since `fast-check` is confirmed absent from this repo's dependencies, the systematic vacuity
+safeguard this task's own instructions called for instead took the form of a table-driven test
+(`src/core/VacuousShapes.unit.test.ts`) covering every vacuity-prone shape found across this
+feature's history in one place. Writing that table surfaced a REAL bug this task's own
+first-pass self-review had not caught: a DUPLICATE target inside `atLeast.of` let one real
+satisfying link count toward `n` TWICE (`countSatisfiedTargets` checked each `of` index
+independently rather than each distinct target) — proved concretely
+(`resolveRuleEdges` returning `satisfied: true` for `n: 2` against a doc with exactly one real
+link), fixed at decode time before this task's own commit (`checkAtLeastSane` now rejects a
+structurally-duplicate `of` entry, `JSON.stringify`-compared), and falsified both directions.
+
+Running this repo's own adversarial-judge prompt (`docs/design/review-prompts.md`, with its
+steelman-the-opposite second pass) against the shipped `atLeast` shape found one genuinely new
+schema-fundamental gap not yet promoted into `docs/design/CONVENTION.md`'s tracked-gap list: `n`
+is a literal integer, not an expression, so "at least half of `of`, however large `of` grows" is
+unexpressible without hand-recomputing the number. It also found one configuration-only
+ergonomic cost a first pass had understated: a per-`from`-doc minimum is expressible today only
+via one additional `scope: { under }`-partitioned rule per distinct minimum, unlike the
+zero-additional-config `scope: 'sibling'` pattern this ADR's own Decision section already
+praises. Full evidence: `docs/design/review-findings.md` section 4.
+
+## Amendment: the dates/mtimes gap closed — `checks.freshness`, a new, separate check
+
+`docs/design/CONVENTION.md`'s remaining named schema gap — "nothing in the schema touches
+dates/mtimes at all" — is closed, but deliberately NOT as a `CoverageRule` field: a new,
+independent `checks.freshness` check (`core/structure/Freshness.ts`,
+`program/structure/CheckFreshness.ts`), opt-in via mere presence like `coverage` itself.
+Freshness is a genuinely different axis from everything else this ADR's amendments cover —
+TEMPORAL ("how old is this doc, per its real git history") rather than RELATIONAL ("does this
+doc link to that doc") — so bolting a `maxAgeDays` onto `CoverageRule` would have repeated the
+exact "one bespoke variant per round" growth pattern `docs/design/CONVENTION.md`'s own
+noted-but-deferred `scope`-unification paragraph already flags as a design smell.
+
+Not hypothetical: the origin is the same real incident `docs/design/101-refs-symbol-scoping/
+problem-space.md` documents (issue #101, found using cairn 0.6.0 in `sledorze/falsestart`) —
+`docs/architecture.md` cited 14 implementation files, and `--refs` failed on every edit to any
+of them even when the doc's own claims hadn't changed, "re-stamping became reflexive... the
+failure a freshness check exists to prevent." `checks.freshness.rules` is an ordered
+`{ glob, maxAgeDays }` array, first-matching-glob-wins; age is checked against `io/Git.ts`'s
+real committer date, never filesystem mtime (a fresh clone/checkout resets mtime regardless of
+real history); a doc with no commit history yet is silently excluded, not reported.
+
+Dogfooded for real with the bundled CLI against a throwaway `.cairnrc.json` copy
+(`maxAgeDays: 1`): correctly flagged this repo's own older ADR docs as stale with accurate
+`(Nd > 1d)` ages, stayed silent on recently-touched docs. Deliberately NOT enabled in this
+repo's own committed `.cairnrc.json`, though: this repo's docs are actively maintained by the
+same people who write the code, and picking a real threshold with no genuine "this doc silently
+went stale and nobody noticed" incident _here_ would be exactly the arbitrary,
+evidence-free threshold `AGENTS.md`'s own "don't design for hypothetical future requirements"
+guidance warns against — the real incident motivating this check happened in a different repo.
+Full evidence, including the falsestart origin and full test coverage list:
+`docs/design/review-findings.md` section 5.

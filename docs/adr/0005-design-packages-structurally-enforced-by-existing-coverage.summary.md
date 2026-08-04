@@ -89,9 +89,51 @@ corpus — a silent, vacuous "satisfied," proved by a real cross-satisfied unrel
 than a disclosed limitation because it fails silent, not loud. Fixed by rejecting an
 empty-after-trim `under` at decode time; falsified for real (the same CLI now refuses to load
 that config at all). A third, narrower gap remains open, found applying the adversarial-judge
-prompt to this same capability (`docs/design/review-prompts.md`'s section 4): `under` still has
+prompt to this same capability (`docs/design/review-findings.md`'s section 2): `under` still has
 zero validation against the config's real `roots`, unlike `from`/`to` kind ids — a typo
 silently makes a rule permanently unsatisfiable, with nothing pointing at the cause. Not fixed
 here (needs a `CairnConfigSchema`-level cross-field check, a different point in the schema tree
 than
 today's `CoverageInputSchema`-only check); recorded as open, not glossed over.
+
+**Amendment: `under`-vs-`roots` closed at run time, and `to` gains OR alternation.** The
+`under`-vs-`roots` gap above is closed, but at `checkCoverage` RUN time, not decode time —
+`roots`/`checks.coverage` can live in different `extends` layers, so no single-layer decode
+sees both. A distinct `under` matching zero scanned docs of any kind now surfaces as a
+non-fatal `emptyScopeUnders` warning naming the exact value, mirroring `unmatchedKinds`'s own
+precedent; dogfooded and falsified both directions. Separately, `CoverageRule.to` (not
+`CoverageRequirement.by`, which stayed a single `'link'` literal) gained a non-empty ARRAY
+form, satisfied by a link matching ANY ONE of its targets (`targetsOf`) — the OR/alternation
+reading of the N-of-M gap. The rule-dedup key was made unconditional (`JSON.stringify(r.to)`
+always) to avoid a sixth instance of that file's own recurring dedup-key bug. An independent
+adversarial pass found no crash or false pass, two low-severity cosmetic dedup gaps left
+recorded not fixed, and confirmed the JSON-Schema `minItems` gap on the new array `to` is
+pre-existing, matching the same gap already known for `under`. General N-of-M cardinality
+stayed explicitly open.
+
+**Amendment: general N-of-M/`atLeast` closed, and a vacuity safeguard catches a real bug in
+its own feature.** `to` gains `{ atLeast: { n, of } }` — satisfied when at least `n` of `of`'s
+targets EACH have their own link, not `n` links to one target; `{ any: [...] }` ships as the
+explicit spelling of the existing array/OR shape. `RuleEdge` gains a `satisfied` field since
+link-count alone can't answer "is this rule met" once a minimum COUNT across distinct targets
+is possible. With `fast-check` confirmed absent, the vacuity safeguard is a table-driven test
+(`VacuousShapes.unit.test.ts`) — writing it surfaced a REAL bug the first-pass self-review had
+missed: a duplicate `atLeast.of` target let one real link count toward `n` twice, fixed at
+decode time (`checkAtLeastSane`) and falsified both directions before commit. Running this
+repo's own adversarial-judge prompt against the shipped shape found one new fundamental gap
+(no relative/scaling `n`, e.g. "a majority") and one understated ergonomic cost (a per-doc
+minimum needs one extra rule per distinct value).
+
+**Amendment: the dates/mtimes gap closed — `checks.freshness`, a new, separate check.**
+Closed as its own independent `checks.freshness` check, deliberately NOT a `CoverageRule`
+field — freshness is a TEMPORAL axis ("how old is this doc"), not the RELATIONAL one
+(`"does this doc link to that doc"`) every prior amendment closed; grafting a `maxAgeDays`
+onto `CoverageRule` would repeat the "one bespoke variant per round" growth pattern
+`CONVENTION.md` already flags as a smell. Real origin, not invented: the same falsestart
+incident (#101) that motivated issue #101 itself — `--refs` failed on every edit to any of 14
+cited files even when a doc's claims hadn't changed. `checks.freshness.rules` is an ordered
+`{ glob, maxAgeDays }` array, checked against `io/Git.ts`'s real committer date, never
+filesystem mtime; a doc with no history yet is silently excluded. Dogfooded for real against
+a throwaway `.cairnrc.json` copy — correctly flagged this repo's own older ADR docs as stale.
+Deliberately NOT enabled in this repo's own committed config: no real "silently rotted"
+incident here to ground a threshold in, unlike the repo that motivated the check.

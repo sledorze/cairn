@@ -10,4 +10,7 @@ DECISION concisely; these packages carry the full reasoning and evidence behind 
 - [Review prompts](./review-prompts.md) — two reusable, business-agnostic prompts for
   proposing and adversarially judging a `checks.coverage` structure in any documentation
   domain.
+- [Review findings](./review-findings.md) — the real, dated evidence from every round of
+  actually running those prompts against this repo's own `checks.coverage` schema and
+  config, split out from `review-prompts.md` once it grew past a lean reference.
 - [101 — `--refs` symbol/export-scoped hashing](./101-refs-symbol-scoping/_SUMMARY.md)

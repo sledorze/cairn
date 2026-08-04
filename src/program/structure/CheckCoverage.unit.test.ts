@@ -492,7 +492,7 @@ describe('checkCoverage()', () => {
   })
 
   // The self-found gap this task closes (docs/design/CONVENTION.md's
-  // Claim 2, docs/design/review-prompts.md section 4's own self-judgment):
+  // Claim 2, docs/design/review-findings.md section 2's own self-judgment):
   // `scope: { under: '...' }` had no validation against anything — a
   // typo'd `under` decoded successfully and then silently, permanently
   // reported every `from`-kind doc using it as missing, with nothing

@@ -500,8 +500,8 @@ describe('to: { any: [...] } — the explicit spelling of alternation/OR', () =>
 
 // The still-open half of the N-of-M/alternation gap `to: [...]`/`{ any }`
 // above only ever closed the OR/"any one" reading of (docs/design/
-// CONVENTION.md's "Judging this convention" Claim 2, docs/design/
-// review-prompts.md section 5): `{ atLeast: { n, of } }` requires at least
+// CONVENTION.md's "Judging this convention" Claim 2,
+// docs/design/review-findings.md section 3): `{ atLeast: { n, of } }` requires at least
 // `n` DISTINCT targets from `of` to each have their own satisfying link.
 describe('to: { atLeast: { n, of } } — general N-of-M cardinality', () => {
   it('is satisfied when exactly `n` of the listed targets each have a satisfying link', () => {

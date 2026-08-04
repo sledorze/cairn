@@ -23,6 +23,7 @@ describe('schema variant census', () => {
     expect(census.coverageTargetVariants).toBeGreaterThanOrEqual(1)
     expect(census.coverageRequirementByVariants).toBeGreaterThanOrEqual(1)
     expect(census.coverageRuleScopeVariants).toBeGreaterThanOrEqual(1)
+    expect(census.coverageRuleToVariants).toBeGreaterThanOrEqual(1)
     // Deliberately NOT pinned to an exact snapshot: these counts are meant to
     // change as the schema legitimately grows a new variant (that's the whole
     // point of tracking them as a number over time, per CONVENTION.md's
