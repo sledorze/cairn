@@ -231,11 +231,10 @@ than a field grafted onto it. See `review-findings.md` section 5 for the real do
 falsification evidence, including the falsestart origin below.
 
 **The falsestart context.** This gap wasn't hypothetical — it's the SAME real incident
-`docs/design/101-refs-symbol-scoping/problem-space.md` documents (GitHub issue #101, "found
-using cairn 0.6.0 in `sledorze/falsestart` over one long session"): `docs/architecture.md`
-cited 14 implementation files under `--refs`, and every edit to ANY of them failed
-`cairn check` even when the doc's own claims hadn't changed — reflexive re-stamping, a gate
-cleared without reading. Issue #101 named two candidate fixes for THAT specific symptom
+`docs/design/101-refs-symbol-scoping/problem-space.md` documents (GitHub issue #101); the full
+incident narrative (what was cited, what failed, why) is recorded once, in `review-findings.md`
+section 5, rather than repeated here. In short: reflexive re-stamping, a gate cleared without
+reading. Issue #101 named two candidate fixes for THAT specific symptom
 (API-surface hashing, symbol-scoped references — both about narrowing WHAT `--refs` hashes)
 and explicitly named a third, adjacent concept in passing: "the failure a freshness check
 exists to prevent." `checks.freshness` is that third concept, built as its own thing rather
