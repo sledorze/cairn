@@ -205,3 +205,62 @@ The `{ external: 'url', pattern }` match is still just a substring, not a real U
 remaining sharp edge (a too-loose pattern like `github.com` would silently accept a link to
 any repo, not just this one). The product-issue/vision layer from the previous amendment
 remains open and unmodeled.
+
+## Amendment: the `scope` sibling/corpus-wide granularity gap closed — and one new, narrower
+
+gap found while closing it
+
+Claim 2's own re-review named a third self-reported gap: `CoverageRule.scope` had exactly one
+real value (`'sibling'`, exact same directory) plus the unscoped default (anywhere in the
+corpus) — nothing in between, e.g. "anywhere under this named sub-tree." Closed additively:
+`scope` gained a second variant, `{ under: 'some/project/relative/dir' }`
+(`CoverageRuleScopeInputSchema` in `core/Config.ts`) — satisfied only by a `to`-kind doc whose
+resolved path is nested anywhere below `under`, matched via `**/<under>/**` (root-independent,
+same convention every kind's own `by: 'path'` glob already relies on), not a plain string-
+prefix compare. `'sibling'` decodes and behaves identically — purely additive.
+
+Real cost of getting this wrong once already, again: `program/structure/CheckCoverage.ts`'s
+rule-dedup key (see that file's own "FIVE rounds so far" comment) previously coerced `scope`
+via `${r.scope ?? ''}` — a template-literal string coercion that stringifies ANY object to the
+literal text `"[object Object]"` regardless of its actual `under` value, so two rules differing
+only by `under` (e.g. scoped to two different sub-trees) would have silently collapsed into
+one. Caught before shipping this time (Round 5), by the same standing warning that comment
+already carries — fixed by `JSON.stringify`-ing the whole `scope` field instead of relying on
+coercion. Falsified for real: reverting the fix reproduces the collapse (a real test asserting
+2 distinct `missing` entries reports 1 instead); restoring it returns to 2.
+
+Dogfooded for real against a throwaway fixture mirroring two design-package "teams" (`docs/
+design/team-a/`, `docs/design/team-b/`) with a `scope: { under: "docs/design/team-b" }` rule:
+the real bundled CLI correctly reports `team-a`'s roadmap as missing coverage (it links a
+spikes doc under `team-a`, outside the scoped sub-tree) while `team-b`'s own roadmap — linking
+a spikes doc nested two directories further down inside `team-b` — passes cleanly, proving
+"nested anywhere below," not just "directly in."
+
+A second, more severe gap was found by an independent, context-free adversarial reviewer (a
+fresh agent handed only the diff, asked to break it, with no prior investment in the design —
+per this repo's own "run an adversarial review... before every push" practice) and fixed before
+shipping, not merely disclosed: `scopeSatisfied` trims leading/trailing slashes off `under`
+before building `**/${under}/**`, so an `under` that trims to EMPTY (`""`, `"/"`, `"///"`)
+collapses that glob into one matching every path in the corpus. Proved concretely — with
+`scope: { under: '/' }` configured, `resolveRuleEdges` reported a doc under `design/team-a/pkg/`
+as satisfied by a totally unrelated doc under `unrelated/far-away/`. Worse than a disclosed
+limitation: it fails SILENT (vacuously "satisfied," indistinguishable in a report from a real,
+intentional scope) rather than loud. Fixed by rejecting, at decode time, any `under` that trims
+to empty — the same `CoverageRuleScopeInputSchema` gains a `Schema.makeFilter` check. Falsified
+for real: the same CLI that previously accepted `scope: { under: '/' }` and silently
+cross-satisfied an unrelated doc now refuses to load that config at all.
+
+A third, narrower gap was found in the course of closing the first one, applying the
+adversarial-judge prompt to this task's own capability (`docs/design/review-prompts.md`'s
+section 4) — this one recorded as open, not fixed here: `under` is otherwise a plain string
+with **zero validation against the config's real `roots`** — unlike `from`/`to` kind ids, which
+`CoverageInputSchema`'s existing cross-field check already rejects at decode time when
+undeclared (this ADR's own Decision section, and docs/adr/0002's Consequences, record exactly
+why that check exists). A typo'd or out-of-scope `under` still decodes successfully and then
+silently, permanently reports every rule using it as unsatisfiable, with nothing pointing at
+the actual cause. Not fixed here — `CoverageInputSchema`'s own cross-field check only ever sees
+`coverage.kinds`/`coverage.rules`, not the sibling top-level `roots` field, so closing this
+needs either a `CairnConfigSchema`-level cross-field check (a different point in the schema
+tree) or a runtime hint mirroring `unmatchedKinds`'s own non-fatal-warning precedent. Recorded
+as open, not glossed over, matching this ADR's own established practice for every other
+self-reported gap above.

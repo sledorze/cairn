@@ -44,3 +44,18 @@ found this classification-by-frontmatter gap was schema-fundamental (closed in t
 task — `KindSelector` gains a `by: "frontmatter"` variant) and re-confirmed two gaps
 `CONVENTION.md` already knew about (no date/freshness rule, no URL-pattern target). Verdict:
 validates that the prompts generalize to a genuinely different domain.
+
+**4. `scope: { under: '...' }`, and a negative result against `README.md`/`docs/architecture.md`**:
+closes `CONVENTION.md`'s named sibling/corpus-wide granularity gap — `scope` gains a second
+variant, satisfied by a `to`-kind doc nested anywhere below a given project-relative
+directory, additive alongside `'sibling'`. Applying the structure-invitation prompt for real
+to this repo's own `README.md` + `docs/architecture.md` (the only two top-level docs)
+produced a genuine NEGATIVE result — no `checks.coverage` structure proposed: the corpus has
+no multiplicity (one README, one architecture doc, not many repeating instances), `README.md`
+has zero real Markdown links to any other doc, and the one real gap found (a bare-backtick
+citation of `CONVENTION.md`) is `--prose-refs`-shaped, not `checks.coverage`-shaped — and
+`README.md` isn't even inside this repo's own scanned `roots` today. The adversarial pass on
+the new `{ under }` capability itself found it closes the stated gap cleanly (verified by real
+CLI dogfood and a falsified dedup-key regression test, "Round 5" of `CheckCoverage.ts`'s own
+recurring bug), but surfaced one new, narrower, un-closed gap: `under` has no validation
+against the config's real `roots`, unlike `from`/`to` kind ids.

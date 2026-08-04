@@ -236,6 +236,32 @@ describe('decodeConfig()', () => {
     expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
   })
 
+  // Closes the granularity gap sitting between `'sibling'` (exact same
+  // directory) and unscoped (anywhere in the corpus) — see
+  // docs/design/CONVENTION.md's "Judging this convention" Claim 2.
+  it('decodes a rule’s optional `scope: { under: "..." }`', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            {
+              description: 'A roadmap doc.',
+              id: 'roadmap',
+              select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+            },
+            {
+              description: 'A feasibility-spike doc.',
+              id: 'spikes',
+              select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+            },
+          ],
+          rules: [{ from: 'roadmap', scope: { under: 'docs/design/team-b' }, to: 'spikes' }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
   it('returns a Failure when a rule’s `scope` is not the recognised `"sibling"` literal', () => {
     expect(
       Result.isFailure(
@@ -251,6 +277,59 @@ describe('decodeConfig()', () => {
                 { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
               ],
               rules: [{ from: 'feature', scope: 'directory', to: 'decision' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // Adversarial-review finding, before this shipped: `Coverage.ts`'s own
+  // `scopeSatisfied` trims leading/trailing slashes off `under` before
+  // building a `**/${under}/**` glob — an `under` that trims to empty
+  // (`""`, `"/"`, `"///"`) would silently match every doc in the corpus, the
+  // opposite of what `scope` exists to restrict. Rejected at decode time.
+  it.each(['', '/', '///'])('returns a Failure when `scope.under` is empty or only slashes (%j)', (under) => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                {
+                  description: 'A roadmap doc.',
+                  id: 'roadmap',
+                  select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+                },
+                {
+                  description: 'A feasibility-spike doc.',
+                  id: 'spikes',
+                  select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+                },
+              ],
+              rules: [{ from: 'roadmap', scope: { under }, to: 'spikes' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('returns a Failure when `scope: { under }` is missing its `under` field', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'feature', scope: {}, to: 'decision' }],
             },
           },
         }),

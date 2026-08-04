@@ -97,10 +97,10 @@ const countUnionVariants = (declText: string): number | undefined => {
 
 /** Counts inline `Schema.Literal(` occurrences in `declText` — the fallback
  * for a field that's a single discriminant literal rather than a
- * `Schema.Union`. Assumes (true today, for `CoverageRequirementInputSchema`
- * and `CoverageRuleInputSchema`'s `scope` field) that the extracted block has
- * exactly one such field; a struct with several inline `Schema.Literal`
- * fields would overcount, which is the honest limit of a regex-only count. */
+ * `Schema.Union`. Assumes (true today, for `CoverageRequirementInputSchema`'s
+ * `by` field) that the extracted block has exactly one such field; a struct
+ * with several inline `Schema.Literal` fields would overcount, which is the
+ * honest limit of a regex-only count. */
 const countInlineLiterals = (declText: string): number => {
   const matches = declText.match(/Schema\.Literal\(/g)
   return matches === null ? 0 : matches.length
@@ -117,23 +117,30 @@ export const computeSchemaVariantCensus = (configSource: string): SchemaVariantC
   const kindSelectorDecl = extractDecl(configSource, 'KindSelectorInputSchema')
   const coverageRequirementDecl = extractDecl(configSource, 'CoverageRequirementInputSchema')
   const coverageTargetDecl = extractDecl(configSource, 'CoverageTargetInputSchema')
-  const coverageRuleDecl = extractDecl(configSource, 'CoverageRuleInputSchema')
+  // `scope` is its own named `Schema.Union` (`CoverageRuleScopeInputSchema`),
+  // matching `KindSelectorInputSchema`/`CoverageTargetInputSchema`'s own
+  // shape — see that schema's own comment for why: `to`/`via` inside
+  // `CoverageRuleInputSchema` are references to other named schemas, not
+  // inline literals, and `scope` now is too, so it's counted the same way as
+  // the other two named unions instead of via the inline-literal fallback.
+  const coverageRuleScopeDecl = extractDecl(configSource, 'CoverageRuleScopeInputSchema')
 
   const kindSelectorVariants = countUnionVariants(kindSelectorDecl)
   const coverageTargetVariants = countUnionVariants(coverageTargetDecl)
+  const coverageRuleScopeVariants = countUnionVariants(coverageRuleScopeDecl)
   if (kindSelectorVariants === undefined) {
     throw new Error('coverage-metrics: expected KindSelectorInputSchema to be a Schema.Union')
   }
   if (coverageTargetVariants === undefined) {
     throw new Error('coverage-metrics: expected CoverageTargetInputSchema to be a Schema.Union')
   }
+  if (coverageRuleScopeVariants === undefined) {
+    throw new Error('coverage-metrics: expected CoverageRuleScopeInputSchema to be a Schema.Union')
+  }
 
   return {
     coverageRequirementByVariants: countInlineLiterals(coverageRequirementDecl),
-    // `to`/`via` inside CoverageRuleInputSchema are references to other named
-    // schemas (`CoverageTargetInputSchema`/`CoverageRequirementInputSchema`),
-    // not inline literals, so this only ever counts `scope`'s own literal(s).
-    coverageRuleScopeVariants: countInlineLiterals(coverageRuleDecl),
+    coverageRuleScopeVariants,
     coverageTargetVariants,
     kindSelectorVariants,
   }

@@ -376,6 +376,29 @@ describe('checkCoverage()', () => {
     expect(result.missing).toHaveLength(2)
   })
 
+  // Round 5 of the same recurring bug: `scope` grew a second, OBJECT-shaped
+  // variant (`{ under: '...' }`) — the Round 4 fix's own `r.scope ?? ''`
+  // string-coerces every object to the literal text "[object Object]"
+  // regardless of its actual `under` value, so two rules differing only by
+  // `under` would silently collapse to one without the `JSON.stringify`
+  // fix. Falsified for real: reverting the dedup key to `r.scope ?? ''`
+  // makes this test fail with `result.missing` of length 1, not 2.
+  it('never collapses two same-pair rules that differ only in `scope`’s `under` value', async () => {
+    const layer = makeTestDocsFs({
+      '/r/features/f1.md': { content: '# Feature, no links', mtimeMs: 1 },
+    })
+    const differingOnlyByUnder: CoverageRule[] = [
+      { from: 'feature', scope: { under: 'team-a' }, to: 'decision' },
+      { from: 'feature', scope: { under: 'team-b' }, to: 'decision' },
+    ]
+    const result = await Effect.runPromise(
+      checkCoverage({ base: '/r', kinds: KINDS, roots: ['/r'], rules: differingOnlyByUnder }).pipe(
+        Effect.provide(layer),
+      ),
+    )
+    expect(result.missing).toHaveLength(2)
+  })
+
   // Adversarial finding: a chain of rules (feature -> decision -> spec) —
   // 'decision' is BOTH a rule.to (orphan-checkable) AND a rule.from (must
   // itself satisfy its own outbound rule). No special-casing needed; this

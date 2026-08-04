@@ -37,6 +37,16 @@
       "additionalProperties": false,
       "description": "One named document kind."
     },
+    "CairnCoverageRuleScopeUnder": {
+      "type": "object",
+      "properties": { "under": { "type": "string" } },
+      "required": ["under"],
+      "additionalProperties": false
+    },
+    "CairnCoverageRuleScope": {
+      "anyOf": [{ "type": "string", "enum": ["sibling"] }, { "$ref": "#/$defs/CairnCoverageRuleScopeUnder" }],
+      "description": "`\"sibling\"` restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc. `{ under: \"some/dir\" }` restricts it to a `to`-kind doc nested anywhere below that project-relative directory — narrower than the unscoped corpus-wide default, broader than `\"sibling\"`. Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus."
+    },
     "CairnCoverageTarget": {
       "anyOf": [
         { "type": "string" },
@@ -80,11 +90,7 @@
           "type": "string",
           "description": "Distinguishes this rule from another sharing the same from/to pair (e.g. \"implements\" vs \"verified_by\"). Two rules on the same pair with no name, or the same name, are treated as one."
         },
-        "scope": {
-          "type": "string",
-          "enum": ["sibling"],
-          "description": "Restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc — closes real cross-directory capturability for a wildcard kind glob shared across many instances (e.g. one glob matching every design package). Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus."
-        },
+        "scope": { "$ref": "#/$defs/CairnCoverageRuleScope" },
         "to": { "$ref": "#/$defs/CairnCoverageTarget" },
         "via": { "$ref": "#/$defs/CairnCoverageRequirement" }
       },

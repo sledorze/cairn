@@ -114,6 +114,47 @@ const CoverageTargetInputSchema = Schema.Union([
   identifier: 'CairnCoverageTarget',
 })
 
+// Adversarial review, before this shipped: `Coverage.ts`'s own
+// `scopeSatisfied` trims leading/trailing slashes off `under` before
+// building `**/${under}/**` — an `under` that trims to the EMPTY string
+// (`""`, `"/"`, `"///"`, ...) collapses that glob to `**//**`, which
+// matches every path in the corpus. That's silently WORSE than the
+// already-disclosed "typo'd/out-of-roots `under` makes a rule permanently
+// unsatisfiable" limitation (loud, missing-coverage failures) — an empty
+// `under` makes the rule vacuously satisfied by ANYTHING, indistinguishable
+// in a report from a real, intentional scope. Rejected at decode time, not
+// left to `scopeSatisfied` to quietly misbehave. Extracted to a named
+// function (not inlined into the `Schema.check`) purely to keep call
+// nesting within oxlint's `max-nested-calls` — no behavior difference.
+const checkUnderNotEmpty = (s: string): string | undefined =>
+  s.replaceAll(/^\/+|\/+$/g, '').length === 0
+    ? '`under` must not be empty, or only slashes — an empty scope would silently match every doc in the corpus, the opposite of what `scope` exists to restrict'
+    : undefined
+
+const underNotEmptyFilter = Schema.makeFilter(checkUnderNotEmpty)
+
+const ScopeUnderPathSchema = Schema.String.pipe(Schema.check(underNotEmptyFilter)).annotate({
+  description:
+    'A non-empty project-relative directory path (no globs) — a rule so scoped is satisfied only by a `to`-kind doc whose resolved path is nested anywhere below this directory.',
+})
+
+// See `CoverageRuleInputSchema`'s own `scope` field comment for the full
+// "narrower than corpus-wide, broader than sibling" motivation. A separate
+// named union (matching `KindSelectorInputSchema`/`CoverageTargetInputSchema`'s
+// own shape) rather than an inline literal, on purpose: `scripts/
+// coverage-metrics.ts`'s schema variant census extracts and counts each of
+// these three named unions the same way, so a scope variant that isn't its
+// own named declaration would silently stop being counted.
+const CoverageRuleScopeInputSchema = Schema.Union([
+  Schema.Literal('sibling'),
+  Schema.Struct({
+    under: ScopeUnderPathSchema,
+  }).annotate({ identifier: 'CairnCoverageRuleScopeUnder' }),
+]).annotate({
+  description: 'How a rule\'s satisfaction is scoped: `"sibling"`, `{ under: "some/dir" }`, or omitted (corpus-wide).',
+  identifier: 'CairnCoverageRuleScope',
+})
+
 const CoverageRuleInputSchema = Schema.Struct({
   // Found refuting whether this schema's own vocabulary (`name` values like
   // `grounded_by`/`builds_on`/`derived_from` — see docs/design/CONVENTION.md's
@@ -165,10 +206,24 @@ const CoverageRuleInputSchema = Schema.Struct({
   // with zero additional config per package. Optional, defaulting to
   // today's unscoped ("anywhere in the corpus") behavior — existing configs
   // written before this field existed keep meaning exactly what they did.
+  //
+  // `{ under: '...' }` (docs/design/CONVENTION.md's "Judging this
+  // convention" Claim 2, re-confirmed in docs/adr/0005's amendments): a real
+  // gap sat BETWEEN `'sibling'` (exact same directory — too narrow for a
+  // rule that should span a whole named sub-tree, e.g. every package under
+  // `docs/design/team-b/`) and the unscoped default (anywhere in the
+  // corpus — too broad, the original capturability hole `scope` exists to
+  // close in the first place). `under` is a plain project-relative directory
+  // path (no glob syntax) — satisfied only by a `to`-kind doc whose resolved
+  // path is nested anywhere below that directory, matched the same way a
+  // kind's own `**/`-prefixed path glob already matches project-relative
+  // regardless of the absolute scan root (see `Coverage.ts`'s
+  // `scopeSatisfied`). Purely additive: `'sibling'` keeps decoding and
+  // behaving exactly as it did.
   scope: Schema.optionalKey(
-    Schema.Literal('sibling').annotate({
+    CoverageRuleScopeInputSchema.annotate({
       description:
-        'Restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc — closes real cross-directory capturability for a wildcard kind glob shared across many instances (e.g. one glob matching every design package). Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus.',
+        '`"sibling"` restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc. `{ under: "some/dir" }` restricts it to a `to`-kind doc nested anywhere below that project-relative directory — narrower than the unscoped corpus-wide default, broader than `"sibling"`. Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus.',
     }),
   ),
   to: CoverageTargetInputSchema,
@@ -447,9 +502,11 @@ export interface CoverageRule {
    * but a different meaning — see `CoverageRuleInputSchema`'s own comment. */
   readonly name?: string
   /** `'sibling'` restricts satisfaction to a same-parent-directory `to`-kind
-   * doc — see `CoverageRuleInputSchema`'s own comment for why. Absent means
-   * today's default: satisfied by a `to`-kind doc anywhere in the corpus. */
-  readonly scope?: 'sibling'
+   * doc; `{ under: 'some/dir' }` restricts it to a `to`-kind doc nested
+   * anywhere below that project-relative directory — see
+   * `CoverageRuleInputSchema`'s own comment for why. Absent means today's
+   * default: satisfied by a `to`-kind doc anywhere in the corpus. */
+  readonly scope?: 'sibling' | { readonly under: string }
   readonly to: CoverageTarget
   /** Defaults to `{ by: 'link' }` when absent — every rule written before
    * this field existed already meant that. */

@@ -331,6 +331,61 @@ describe('resolveRuleEdges()', () => {
       expect(edges[0]?.satisfiedBy).toHaveLength(1)
     })
   })
+
+  // Closes the granularity gap between `'sibling'` (exact same directory)
+  // and unscoped (anywhere in the corpus) — docs/design/CONVENTION.md's
+  // "Judging this convention" Claim 2.
+  describe('scope: { under: "..." }', () => {
+    it('IS satisfied by a to-kind doc nested ANYWHERE below the given directory, not just directly in it', () => {
+      const docs = [
+        doc('/r/design/team-b/pkg-a/roadmap.md', ['roadmap'], [ref('../../team-b/pkg-c/nested/spikes.md')]),
+        doc('/r/design/team-b/pkg-c/nested/spikes.md', ['spikes']),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', scope: { under: 'design/team-b' }, to: 'spikes' }],
+      })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+
+    it('is NOT satisfied by a to-kind doc OUTSIDE the given directory', () => {
+      const docs = [
+        doc('/r/design/team-b/pkg-a/roadmap.md', ['roadmap'], [ref('../../team-a/pkg-x/spikes.md')]),
+        doc('/r/design/team-a/pkg-x/spikes.md', ['spikes']),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', scope: { under: 'design/team-b' }, to: 'spikes' }],
+      })
+      expect(edges[0]?.satisfiedBy).toEqual([])
+    })
+
+    it('tolerates a leading/trailing slash on `under` — behaves identically either way', () => {
+      const docs = [
+        doc('/r/design/team-b/pkg-a/roadmap.md', ['roadmap'], [ref('./spikes.md')]),
+        doc('/r/design/team-b/pkg-a/spikes.md', ['spikes']),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', scope: { under: '/design/team-b/' }, to: 'spikes' }],
+      })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+
+    it('is a deliberate no-op for an `{ external: "path" }` target — nothing to scope by', () => {
+      const docs = [doc('/r/design/team-b/pkg-a/roadmap.md', ['roadmap'], [ref('../../../src/foo.ts')])]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        externalExists: new Set(['/r/src/foo.ts']),
+        rules: [{ from: 'roadmap', scope: { under: 'design/team-b' }, to: { external: 'path' } }],
+      })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+  })
 })
 
 describe('collectExternalRefTargets()', () => {

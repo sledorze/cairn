@@ -70,3 +70,28 @@ repo's `.cairnrc.json` now requires `problem-space` to link something matching
 green again). The match stays a plain substring, not a real URL grammar — a too-loose
 pattern can still silently accept the wrong repo. The product-issue/vision layer remains
 open.
+
+**Amendment: the `scope` sibling/corpus-wide granularity gap closed — one new, narrower gap
+found while closing it.** `scope` gained a second, purely additive variant, `{ under:
+'some/project/relative/dir' }` — satisfied by a `to`-kind doc nested anywhere below `under`
+(matched via a root-independent `**/<under>/**` glob, not a string-prefix compare); `'sibling'`
+keeps behaving identically. Round 5 of the dedup-key bug (see `CheckCoverage.ts`'s own
+comment) hit again on sight — the existing `${r.scope ?? ''}` string-coercion stringifies any
+object `scope` to `"[object Object]"` regardless of its real `under` value, so two rules
+differing only by `under` would have silently collapsed; fixed with `JSON.stringify`, falsified
+both directions with a real test. Dogfooded for real against a throwaway two-team fixture:
+the real CLI correctly flags a roadmap linking a spike OUTSIDE its scoped sub-tree while
+passing one linking a spike nested several directories INSIDE it. An independent, context-free
+adversarial reviewer (a fresh agent with no prior context, asked to break the change) found and
+this task fixed a second, more severe bug BEFORE shipping: `under: '/'` (or `''`/`'///'`, any
+value trimming to empty) collapsed the matcher's glob into one matching every path in the
+corpus — a silent, vacuous "satisfied," proved by a real cross-satisfied unrelated doc — worse
+than a disclosed limitation because it fails silent, not loud. Fixed by rejecting an
+empty-after-trim `under` at decode time; falsified for real (the same CLI now refuses to load
+that config at all). A third, narrower gap remains open, found applying the adversarial-judge
+prompt to this same capability (`docs/design/review-prompts.md`'s section 4): `under` still has
+zero validation against the config's real `roots`, unlike `from`/`to` kind ids — a typo
+silently makes a rule permanently unsatisfiable, with nothing pointing at the cause. Not fixed
+here (needs a `CairnConfigSchema`-level cross-field check, a different point in the schema tree
+than
+today's `CoverageInputSchema`-only check); recorded as open, not glossed over.

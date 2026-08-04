@@ -252,3 +252,123 @@ review) that was small enough to close in this same task. It does not fully vali
 3 schema-expressiveness gaps found here were the SAME gaps `CONVENTION.md` already knew about,
 which is itself useful evidence — a gap general enough to recur across two unrelated domains is
 more likely a fundamental one than a domain-specific artifact.
+
+## 4. `scope: { under: '...' }` — closing the sibling/corpus-wide granularity gap, and a
+
+negative-result validation against `README.md`/`docs/architecture.md`
+
+`CONVENTION.md`'s Claim 2 named a specific hole: `CoverageRule.scope` had exactly one real
+value (`'sibling'`, exact same directory) plus the unscoped default (anywhere in the corpus) —
+nothing in between, e.g. "anywhere under this named sub-tree." Closed additively:
+`scope: { under: 'some/project/relative/dir' }` (`src/core/Config.ts`'s new
+`CoverageRuleScopeInputSchema`, `src/core/structure/Coverage.ts`'s `scopeSatisfied`) — satisfied
+only by a `to`-kind doc whose resolved path is nested anywhere below `under`, matched as a
+`**/<under>/**` glob (root-independent, the same convention every kind's own `by: 'path'` glob
+already relies on) rather than a plain string-prefix compare. `'sibling'` keeps decoding and
+behaving identically — purely additive.
+
+### Structure invitation, applied to a genuinely new corpus (`README.md` + `docs/architecture.md`)
+
+Testing generalization rather than re-polishing `docs/design/`'s own review: applied the
+structure-invitation prompt to this repo's own top-level `README.md` (563 lines) and
+`docs/architecture.md` (293 lines) — the only two top-level docs, verified by listing
+`docs/*.md` for real (`docs/_SUMMARY.md` and `docs/architecture.summary.md` are generated
+artifacts, not authored source, so excluded as "given documents").
+
+**Draft**: kinds `readme` (`README.md`) and `architecture-doc` (`docs/architecture.md`); one
+rule, `readme` → `architecture-doc`, on the reasoning that a reader landing on `README.md`
+should be pointed at "why it's built this way."
+
+**Self-critique**: grepped for real, rather than assumed — `README.md` contains ZERO real
+Markdown links to any other repo doc (confirmed: `grep -n "\[.*\](.*\.md" README.md` matches
+only an illustrative example string inside prose, `[intro](./guide.md#getting-started)`, not a
+real link), and never even mentions "architecture" outside an unrelated JSON code sample line.
+`docs/architecture.md` itself only cites ADRs `0002`/`0003` as bare prose text, never a real
+link — the exact same finding review-prompts.md's own section 3 already recorded for this
+corpus's sibling `docs/adr/`. Two further, corpus-specific problems: (1) this repo's own
+`roots: ["docs"]` (`.cairnrc.json`) doesn't even scan `README.md` — it lives at the repo root,
+outside every configured root, so neither `checks.coverage` NOR the already-shipped, cheaper
+`--prose-refs` would ever see it without a `roots` change out of this task's scope; (2) the
+corpus has no MULTIPLICITY — exactly one README, one architecture doc, not many instances of a
+repeating shape. `checks.coverage`'s wildcard-glob kinds/rules earns its complexity precisely
+when one generic block must cover many present-and-future instances at once (every design
+package, every ADR) — see `CONVENTION.md`'s own `scope: 'sibling'` rationale. A rule enforcing
+one single static fact ("this one file must link that one file") is exactly the case a human
+noticing and hand-adding one link already solves at lower cost than a kinds/rules block, and a
+gamed/hollow version of the rule (a bare "see docs/architecture.md" dropped anywhere) would add
+no real content-adequacy guarantee either — the same Claim 1 hollow-link risk `CONVENTION.md`
+already names for design packages.
+
+**Revise**: no `checks.coverage` structure proposed for this corpus — a genuine negative
+result, not forced. The real, evidenced gap this corpus surfaces (`README.md`'s prose
+citation of `docs/design/CONVENTION.md`, itself a bare backtick with no `[text](path)` syntax)
+is shaped for `--prose-refs`, already shipped — not a new kinds/rules block — and even that
+would need `roots` widened to cover `README.md` first, a separate, out-of-scope change not
+made here (per this task's own instruction not to wire in anything without genuine judgment
+that it's a real, low-risk improvement — widening `roots` to the whole repo root has broader
+consequences, e.g. `README.md` itself crossing the 30-line summary threshold, not evaluated
+here).
+
+### Adversarial self-judgment of the `{ under: '...' }` capability itself
+
+**Does it close the gap cleanly?** Yes, for the stated granularity problem: dogfooded for
+real against a throwaway fixture (a `team-a/pkg1/roadmap.md` doc scoped to
+`under: "docs/design/team-b"`, linking a `spikes.md` under `team-a` instead) — the real bundled
+CLI (`dist/cli.js`) reports exactly the expected single `missing coverage` line for the
+`team-a` roadmap and stays silent for `team-b`'s own roadmap (which correctly links a
+`team-b`-nested spike two directories down, proving "nested anywhere below," not just
+"directly in"). Falsified the dedup-key interaction too: `program/structure/CheckCoverage.ts`'s
+rule-dedup key previously coerced `r.scope` with `${r.scope ?? ''}`, which stringifies ANY
+object `scope` to the literal text `"[object Object]"` regardless of its actual `under` value —
+two rules differing only by `under` would have silently collapsed into one, the exact
+Round 2/3/4 bug class `CheckCoverage.ts`'s own comment already tracks. Reverted the
+`JSON.stringify` fix, confirmed the new dedup test fails (`result.missing` length 1, not 2),
+restored it, confirmed it passes — a real "Round 5" entry, not a hypothetical.
+
+**Does it introduce a new problem?** Yes, one genuine, un-closed loose end, found by asking
+the task's own question directly: `under` is a raw string with ZERO validation against the
+config's real `roots`. `CoverageInputSchema`'s existing cross-field check already prevents a
+`from`/`to` kind-id typo from silently making a rule permanently unsatisfiable (decode-time
+failure, loud) — `under` has no equivalent. A typo'd `under` (e.g. `"docs/desing/team-b"`) or
+one naming a directory that falls outside every configured `root` decodes successfully and
+then silently, permanently reports every `from`-kind doc as missing coverage, with nothing in
+the error pointing at the actual cause — precisely the failure class ADR `0002`'s
+Consequences section already named as the reason the kind-id check exists at all, now
+re-opened for `under` specifically. Not fixed in this task: `CoverageInputSchema`'s cross-field
+check only ever sees `coverage.kinds`/`coverage.rules`, not the sibling top-level `roots` field
+— closing this for real needs either passing `roots` into that check (a `CairnConfigSchema`-
+level cross-field check, not a `CoverageInputSchema`-level one, a different point in the schema
+tree) or a runtime warning once real docs are scanned (mirroring `unmatchedKinds`'s own
+non-fatal-hint precedent for a kind glob that matches nothing) — recorded here as a real,
+named follow-up rather than silently left implicit.
+
+**Did an independent, context-free reviewer find anything this self-judgment missed?** Yes —
+run for real, not hypothetically: a fresh agent with no prior context on this task, handed only
+the diff and told to try to break it, found a genuine blocking bug the self-judgment above had
+not: `scope: { under: '/' }` (or `''`/`'///'` — anything that trims to empty) collapses
+`scopeSatisfied`'s `**/${under}/**` glob into one that matches EVERY path in the corpus. Proved
+concretely, not just reasoned: with `under: '/'` configured, `resolveRuleEdges` reported a
+`roadmap` doc under `design/team-a/pkg/` as satisfied by a totally unrelated `spikes` doc under
+`unrelated/far-away/`. This is a strictly worse failure mode than the already-disclosed
+"typo'd/out-of-`roots` `under`" gap above: that one fails LOUD (permanent missing-coverage,
+visibly wrong); an empty `under` fails SILENT (vacuously "satisfied," a report line that looks
+correctly scoped but isn't scoping anything at all) — exactly the "silently checks the wrong
+thing" failure class this whole tool exists to prevent, now nearly shipped by the tool's own
+new feature. Fixed before merge, not left as a third disclosed limitation: `under` (`core/
+Config.ts`) now rejects, at decode time, any value that trims to empty, with a report naming
+the reason. Falsified for real: the same real bundled CLI that previously accepted
+`scope: { under: '/' }` and silently cross-satisfied an unrelated doc now refuses to even load
+that config (`` `under` must not be empty, or only slashes... `` at
+`["checks"]["coverage"]["rules"][0]["scope"]["under"]`).
+
+**Verdict**: `{ under: '...' }` closes the STATED granularity gap correctly, verified by
+construction (real CLI dogfood, both directions of a real falsification on the dedup fix) —
+and, after an independent adversarial pass this task's own self-judgment missed, no longer
+admits the empty/slash-only vacuous-match case either. It does not, and was never asked to,
+close the separate, adjacent "validate against `roots`" gap; recorded as open rather than
+glossed over, matching this repo's own standing rule for self-reported gaps (`CONVENTION.md`'s
+"Self-reported-gap closure tracking"). The empty-`under` bug's own discovery is itself evidence
+for why that standing rule (get an independent, context-free read rather than trusting your own
+re-read) exists: the author's own first-pass self-judgment, run immediately after writing the
+capability, missed a bug a fresh reviewer with no investment in the design found on a first
+pass.

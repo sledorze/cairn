@@ -105,7 +105,7 @@ export const checkCoverage = ({
     const mdFiles = yield* readMarkdownCorpus(dfs, roots, ignore, trackedFiles)
 
     // Deduped by every field that can distinguish two rules on the same
-    // kind pair — found via adversarial review, in FOUR rounds so far.
+    // kind pair — found via adversarial review, in FIVE rounds so far.
     // Round 1: an accidentally (or programmatically) duplicated rule entry
     // produced a duplicate `missing` report line for the exact same
     // violation, pure noise. Round 2 (a real regression the first fix
@@ -122,17 +122,25 @@ export const checkCoverage = ({
     // `CoverageRuleInputSchema`'s own comment) hit the SAME landmine on
     // sight — caught before it shipped this time, not after, by applying
     // this comment's own standing warning rather than re-discovering it.
+    // Round 5: `scope` grew a second, OBJECT-shaped variant (`{ under:
+    // '...' }`, see `CoverageRuleScopeInputSchema`) — the Round 4 fix's
+    // own `r.scope ?? ''` string-coerces every object to the literal text
+    // "[object Object]" regardless of its actual `under` value, so two
+    // rules differing only by `under` (e.g. scoped to two different
+    // sub-trees) would silently collapse into one — the exact Round 2/3 bug
+    // class again. Fixed by `JSON.stringify`-ing the whole `scope` field
+    // instead of relying on template-literal coercion.
     // `description` deliberately does NOT appear here: purely cosmetic
     // report text, never changes what the rule actually checks, so two
     // rules differing ONLY in `description` really are the same rule.
     // Every OTHER discriminating field of `CoverageRule` (`name`, `via.by`,
     // `scope`) MUST appear in this key — if a future field is added to
     // distinguish otherwise-identical rules, add it here too, or this exact
-    // class of silent data loss reappears a fifth time.
+    // class of silent data loss reappears a sixth time.
     const uniqueRules = [
       ...new Map(
         rules.map((r) => [
-          `${r.name ?? ''}\u0000${r.from}\u0000${isKindTarget(r.to) ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}\u0000${r.scope ?? ''}`,
+          `${r.name ?? ''}\u0000${r.from}\u0000${isKindTarget(r.to) ? r.to : JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}\u0000${JSON.stringify(r.scope) ?? ''}`,
           r,
         ]),
       ).values(),

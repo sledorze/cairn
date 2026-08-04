@@ -184,16 +184,21 @@ product-shaped versus a restated bug report wearing a product-sounding filename.
 
 **Claim 2 — "the config mechanism can express whatever document structure is actually
 necessary, not just this repo's fixed 7-doc shape."** Does not hold, per
-`core/Config.ts`/`core/structure/Coverage.ts`: `KindSelector` has exactly one variant
-(`by: 'path'`, glob-only — no way to target one specific instance, only a path-shaped
-class); `CoverageTarget` has three variants (a kind id, `{ external: 'path' }` resolved
-against a real file on disk, or `{ external: 'url', pattern }` resolved against a
-substring match on a link's raw href — a GitHub issue link is now enforceable, but only via
-a plain substring, not a real URL grammar: no scheme/host/path-segment structure, no
-wildcard, so a pattern that's too loose (e.g. just `github.com`) silently accepts a link to
-the wrong repo); `scope` is a single literal (`'sibling'` or
-absent/corpus-wide — no granularity in between, e.g. "anywhere under this sub-tree" or "any
-doc in a named group"); `CoverageRequirement.by` is a single variant (`'link'`, meaning "at
+`core/Config.ts`/`core/structure/Coverage.ts`: `KindSelector` has two variants (`by: 'path'`,
+glob-only, or `by: 'frontmatter'`, a flat YAML field/value match — still no way to target one
+SPECIFIC instance, only a path- or frontmatter-shaped class); `CoverageTarget` has three
+variants (a kind id, `{ external: 'path' }` resolved against a real file on disk, or
+`{ external: 'url', pattern }` resolved against a substring match on a link's raw href — a
+GitHub issue link is now enforceable, but only via a plain substring, not a real URL grammar:
+no scheme/host/path-segment structure, no wildcard, so a pattern that's too loose (e.g. just
+`github.com`) silently accepts a link to the wrong repo); `scope` has two variants (`'sibling'`
+or `{ under: 'some/dir' }`, both narrower than absent/corpus-wide — the sibling/corpus-wide
+granularity gap this claim originally named is closed, see "Self-reported-gap closure
+tracking" below, but a further one is real and un-closed: `under` is a plain string with zero
+validation against the config's own `roots`, so a typo'd or out-of-scope `under` decodes
+successfully and then silently, permanently reports every rule using it as unsatisfiable —
+`from`/`to` kind ids get exactly this validation via `CoverageInputSchema`'s cross-field check,
+`under` does not); `CoverageRequirement.by` is a single variant (`'link'`, meaning "at
 least one" — no `minCount`/N-of-M/alternation construct, so two rules on the same `from` are
 always AND'd, never OR'd); and nothing in the schema touches dates/mtimes at all, so a "doc
 must be re-validated after N months" freshness rule is outside its vocabulary entirely, not
@@ -229,7 +234,7 @@ not prose:**
     KindSelector.by:          2
     CoverageTarget:           3
     CoverageRequirement.by:   1
-    CoverageRule.scope:       1
+    CoverageRule.scope:       2
   ```
 
   Keep a running log of real requests that needed a variant that doesn't exist yet — a
@@ -237,11 +242,18 @@ not prose:**
   numerically, not just narratively.
 
 - **Self-reported-gap closure tracking**: this doc originally named two open gaps
-  (URL-pattern target, product-issue/vision layer). The first is now closed (`CoverageTarget`'s
-  third variant, above); the product-issue/vision layer remains open. On a fixed cadence
-  (e.g. every time this doc is next substantively edited), check whether the remaining gap
-  has a real filed GitHub issue; an item surviving multiple such checks with no filed issue
-  is a signal the "future work" framing has gone stale, not active.
+  (URL-pattern target, product-issue/vision layer); a third (sibling/corpus-wide scope
+  granularity) was named later, in Claim 2's own re-review. Two of the three are now closed
+  (`CoverageTarget`'s third variant; `CoverageRule.scope`'s `{ under: '...' }` variant, see
+  `review-prompts.md`'s section 4 for the real dogfood/falsification evidence) — closing the
+  second one surfaced a new, narrower, un-closed gap in its place (`under` has no validation
+  against `roots`, recorded in Claim 2 above and in `review-prompts.md`'s own adversarial
+  self-judgment), which is itself the expected shape of this tracking: closing a gap can
+  reveal a smaller one underneath, and that smaller one gets recorded rather than glossed
+  over, not treated as the original gap secretly still open. The product-issue/vision layer
+  remains open. On a fixed cadence (e.g. every time this doc is next substantively edited),
+  check whether a remaining gap has a real filed GitHub issue; an item surviving multiple such
+  checks with no filed issue is a signal the "future work" framing has gone stale, not active.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release

@@ -34,18 +34,21 @@ holds for a developer reader (a captured report line is specific and actionable)
 NOT hold for a product reader (this repo's own `problem-space.md`/`story-map.md`/
 `roadmap.md` are dev-shaped content wearing product-sounding filenames; `checks.coverage`
 enforces link existence only, never content). Schema expressiveness does NOT fully hold
-either: `KindSelector`/`CoverageRequirement.by`/`scope` are each single- or dual-variant
-unions, unable to express a sub-tree scope, N-of-M alternation, or a freshness rule;
-`CoverageTarget` now has three variants (a URL target closed one real gap), but only via a
-plain substring match, not a real URL grammar. Six measurable checks (product-term lexicon
-ratio, persona audit, evidence-source classifier, schema variant census, self-reported-gap
-closure tracking, hedge-language census) track both gaps as numbers over time; the schema
-variant census and hedge-language census are now computed for real by
-`scripts/coverage-metrics.ts` (`pnpm run coverage-metrics`) rather than hand-counted —
-current real output (KindSelector.by: 2, CoverageTarget: 3, CoverageRequirement.by: 1,
-CoverageRule.scope: 1; hedge phrases total 15) is quoted in full in this doc. Reusable,
-business-agnostic prompts for running this kind of review on any `checks.coverage` structure
-are in [`review-prompts.md`](./review-prompts.md).
+either: `CoverageRequirement.by` is still single-variant, N-of-M alternation and a freshness
+rule are still unexpressible; `scope` now has a SECOND variant, `{ under: 'some/dir' }`
+— closing the sibling/corpus-wide granularity gap this doc originally named — but `under`
+itself has no validation against the config's real `roots`, a new, narrower, un-closed gap
+found while closing the old one; `CoverageTarget` has three variants (a URL target closed
+another real gap), but only via a plain substring match, not a real URL grammar. Six
+measurable checks (product-term lexicon ratio, persona audit, evidence-source classifier,
+schema variant census, self-reported-gap closure tracking, hedge-language census) track both
+gaps as numbers over time; the schema variant census and hedge-language census are now
+computed for real by `scripts/coverage-metrics.ts` (`pnpm run coverage-metrics`) rather than
+hand-counted — current real output (KindSelector.by: 2, CoverageTarget: 3,
+CoverageRequirement.by: 1, CoverageRule.scope: 2; hedge phrases total 15) is quoted in full
+in this doc. Reusable, business-agnostic prompts for running this kind of review on any
+`checks.coverage` structure, plus a validated negative result against `README.md`/
+`docs/architecture.md`, are in [`review-prompts.md`](./review-prompts.md).
 
 Full historical narrative (what was tried, what failed, what was found) is in
 `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s amendments.

@@ -18,7 +18,7 @@ import * as nodePath from 'node:path'
 
 import type { CoverageRule } from '../Config.ts'
 import { isKindTarget, isUrlTarget } from '../Config.ts'
-import { matchesAny } from '../glob.ts'
+import { matchesAny, matchesGlob } from '../glob.ts'
 import type { DocMetadata, StructureNode } from './DocMetadata.ts'
 
 const path = nodePath.posix
@@ -108,7 +108,24 @@ const matchNode = (
   // own parent directory counts. `{ external: 'path' }` targets have no kind
   // classification to scope by (no sibling GROUP to belong to in the first
   // place), so `scope` is a deliberate no-op for them, not an oversight.
-  const scopeSatisfied = rule.scope !== 'sibling' || !isKindTarget(rule.to) || path.dirname(targetPath) === fromDir
+  //
+  // `scope: { under: '...' }` (CoverageRuleInputSchema's own comment): the
+  // granularity gap between `'sibling'` (exact same directory) and unscoped
+  // (anywhere in the corpus) — satisfied by a `to`-kind doc nested ANYWHERE
+  // below the given project-relative directory, not just directly in it.
+  // Matched as a glob (`**/<under>/**`) rather than a plain path-prefix
+  // string compare, so `under` matches regardless of the absolute scan root
+  // a given run happens to resolve `targetPath` against — the same
+  // "`**/`-prefixed, root-independent" convention every kind's own `by:
+  // 'path'` glob already relies on (see `KindSelectorInputSchema`'s own
+  // comment). A leading/trailing slash on `under` is trimmed so
+  // `"docs/design/team-b"` and `"/docs/design/team-b/"` behave identically.
+  const scopeSatisfied =
+    rule.scope === undefined || !isKindTarget(rule.to)
+      ? true
+      : rule.scope === 'sibling'
+        ? path.dirname(targetPath) === fromDir
+        : matchesGlob(targetPath, `**/${rule.scope.under.replaceAll(/^\/+|\/+$/g, '')}/**`)
   return kindSatisfied && scopeSatisfied ? targetPath : null
 }
 
