@@ -334,6 +334,39 @@ describe('cli.ts (real subprocess) — flags with no prior CLI-level test covera
     expect(explained.stdout).toContain('recorded')
   })
 
+  it('a plain failing run points at --explain; --explain itself does not repeat the hint', () => {
+    const p = project('cli-explain-hint', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': `# A\n\n${'line\n'.repeat(40)}`,
+    })
+    const plain = runCli(p.root, ['check', '--summaries-only'])
+    const explained = runCli(p.root, ['check', '--summaries-only', '--explain'])
+    expect(plain.stdout).toContain('--explain')
+    expect(explained.stdout).not.toMatch(/Tip:.*--explain|Astuce.*--explain/)
+  })
+
+  it('a clean summaries run never shows the --explain hint', () => {
+    const p = project('cli-explain-hint-clean', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/a.md': '# A\n\nShort doc, under the threshold.\n',
+    })
+    const result = runCli(p.root, ['check', '--summaries-only'])
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).not.toContain('--explain')
+  })
+
+  it('an orphans-only failure (nothing in todo) never shows the --explain hint', () => {
+    const p = project('cli-explain-hint-orphans-only', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      // `a.summary.md` with no matching `a.md` — orphan, no `todo` entries.
+      'docs/a.summary.md': '# A — summary\n\nStale summary for a deleted source doc.\n',
+    })
+    const result = runCli(p.root, ['check', '--summaries-only'])
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('orphan')
+    expect(result.stdout).not.toContain('--explain')
+  })
+
   it('--prune deletes a real orphan summary (source doc gone) from disk', () => {
     const p = project('cli-prune', {
       '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
