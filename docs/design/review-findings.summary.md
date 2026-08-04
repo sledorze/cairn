@@ -2,7 +2,7 @@
 
 Real, dated evidence from applying `review-prompts.md`'s two prompts (structure invitation,
 adversarial judge) to this repo's own `checks.coverage` schema and configuration, across
-five rounds so far. Split out of `review-prompts.md` once this evidence grew past a lean
+eight rounds so far. Split out of `review-prompts.md` once this evidence grew past a lean
 reference — an append-only historical record, mirrored by [`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`](../adr/0005-design-packages-structurally-enforced-by-existing-coverage.md)'s own
 Amendment log for the same rounds.
 
@@ -107,3 +107,59 @@ bug (none affected), confirmed no decode-time behavior changed, and found one pu
 doc-comment defect (fixed). Its steelman pass found one real, narrower follow-up: `atLeast.of`'s
 no-duplicate check specifically could use `uniqueItems: true` structurally — not attempted here,
 recorded as a genuine smaller open item.
+
+**7. Closing that narrower `uniqueItems` follow-up — including a wrong first-pass assumption
+caught by the coverage ratchet, not silently corrected**: `effect`'s built-in `Schema.isUnique()`
+(confirmed via source — its own doc comment states it maps to `uniqueItems: true`) is now stacked
+onto `atLeast.of`. Confirmed genuinely working: a standalone probe first proved the mechanism in
+isolation, then the real `schema/cairn.schema.json` was regenerated and diffed
+(`"of": { "allOf": [{ "uniqueItems": true }], ... }`), then — going further than any prior
+`jsonSchemaHint` fragment's verification — compiled with a real, independent validator (`ajv`) and
+confirmed it actually rejects a duplicate `atLeast.of` target and accepts a clean one, not just
+that the keyword appears in the generated text. The first-pass assumption that `Schema.isUnique()`
+is "strictly weaker" than the existing `atLeastSaneFilter` (reference equality, not structural) was
+WRONG — running the real coverage pipeline surfaced a genuine regression (a newly-0%-covered
+branch), which traced to `effect`'s `Equal.equals` actually being STRUCTURAL and key-order-
+INSENSITIVE, making `Schema.isUnique()` a strict superset of the old `JSON.stringify` compare (and
+fixing a real latent key-order bug in it) — and to field-level checks running before a struct's own
+cross-field check, making the old duplicate branch permanently unreachable. Fixed by REMOVING that
+now-dead branch (not suppressing the coverage gap), with `vitest.config.ts`'s `functions`/
+`branches` thresholds manually recalibrated down by the resulting tiny amount, matching that same
+file's own precedent for a denominator-only shift from dead-code removal. Steelman pass, re-run
+against the corrected understanding: keeping both checks WOULD have been the real "redundant,
+drifting mechanisms" failure; removing the subsumed one was the right call, verified to lose
+nothing (every previously-rejected input still rejected) and gain a real fix (key-order-duplicate
+objects, previously wrongly accepted, are now correctly caught). Does `allOf`-nesting actually get
+honored by real tooling? Yes, verified with `ajv`. A real, pre-existing, unrelated `$schema`
+dialect-string inconsistency (`draft-07` header vs. `Schema.toJsonSchemaDocument`'s own
+`draft-2020-12` probe output) was noticed while building the `ajv` probe and recorded, not fixed
+— out of this round's scope.
+
+**8. Validating the structure-invitation prompt against `scripts/*.ts` (dev tooling) and
+`.changeset/*.md` (a changelog convention)**: two more genuine negative results, continuing the
+generalization-testing pattern (`docs/design/`, `docs/adr/`, `README.md`/`docs/architecture.md`
+tried previously). `scripts/*.ts` + its `*.unit.test.ts`/`*.integration.test.ts` siblings fails
+for the most fundamental reason found in this file to date — not a missing config, a missing
+FILE-TYPE capability: `DocsFs.ts`'s `listMarkdownFiles`, the one file-discovery function every
+check in this codebase shares, filters unconditionally on `.md`, confirmed by real CLI dogfood
+(identical scan counts with and without `scripts` added to `roots`). Even granting that away
+hypothetically, `checks.coverage` needs real Markdown link syntax no source file has, and even
+granting THAT away, the real relationship between these scripts (two regex/number literals that
+must stay textually identical, e.g. `bench-guard.sh`'s hot-path filter vs.
+`.github/workflows/bench.yml`'s own copy) is a content-duplication-drift concern neither
+`checks.coverage` nor `checks.freshness` can express — three independent blockers, each checked
+for real, not assumed. `.changeset/*.md` fails for a shallower reason: real `.md` files (unlike
+`scripts/*.ts`), confirmed scannable once added to `roots` (a real CLI dogfood reported the
+expected missing-`_SUMMARY.md` warning for its 13 files), but zero real Markdown links exist in
+any of them (grep-confirmed), the ADR-style frontmatter-classification idea doesn't transfer
+(a changeset's frontmatter key IS the package name, not a fixed field, and "docs-only" is an
+absence, which `KindSelector` can't express), and no real GitHub-issue citation exists to ground
+a `traces_to`-style rule (the only `github.com` hits are illustrative example strings, same
+pattern as the earlier `README.md` finding). What IS a real, evidenced fit for `.changeset/*.md`,
+exactly like `README.md` before it: `--prose-refs`, dogfooded both directions for real (a clean
+pass, then a constructed citation-rename correctly flagged, then reverted) — not wired into this
+repo's own `.cairnrc.json`, matching `checks.freshness`'s own no-real-incident-here reasoning. An
+adversarial steelman pass on both conclusions found no reason to overturn either negative
+result, only sharpened why each holds (three independent blockers for `scripts/`, not just one;
+an open question about generalizing beyond this repo's own two corpora, honestly left unsettled
+rather than overclaimed).

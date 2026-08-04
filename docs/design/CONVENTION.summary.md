@@ -68,5 +68,15 @@ in this repo's own `.cairnrc.json` — no real "doc silently rotted" incident he
 threshold in, unlike the repo that motivated it), are in
 [`review-prompts.md`](./review-prompts.md).
 
+The JSON-Schema cross-field-constraint gap (four decode-time checks invisible to an editor's
+autocomplete) is now split three ways: the DISCOVERABILITY half is closed for all four
+(`jsonSchemaHint`, an `allOf: [{ description }]` fragment each now carries); one of the four
+(`atLeast.of`'s no-duplicate-target check) is now ALSO closed structurally, via `effect`'s
+built-in `Schema.isUnique()` mapping onto the real `uniqueItems: true` JSON Schema keyword,
+confirmed both by regenerating `schema/cairn.schema.json` and by validating the result with a
+real, independent JSON Schema engine (`ajv`) rather than just re-reading the generated file; the
+other three cross-field checks (`n <= of.length`, the `to` array's `minItems`, the top-level
+undeclared-kind-id check) remain genuinely unexpressible in plain JSON Schema.
+
 Full historical narrative (what was tried, what failed, what was found) is in
 `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s amendments.

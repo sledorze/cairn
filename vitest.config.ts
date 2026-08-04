@@ -28,7 +28,18 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 92.51,
+        // branches: 92.5 (down from 92.51), functions: 98.91 (down from
+        // 98.92) — `core/Config.ts`'s `checkAtLeastSane` dropped its own
+        // `JSON.stringify`-based duplicate-target branch (a `Set`/`.map()`
+        // lambda in the denominator) once `docs/design/review-findings.md`
+        // section 7 discovered, by construction, that the new
+        // `atLeastOfUniqueFilter` (`Schema.isUnique()`, added for
+        // `uniqueItems: true` JSON-Schema discoverability) already runs
+        // FIRST and structurally subsumes it — a pure ratio shift from
+        // removing now-dead code, the same "denominator shrinks along with
+        // the numerator, no real coverage lost" shape as this file's own
+        // `readDirsSafe` precedent below.
+        branches: 92.5,
         // functions/statements: manually recalibrated (config.ts's move to
         // Effect's FileSystem service), not auto-raised.
         // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery
@@ -48,7 +59,7 @@ export default defineConfig({
         // ratio shift with no coverage lost: every real branch this
         // rewrite touches (the mixed file/directory glob-segment case
         // included) has its own real-filesystem test.
-        functions: 98.92,
+        functions: 98.91,
         lines: 99.44,
         statements: 99.27,
       },

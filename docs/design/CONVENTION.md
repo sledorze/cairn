@@ -404,9 +404,32 @@ coverage-metrics`) rather than hand-counted, since a prior round of this same re
   `CairnCoverageRuleScopeUnder.properties.under`. An independent adversarial pass and its own
   steelman surfaced one real, narrower follow-up this framing understated: `atLeast.of`'s
   no-duplicate-target half specifically IS expressible via the standard `uniqueItems: true`
-  JSON Schema keyword — not attempted in this round, a genuine smaller open item, distinct from
+  JSON Schema keyword — not attempted in that round, a genuine smaller open item, distinct from
   the `n <= of.length`/undeclared-kind-id checks which remain unexpressible in plain JSON
   Schema. Full investigation, falsification, and adversarial pass: `review-findings.md` section 6.
+  **Update, a later round**: that narrower `uniqueItems: true` follow-up is now closed too —
+  `AtLeastTargetInputSchema`'s `of` field (`Config.ts`) additionally carries `effect`'s own
+  built-in `Schema.isUnique()` filter. Confirmed genuinely working, not assumed: the regenerated
+  `schema/cairn.schema.json` now carries `"of": { "allOf": [{ "uniqueItems": true }], ... }`, and
+  — going one step further than every prior `jsonSchemaHint` fragment in this file, none of which
+  had been checked against a real validator before — compiling that regenerated schema with a
+  real, independent JSON Schema engine (`ajv`) confirms it actually rejects a duplicate
+  `atLeast.of` target and accepts a clean one, not just that the keyword appears in the generated
+  text. A first-pass assumption that this check would be "strictly weaker" than the pre-existing
+  `atLeastSaneFilter` duplicate-target check (reasoned as reference-equality-based, kept as
+  harmless defense-in-depth alongside it) was WRONG, caught by this repo's own coverage ratchet
+  rather than left uncorrected: `effect`'s `Equal.equals` is actually STRUCTURAL and
+  key-order-INSENSITIVE, making `Schema.isUnique()` a strict superset of the old check (and fixing
+  a real latent key-order bug in it), and field-level checks run before a struct's own cross-field
+  check in this schema library — together making the old duplicate-target branch permanently
+  unreachable. Fixed by REMOVING that now-dead branch from `atLeastSaneFilter`'s underlying
+  function (not suppressing the resulting coverage gap); `atLeastSaneFilter` still owns the two
+  cross-field checks `Schema.isUnique()` genuinely cannot express (`n <= of.length`, non-empty
+  `of`). This closes the one structural piece of the four cross-field checks that a real JSON
+  Schema keyword could express; the other three (`n <= of.length`, the `to` array's `minItems`,
+  the top-level undeclared-kind-id check) remain genuinely unexpressible, unchanged from the
+  prior round's conclusion. See `review-findings.md` section 7 for the full investigation,
+  falsification, and adversarial steelman pass.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release

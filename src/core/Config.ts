@@ -223,17 +223,36 @@ const AnyTargetInputSchema = Schema.Struct({
 // moment a single link matches either one. Proved concretely, not just
 // reasoned: `resolveRuleEdges({ rules: [{ from: 'roadmap', to: { atLeast: {
 // n: 2, of: ['spikes', 'spikes'] } } }] })` against a doc with exactly ONE
-// link to a `spikes`-kind doc came back `satisfied: true` before this
-// check existed — the exact "silently requires fewer DISTINCT things than
-// `n` implies" failure class this whole feature exists to prevent, now
-// nearly shipped by the feature meant to prevent it. Rejected at decode
-// time, the same "reject the vacuity-prone shape before it can run" pattern
-// every other check in this function follows — compared structurally
-// (`JSON.stringify`), matching this file's own `to`-shape dedup-key
-// precedent (`../../program/structure/CheckCoverage.ts`'s rule-dedup key)
-// rather than a reference-equality check that `'spikes' === 'spikes'`
-// would already catch for strings but a repeated `{ external: 'path' }`
-// object would not.
+// link to a `spikes`-kind doc came back `satisfied: true` before a
+// duplicate-target check existed — the exact "silently requires fewer
+// DISTINCT things than `n` implies" failure class this whole feature exists
+// to prevent, now nearly shipped by the feature meant to prevent it.
+//
+// The duplicate-target rejection itself now lives entirely on `of`'s own
+// field-level `atLeastOfUniqueFilter` (`Schema.isUnique()`, below) rather
+// than here — a later round (`docs/design/review-findings.md` section 7)
+// investigated adding `Schema.isUnique()` purely for its `uniqueItems: true`
+// JSON-Schema-discoverability side effect, and in doing so discovered, by
+// construction (not assumed), that it actually SUBSUMES this function's own
+// original `JSON.stringify`-based duplicate check for every real
+// `CoverageTarget` shape: `effect`'s `Equal.equals` (what `Schema.isUnique()`
+// uses under `Arr.dedupe`) does STRUCTURAL, key-order-INSENSITIVE comparison
+// for plain objects — confirmed directly (`Equal.equals({ external: 'url',
+// pattern: 'x' }, { pattern: 'x', external: 'url' })` returns `true`, while
+// `JSON.stringify` of the same pair differs) — which is a STRICT SUPERSET of
+// what `JSON.stringify` equality can ever catch (anything `JSON.stringify`-
+// equal is necessarily also `Equal.equals`-equal, since identical key order
+// is one case of "any order"). Combined with field-level checks running
+// BEFORE a struct's own cross-field check in this schema library (confirmed
+// the same way: decoding `{ atLeast: { n: 2, of: ['spikes', 'spikes'] } }`
+// surfaces `Schema.isUnique()`'s own "Expected an array with unique items"
+// message, never reaching this function at all), this function's own
+// duplicate-target branch became permanently unreachable dead code the
+// moment `atLeastOfUniqueFilter` was added — removed here rather than kept
+// as inert, misleading "defense in depth" (this repo's own coverage
+// threshold ratchet caught the resulting 0%-covered branch for real; kept
+// would have meant either accepting a coverage regression or writing a test
+// that could never legitimately exercise it).
 const checkAtLeastSane = (v: { readonly n: number; readonly of: readonly unknown[] }): string | undefined => {
   if (v.of.length === 0) {
     return '`atLeast.of` must not be an empty array — the same permanently-unsatisfiable trap a bare empty `to` array falls into'
@@ -241,29 +260,45 @@ const checkAtLeastSane = (v: { readonly n: number; readonly of: readonly unknown
   if (v.n > v.of.length) {
     return `\`atLeast.n\` (${v.n}) must not exceed \`atLeast.of.length\` (${v.of.length}) — a rule requiring more targets than are listed can never be satisfied`
   }
-  const seen = new Set(v.of.map((target) => JSON.stringify(target)))
-  if (seen.size !== v.of.length) {
-    return '`atLeast.of` must not contain a duplicate target — a duplicate lets ONE satisfying link count toward `n` twice, silently requiring fewer DISTINCT links than `n` implies'
-  }
   return undefined
 }
 
 const atLeastSaneFilter = Schema.makeFilter(
   checkAtLeastSane,
   jsonSchemaHint(
-    "`atLeast.of` must be non-empty and contain no duplicate target, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here.",
+    "`atLeast.of` must be non-empty, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here. (`atLeast.of`'s own no-duplicate-target requirement is enforced separately, on `of` itself — see that field's own `atLeastOfUniqueFilter`.)",
   ),
 )
+
+// The real, authoritative enforcement of "no duplicate target in `atLeast.of`"
+// — see `checkAtLeastSane`'s own comment above for why this, not a
+// `JSON.stringify` compare inside that function, is where this check now
+// lives: `effect`'s built-in `Schema.isUnique()` maps directly onto the real
+// `uniqueItems: true` JSON Schema keyword (confirmed via a standalone
+// `Schema.toJsonSchemaDocument` probe, and via validating the real
+// regenerated `schema/cairn.schema.json` with an independent JSON Schema
+// engine, `ajv`, which correctly rejects a duplicate `atLeast.of` and
+// accepts a clean one), so using it here closes a real JSON-Schema
+// structural-discoverability gap this same field's `n <= of.length`/
+// non-empty constraints still can't close, AND its `Equal.equals`-based
+// structural, key-order-insensitive comparison is strictly stronger than
+// the `JSON.stringify` compare it replaces. Extracted to a named const,
+// matching `checkToArrayNotEmpty`/`checkUnderNotEmpty`'s own precedent
+// above, purely to keep call nesting within oxlint's `max-nested-calls`
+// once this filter is piped through `Schema.check(...)` below — no
+// behavior difference.
+const atLeastOfUniqueFilter = Schema.isUnique()
 
 const AtLeastNSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1))).annotate({
   description:
     'The minimum number of `atLeast.of` targets that must each independently have at least one satisfying link. A positive integer — `n: 0` would make the rule vacuously satisfied by nothing, defeating the point of requiring a minimum.',
 })
+const AtLeastOfSchema = Schema.Array(CoverageTargetInputSchema).pipe(Schema.check(atLeastOfUniqueFilter))
 
 const AtLeastTargetInputSchema = Schema.Struct({
   atLeast: Schema.Struct({
     n: AtLeastNSchema,
-    of: Schema.Array(CoverageTargetInputSchema),
+    of: AtLeastOfSchema,
   }).pipe(Schema.check(atLeastSaneFilter)),
 }).annotate({
   description:

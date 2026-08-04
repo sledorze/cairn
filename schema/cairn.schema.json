@@ -113,13 +113,17 @@
                 }
               ]
             },
-            "of": { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageTarget" } }
+            "of": {
+              "type": "array",
+              "allOf": [{ "uniqueItems": true }],
+              "items": { "$ref": "#/$defs/CairnCoverageTarget" }
+            }
           },
           "required": ["n", "of"],
           "additionalProperties": false,
           "allOf": [
             {
-              "description": "`atLeast.of` must be non-empty and contain no duplicate target, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here."
+              "description": "`atLeast.of` must be non-empty, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here. (`atLeast.of`'s own no-duplicate-target requirement is enforced separately, on `of` itself — see that field's own `atLeastOfUniqueFilter`.)"
             }
           ]
         }
