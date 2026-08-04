@@ -185,6 +185,7 @@ describe('loadConfig()', () => {
       docCoverage: null,
       freshness: null,
       links: false,
+      proseRefs: { ignore: [] },
       summaries: false,
     }) // deep-merged
     expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
@@ -228,6 +229,7 @@ describe('loadConfig()', () => {
       docCoverage: null,
       freshness: null,
       links: false,
+      proseRefs: { ignore: [] },
       summaries: false,
     })
   })
@@ -287,6 +289,43 @@ describe('loadConfig()', () => {
       ],
       rules: [],
     })
+  })
+
+  it('inherits `checks.proseRefs.ignore` from an `extends` preset when the local file does not set it', async () => {
+    const cwd = mkTmp('cairn-extends-proserefs-inherit-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { proseRefs: { ignore: ['src/a.ts'] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { links: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.proseRefs).toEqual({ ignore: ['src/a.ts'] })
+  })
+
+  it('replaces (not merges) `checks.proseRefs.ignore` entirely when the local file also sets it', async () => {
+    const cwd = mkTmp('cairn-extends-proserefs-replace-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { proseRefs: { ignore: ['from-base/*.ts'] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { proseRefs: { ignore: ['from-local/*.ts'] } }, extends: './base.cairnrc.json' }),
+    )
+    // Same wholesale-replace precedence as `checks.coverage`/`roots`/top-level
+    // `ignore` above — no trace of the base's ignore list survives.
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.proseRefs).toEqual({ ignore: ['from-local/*.ts'] })
+  })
+
+  it('defaults `checks.proseRefs.ignore` to an empty array when the section is present but `ignore` is not', async () => {
+    const cwd = mkTmp('cairn-proserefs-empty-section-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { proseRefs: {} } }))
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.proseRefs).toEqual({ ignore: [] })
   })
 
   it('re-disables `checks.coverage` with `false` when a local config overrides an `extends` preset that enabled it', async () => {

@@ -1,3 +1,4 @@
+import { it as effectIt } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -47,6 +48,56 @@ describe('checkProseRefs()', () => {
     ])
     expect(proseRefsExitCode(result)).toBe(1)
   })
+
+  // REX feedback: a doc documenting a path FORMAT — a table of sample
+  // paths, a prose example using a fictitious filename — has real, path-
+  // shaped, never-real backticked text with no way to distinguish it from a
+  // genuine citation short of a config-level exemption. `ignoreRefs` (wired
+  // from `checks.proseRefs.ignore`) is that exemption, matched against the
+  // exact cited text, checked BEFORE existence — same effect as if the
+  // target had resolved: silently skipped, not reported.
+  effectIt.effect('ignoreRefs silently exempts an exact illustrative citation that would otherwise be reported', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/guide.md': { content: '| `src/a.ts` | silent |\n| `src/a.js` | warns |\n', mtimeMs: 1 },
+        '/r/src/other.ts': { content: 'export {}', mtimeMs: 1 },
+      })
+      const result = yield* checkProseRefs({
+        base: '/r',
+        ignoreRefs: ['src/a.ts', 'src/a.js'],
+        roots: ['/r/docs'],
+      }).pipe(Effect.provide(layer))
+      expect(result.broken).toEqual([])
+      expect(proseRefsExitCode(result)).toBe(0)
+    }),
+  )
+
+  effectIt.effect('ignoreRefs supports a glob, and only exempts what it matches — a real citation still reports', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/guide.md': {
+          content: 'Example: `examples/*.ts`. Also see `src/services/gone.ts`.',
+          mtimeMs: 1,
+        },
+        '/r/src/other.ts': { content: 'export {}', mtimeMs: 1 },
+      })
+      const result = yield* checkProseRefs({ base: '/r', ignoreRefs: ['examples/*'], roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      expect(result.broken).toEqual([
+        {
+          file: '/r/docs/guide.md',
+          refs: [
+            {
+              reason: 'missing',
+              suggestion: '[`src/services/gone.ts`](../src/services/gone.ts)',
+              text: 'src/services/gone.ts',
+            },
+          ],
+        },
+      ])
+    }),
+  )
 
   // Issue #47 criterion 3 / security: a candidate resolving OUTSIDE `base`
   // is never `dfs.exists`'d — reported as unverifiable regardless of what's
@@ -147,9 +198,9 @@ describe('checkProseRefs()', () => {
     expect(result.broken).toEqual([])
   })
 
-  it('formatProseRefsReport reports success when nothing drifted', () => {
+  it('formatProseRefsReport reports success when nothing is broken', () => {
     const lines = formatProseRefsReport({ broken: [], checked: 3 })
-    expect(lines).toEqual(['✅ No drifted prose file-references found (3 file(s) checked).'])
+    expect(lines).toEqual(['✅ No broken prose file-references found (3 file(s) checked).'])
   })
 
   it('formatProseRefsReport names the invitation-to-link suggestion in its output', () => {
@@ -162,7 +213,7 @@ describe('checkProseRefs()', () => {
       ],
       checked: 1,
     })
-    expect(lines.at(-1)).toBe('    ✗ `src/x.ts` (no longer resolves) → consider a link: [`src/x.ts`](../src/x.ts)')
+    expect(lines.at(-1)).toBe('    ✗ `src/x.ts` (does not resolve) → consider a link: [`src/x.ts`](../src/x.ts)')
   })
 
   // Found via dimension-coverage review: checkLinks/checkSummaries both wire

@@ -1,13 +1,21 @@
 // Effect program for issue #47: report a bare-backtick prose citation
 // (`` `src/services/auth.ts` ``, no `[text](path)` syntax at all) whose
-// target has ACTUALLY drifted (moved, renamed, or deleted) — never one that
-// still resolves (that's silent, always; see `looksLikeRootedPath`'s own
-// header and issue #47's criterion 1). Always-silent-unless-drifted is what
-// makes this safe for PERMANENT/ongoing use, not just a one-time migration
-// step (issue #105) — the report doesn't just say "broken," it names the
-// exact `[text](path)` syntax that would make the reference structurally
-// checkable by `CheckLinks.ts` going forward, encouraging (not requiring)
-// conversion to a real link over time.
+// target does not resolve — never one that does (that's silent, always; see
+// `looksLikeRootedPath`'s own header and issue #47's criterion 1).
+// Always-silent-unless-broken is what makes this safe for PERMANENT/ongoing
+// use, not just a one-time migration step (issue #105) — the report doesn't
+// just say "broken," it names the exact `[text](path)` syntax that would
+// make the reference structurally checkable by `CheckLinks.ts` going
+// forward, encouraging (not requiring) conversion to a real link over time.
+//
+// Deliberately NOT "moved or deleted": this is a live, stateless
+// existence check with no record of a citation's target ever having
+// resolved before — it cannot distinguish a path that once existed and was
+// since removed from one that was never real to begin with (a typo, an
+// illustrative example). "Does not resolve" is the honest claim; anything
+// implying history is a claim this check has no way to back (REX feedback:
+// the prior "no longer resolves" wording sent a reader looking for a rename
+// that never happened, for a path that was never real).
 //
 // Candidates are resolved rooted at `base` (the repo checkout root) — a bare
 // citation like `src/services/auth.ts` is read the way a person would type
@@ -22,6 +30,7 @@ import * as nodePath from 'node:path'
 
 import { Effect } from 'effect'
 
+import { matchesAny } from '../../core/glob.ts'
 import { extractProseRefs } from '../../core/links/ProseRefs.ts'
 import { isWithinBase } from '../../core/paths.ts'
 import { DocsFs, isSafelyWithinBase, listMarkdownFiles } from '../../io/DocsFs.ts'
@@ -64,6 +73,12 @@ export interface CheckProseRefsArgs {
    * scanned for prose citations — silently inconsistent with every sibling
    * check, not a deliberate scope cut. */
   readonly ignore?: readonly string[]
+  /** `checks.proseRefs.ignore` (core/Config.ts): backticked citation TEXT (or
+   * a glob over it) to always treat as illustrative, never a real citation —
+   * matched before existence is ever checked, same effect as a citation that
+   * already resolves. Distinct from `ignore` above, which excludes whole
+   * FILES from being scanned at all. */
+  readonly ignoreRefs?: readonly string[]
   readonly trackedFiles?: ReadonlySet<string> | undefined
 }
 
@@ -83,12 +98,14 @@ const resolveOne = ({
   base,
   dfs,
   fromDir,
+  ignoreRefs,
   text,
   trackedUniverse,
 }: {
   readonly base: string
   readonly dfs: { realPath: (p: string) => Effect.Effect<string | null> }
   readonly fromDir: string
+  readonly ignoreRefs: readonly string[]
   readonly text: string
   /** Same shape as `CheckLinks.ts`'s own `trackedUniverse` (files + their
    * ancestor directories): a physically-present target counts as "resolves"
@@ -97,6 +114,12 @@ const resolveOne = ({
   readonly trackedUniverse: ReadonlySet<string> | undefined
 }): Effect.Effect<BrokenProseRef | null> =>
   Effect.gen(function* () {
+    // Config-declared illustrative text (checks.proseRefs.ignore) — checked
+    // FIRST, before any existence check, same treatment as a citation that
+    // already resolves: silently skipped, never reported.
+    if (matchesAny(text, ignoreRefs)) {
+      return null
+    }
     const targetAbs = path.join(base, text)
     const suggestion = `[\`${text}\`](${relativeLinkFrom(fromDir, targetAbs)})`
     if (!isWithinBase(targetAbs, base)) {
@@ -141,6 +164,7 @@ export const checkProseRefs = ({
   base,
   roots,
   ignore = [],
+  ignoreRefs = [],
   trackedFiles,
 }: CheckProseRefsArgs): Effect.Effect<ProseRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
@@ -170,7 +194,7 @@ export const checkProseRefs = ({
       const fromDir = path.dirname(file)
       const fileBroken: BrokenProseRef[] = []
       for (const candidate of candidates) {
-        const result = yield* resolveOne({ base, dfs, fromDir, text: candidate.text, trackedUniverse })
+        const result = yield* resolveOne({ base, dfs, fromDir, ignoreRefs, text: candidate.text, trackedUniverse })
         if (result) {
           fileBroken.push(result)
         }
@@ -188,25 +212,31 @@ export const formatProseRefsReport = (result: ProseRefsResult, options: ProseRef
   if (result.broken.length === 0) {
     return [
       pick(locale, {
-        en: `✅ No drifted prose file-references found (${result.checked} file(s) checked).`,
-        fr: `✅ Aucune référence de fichier en prose obsolète (${result.checked} fichier(s) vérifié(s)).`,
+        en: `✅ No broken prose file-references found (${result.checked} file(s) checked).`,
+        fr: `✅ Aucune référence de fichier en prose non résolue (${result.checked} fichier(s) vérifié(s)).`,
       }),
     ]
   }
   const total = result.broken.reduce((n, f) => n + f.refs.length, 0)
   const lines: string[] = [
     pick(locale, {
-      en: `❌ ${total} drifted prose file-reference(s):`,
-      fr: `❌ ${total} référence(s) de fichier en prose obsolète(s) :`,
+      en: `❌ ${total} broken prose file-reference(s):`,
+      fr: `❌ ${total} référence(s) de fichier en prose non résolue(s) :`,
     }),
   ]
   for (const { file, refs } of result.broken) {
     lines.push(`  ${file}`)
     for (const ref of refs) {
+      // "does not resolve", not "no longer resolves" — this is a live
+      // existence check with no record of the citation ever having resolved
+      // before (REX feedback: the prior wording implied a move/deletion this
+      // check has no way to have actually observed; a citation for a path
+      // that never existed is reported identically to one that did and was
+      // deleted, and the wording must not claim to know which).
       const why =
         ref.reason === 'unverifiable'
           ? pick(locale, { en: 'outside the checkout, cannot verify', fr: 'hors du dépôt, non vérifiable' })
-          : pick(locale, { en: 'no longer resolves', fr: 'ne se résout plus' })
+          : pick(locale, { en: 'does not resolve', fr: 'ne se résout pas' })
       lines.push(
         pick(locale, {
           en: `    ✗ \`${ref.text}\` (${why}) → consider a link: ${ref.suggestion}`,
@@ -229,6 +259,12 @@ export const proseRefsPlugin: CheckPlugin<ProseRefsResult> = {
   isEnabled: (_resolved, cli) => cli.prose,
   jsonUnsupportedMessage: '--json cannot be combined with --prose-refs yet',
   name: 'proseRefs',
-  run: ({ base, ignore, roots, trackedFiles }) =>
-    checkProseRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) }),
+  run: ({ base, ignore, resolved, roots, trackedFiles }) =>
+    checkProseRefs({
+      base,
+      ignore,
+      ignoreRefs: resolved.checks.proseRefs.ignore,
+      roots,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
+    }),
 }

@@ -103,7 +103,7 @@ const refsOption = Flag.boolean('refs').pipe(
 )
 const proseRefsOption = Flag.boolean('prose-refs').pipe(
   Flag.withDescription(
-    'Opt-in, safe for permanent use (issue #47, #105): report a bare-backtick prose file citation (e.g. `src/x.ts`, no [text](path) syntax) whose target has actually moved or been deleted — a citation that still resolves is always silent. Reported with the Markdown link syntax that would make it checkable going forward.',
+    'Opt-in, safe for permanent use (issue #47, #105): report a bare-backtick prose file citation (e.g. `src/x.ts`, no [text](path) syntax) whose target does not resolve — a citation that does resolve is always silent. Reported with the Markdown link syntax that would make it checkable going forward. checks.proseRefs.ignore (config) exempts an illustrative, never-real citation (e.g. a sample path in a format table).',
   ),
 )
 const reportDeletionsOption = Flag.boolean('report-deletions').pipe(
