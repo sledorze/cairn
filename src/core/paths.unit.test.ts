@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isIgnored, isInScope, isWithinBase, relativeToBase, toPosix } from './paths.ts'
+import { isIgnored, isInScope, isWithinBase, matchesGlobNearBase, relativeToBase, toPosix } from './paths.ts'
 
 describe('toPosix()', () => {
   it('converts Windows separators to POSIX', () => {
@@ -116,5 +116,29 @@ describe('isIgnored()', () => {
 
   it('is false for a file that matches none of the patterns, absolute or relative', () => {
     expect(isIgnored('/r/docs/kept.md', ['docs/SKIP.md'], ['/r'])).toBeFalsy()
+  })
+})
+
+// `matchesGlobNearBase` centralises what `CheckDocCoverage.ts`'s own
+// `matchesConfiguredGlob` and `CheckFreshness.ts`'s own `matchesRuleGlob`
+// used to independently re-derive — both call sites' own prior tests
+// (`CheckDocCoverage.unit.test.ts`, `CheckFreshness.unit.test.ts`) already
+// exercise this through those checks end-to-end; this suite pins the shared
+// helper's own contract directly, once, rather than only indirectly.
+describe('matchesGlobNearBase()', () => {
+  it('matches a `**`-prefixed pattern against the absolute path', () => {
+    expect(matchesGlobNearBase('/r/docs/a.md', '/r', ['**/a.md'])).toBeTruthy()
+  })
+
+  it('matches a root-relative pattern with no leading ** segment, against `base`', () => {
+    expect(matchesGlobNearBase('/r/docs/a.md', '/r', ['docs/a.md'])).toBeTruthy()
+  })
+
+  it('is true when ANY of several patterns matches', () => {
+    expect(matchesGlobNearBase('/r/docs/a.md', '/r', ['docs/nope.md', 'docs/a.md'])).toBeTruthy()
+  })
+
+  it('is false for a path that matches none of the patterns, absolute or relative', () => {
+    expect(matchesGlobNearBase('/r/docs/a.md', '/r', ['docs/other.md'])).toBeFalsy()
   })
 })

@@ -126,54 +126,43 @@ export const checkCoverage = ({
     const mdFiles = yield* readMarkdownCorpus(dfs, roots, ignore, trackedFiles)
 
     // Deduped by every field that can distinguish two rules on the same
-    // kind pair — found via adversarial review, in FIVE rounds so far.
-    // Round 1: an accidentally (or programmatically) duplicated rule entry
-    // produced a duplicate `missing` report line for the exact same
-    // violation, pure noise. Round 2 (a real regression the first fix
-    // introduced): deduping by (from, to) ALONE silently collapsed two
-    // rules sharing a kind pair but meaning DIFFERENT things — e.g. issue
-    // #28's own `implements` vs `verified_by` between the same two kinds —
-    // into one, losing a genuine distinct obligation; `name` became the
-    // discriminant. Round 3 (the SAME bug reintroduced by the very fix
-    // meant to demonstrate evolvability): adding `via` without adding it
-    // here meant two same-pair rules differing only in `via` would
-    // silently collapse the moment a second `via.by` variant existed —
-    // dormant today (only `by: 'link'` is valid), a landmine for the next
-    // one. Round 4: adding `scope` (real capturability fix — see
-    // `CoverageRuleInputSchema`'s own comment) hit the SAME landmine on
-    // sight — caught before it shipped this time, not after, by applying
-    // this comment's own standing warning rather than re-discovering it.
-    // Round 5: `scope` grew a second, OBJECT-shaped variant (`{ under:
-    // '...' }`, see `CoverageRuleScopeInputSchema`) — the Round 4 fix's
-    // own `r.scope ?? ''` string-coerces every object to the literal text
-    // "[object Object]" regardless of its actual `under` value, so two
-    // rules differing only by `under` (e.g. scoped to two different
-    // sub-trees) would silently collapse into one — the exact Round 2/3 bug
-    // class again. Fixed by `JSON.stringify`-ing the whole `scope` field
-    // instead of relying on template-literal coercion.
-    // `description` deliberately does NOT appear here: purely cosmetic
-    // report text, never changes what the rule actually checks, so two
-    // rules differing ONLY in `description` really are the same rule.
-    // Every OTHER discriminating field of `CoverageRule` (`name`, `via.by`,
-    // `scope`) MUST appear in this key — if a future field is added to
-    // distinguish otherwise-identical rules, add it here too, or this exact
-    // class of silent data loss reappears a sixth time.
-    // Round 6: `to` grew alternation (`targetsOf` in ../../core/Config.ts) —
-    // `to` can now be a single target OR an array of them. The previous
-    // `isKindTarget(r.to) ? r.to : JSON.stringify(r.to)` branch assumed `to`
-    // was never an array; `JSON.stringify(['a', 'b'])` and the plain string
-    // `'a'` (the old true branch) are already textually distinct, so
-    // simplifying to an UNCONDITIONAL `JSON.stringify(r.to)` both fixes the
-    // array case and removes a branch — one fewer place for the next
-    // `to`-shape change to have to remember this key exists at all.
-    const uniqueRules = [
-      ...new Map(
-        rules.map((r) => [
-          `${r.name ?? ''}\u0000${r.from}\u0000${JSON.stringify(r.to)}\u0000${r.via?.by ?? ''}\u0000${JSON.stringify(r.scope) ?? ''}`,
-          r,
-        ]),
-      ).values(),
-    ]
+    // kind pair — found via adversarial review, in SIX rounds before this
+    // one (full history kept below, no longer prescriptive). Every one of
+    // those rounds was the same shape of bug: the key was a hand-maintained
+    // ALLOWLIST of "the fields that currently matter," so a new
+    // `CoverageRule` field silently didn't count toward the key the moment
+    // it was added — a structural footgun an allowlist can never notice on
+    // its own, only ever caught after the fact by an adversarial pass
+    // remembering to re-check it.
+    //
+    // Fixed here by inverting the key from an allowlist to a DENYLIST:
+    // `{ ...r, description: undefined }` structurally includes EVERY field
+    // `r` actually has (via the spread) and blanks out only the one field
+    // this file has always deliberately excluded — `description`, purely
+    // cosmetic report text; two rules differing ONLY in `description`
+    // really are the same rule. `JSON.stringify` omits an `undefined`-
+    // valued property entirely, so blanking `description` this way removes
+    // it from the key exactly like the old explicit omission did. A FUTURE
+    // field added to `CoverageRule` is now automatically part of the key
+    // the moment it exists on the object — this closes the recurring bug
+    // CLASS, not just this round's instance of it.
+    //
+    // Full history, for context only (no longer prescriptive — the
+    // denylist above needs no per-field updates): Round 1, an accidentally
+    // duplicated rule entry produced a duplicate `missing` report line for
+    // the exact same violation. Round 2, deduping by (from, to) ALONE
+    // silently collapsed two rules sharing a kind pair but meaning
+    // DIFFERENT things (e.g. issue #28's own `implements` vs
+    // `verified_by`) into one; `name` became a discriminant. Round 3,
+    // adding `via` without adding it to the key meant two same-pair rules
+    // differing only in `via` would silently collapse. Round 4, adding
+    // `scope` hit the same landmine. Round 5, `scope` grew an
+    // OBJECT-shaped variant (`{ under: '...' }`) that the then-current
+    // `r.scope ?? ''` string-coerced to the literal text "[object Object]"
+    // regardless of its actual value. Round 6, `to` grew alternation
+    // (array-shaped), which an `isKindTarget(r.to) ? r.to :
+    // JSON.stringify(r.to)` branch hadn't accounted for.
+    const uniqueRules = [...new Map(rules.map((r) => [JSON.stringify({ ...r, description: undefined }), r])).values()]
 
     // `readMarkdownCorpus` already gives an unreadable doc (permission
     // denied) the same lenient skip this used to hand-roll.

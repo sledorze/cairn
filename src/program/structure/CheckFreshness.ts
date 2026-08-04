@@ -34,8 +34,7 @@
 import { Data, Effect } from 'effect'
 
 import type { FreshnessRule } from '../../core/Config.ts'
-import { matchesAny } from '../../core/glob.ts'
-import { relativeToBase, toPosix } from '../../core/paths.ts'
+import { matchesGlobNearBase } from '../../core/paths.ts'
 import type { FreshnessCandidate, StaleDoc } from '../../core/structure/Freshness.ts'
 import { findStaleDocs } from '../../core/structure/Freshness.ts'
 import { DocsFs, listMarkdownFiles } from '../../io/DocsFs.ts'
@@ -74,23 +73,17 @@ export interface FreshnessResult {
  * `checks.coverage`'s own `unmatchedKinds`, and never affects this. */
 export const freshnessExitCode = (result: FreshnessResult): number => (result.stale.length > 0 ? 1 : 0)
 
-// Matched against BOTH the absolute path and the path relative to `base` —
-// the same two-step convention `isIgnored`/`checkDocCoverage`'s own
-// `matchesConfiguredGlob` already established, for the same reason: a glob
-// written the way anyone actually writes one (`docs/adr/*.md`, no leading
-// `**/`) is authored relative to the project root, and a bare `matchesAny`
-// against an absolute path alone would never match it.
-const matchesRuleGlob = (absPath: string, base: string, glob: string): boolean =>
-  matchesAny(toPosix(absPath), [glob]) || matchesAny(relativeToBase(absPath, base), [glob])
-
 /** The FIRST rule (declared order) whose glob matches `absPath`, or
  * `undefined` when no rule applies — same "first match wins" ordering
  * discipline `core/structure/DocMetadata.ts`'s own kind-classification
  * already follows (GitHub issue #29's locked decision), applied here for
  * the same reason: predictable, position-based resolution instead of an
- * unspecified "which of several matching rules wins." */
+ * unspecified "which of several matching rules wins." Glob matching itself
+ * (both-absolute-and-relative-to-base) is `../../core/paths.ts`'s own
+ * `matchesGlobNearBase` — see that function's own comment for why this used
+ * to be a locally re-derived copy. */
 const matchingRule = (absPath: string, base: string, rules: readonly FreshnessRule[]): FreshnessRule | undefined =>
-  rules.find((rule) => matchesRuleGlob(absPath, base, rule.glob))
+  rules.find((rule) => matchesGlobNearBase(absPath, base, [rule.glob]))
 
 export const checkFreshness = ({
   base,

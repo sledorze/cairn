@@ -39,7 +39,21 @@ export default defineConfig({
         // removing now-dead code, the same "denominator shrinks along with
         // the numerator, no real coverage lost" shape as this file's own
         // `readDirsSafe` precedent below.
-        branches: 92.5,
+        // branches: 92.44 (down from 92.5) — `CheckDocCoverage.ts`'s own
+        // `matchesConfiguredGlob` and `CheckFreshness.ts`'s own
+        // `matchesRuleGlob` were two independently re-derived, verbatim
+        // (but for a single-glob-vs-array-of-globs argument shape) copies
+        // of the exact same "match both absolute and base-relative" `||`
+        // check, each fully covered by its own file's tests. Consolidated
+        // into one shared `matchesGlobNearBase` (`core/paths.ts`), itself
+        // fully covered by its own new direct unit tests. Removing two
+        // fully-covered `||` branches from the denominator (dedup, not a
+        // coverage loss) drops the GLOBAL ratio below the mean the same
+        // "denominator shrinks along with the numerator" way this file's
+        // own `checkAtLeastSane` precedent above already explains — the
+        // math looks like a regression only because the removed branches
+        // were covered at 100%, above the overall average.
+        branches: 92.44,
         // functions/statements: manually recalibrated (config.ts's move to
         // Effect's FileSystem service), not auto-raised.
         // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery
