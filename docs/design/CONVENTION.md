@@ -207,10 +207,23 @@ not prose:**
   classify each citation as GitHub-issue-only versus interview/survey/support-ticket-volume/
   analytics; flag packages where 100% of cited evidence is a single maintainer-filed issue.
 - **Schema variant census**: count `KindSelector.by`, `CoverageTarget`,
-  `CoverageRequirement.by`, and `CoverageRule.scope`'s Literal/Union variants (currently 1,
-  2, 1, 1 respectively); keep a running log of real requests that needed a variant that
-  doesn't exist yet — a rising unmet-request count against a static variant count is
-  Claim 2's gap growing, numerically, not just narratively.
+  `CoverageRequirement.by`, and `CoverageRule.scope`'s Literal/Union variants — computed for
+  real by `scripts/coverage-metrics.ts` (`pnpm run coverage-metrics`) rather than
+  hand-counted, since a prior round of this same review hand-counted `KindSelector.by` as 1
+  and it silently went stale the moment `by: "frontmatter"` was added. Current real output:
+
+  ```
+  Schema variant census (src/core/Config.ts):
+    KindSelector.by:          2
+    CoverageTarget:           2
+    CoverageRequirement.by:   1
+    CoverageRule.scope:       1
+  ```
+
+  Keep a running log of real requests that needed a variant that doesn't exist yet — a
+  rising unmet-request count against a static variant count is Claim 2's gap growing,
+  numerically, not just narratively.
+
 - **Self-reported-gap closure tracking**: this doc names two open gaps (URL-pattern target,
   product-issue/vision layer). On a fixed cadence (e.g. every time this doc is next
   substantively edited), check whether either has a real filed GitHub issue; an item
@@ -220,7 +233,18 @@ not prose:**
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release
   over release is a direct measure of whether reviews like this are actually closing gaps
-  or just re-discovering and re-recording the same ones.
+  or just re-discovering and re-recording the same ones. Also computed for real by
+  `scripts/coverage-metrics.ts` (across `docs/**/*.md`, excluding the `.cairn/` sidecar
+  tree). Current real output:
+
+  ```
+  Hedge-language census (docs/**/*.md, excluding .cairn/):
+    "not modeled":            4
+    "un-enforced":            2
+    "out of scope":           6
+    "no concept of":          3
+    total:                    15
+  ```
 
 Neither Claim 1's nor Claim 2's gap is closed by this section — both are recorded as open,
 exactly like the URL-target and product-issue gaps above, rather than treated as solved by

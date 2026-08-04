@@ -72,6 +72,19 @@ already believes in the structure is poorly positioned to find its gaps.
 > hasn't been written yet (a configuration gap, not a schema gap). Do not report a gap you
 > have not attempted to actually express in config.
 >
+> Before writing up (b), run `pnpm run coverage-metrics` (`scripts/coverage-metrics.ts`
+> in cairn's own repo) and cite its actual printed output — the schema variant census
+> and hedge-language census — as evidence instead of hand-counting `Schema.Literal`/
+> union variants by reading the schema file, or grepping hedge phrases yourself. This
+> applies regardless of which domain's documents you're reviewing: the schema being
+> judged (`KindSelector`, `CoverageTarget`, `CoverageRequirement`, `CoverageRule.scope`)
+> is always cairn's own, so its variant count doesn't change per domain — only run the
+> script fresh if you suspect the schema itself changed since its last run. The script
+> covers only two of the six measurable checks below; still hand-derive the other four
+> (product-signal lexicon ratio, persona audit, evidence-source classifier,
+> self-reported-gap closure) against the domain's actual documents, but don't re-derive
+> by hand what the script already computes for real.
+>
 > For both (a) and (b): cite concrete, quoted evidence for every finding — no vibe-only
 > judgment. End your report with a fixed set of measurable, re-checkable criteria (not
 > prose alone) that a future reviewer — or an automated script — could re-run without

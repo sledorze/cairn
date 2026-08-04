@@ -44,6 +44,7 @@
     "bundle-cli": "esbuild dist/cli.js --bundle --platform=node --format=esm --outfile=dist/cli.js --allow-overwrite --banner:js=\"import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url);\"",
     "check": "tsx src/cli.ts check",
     "coverage": "vitest run --coverage",
+    "coverage-metrics": "tsx scripts/coverage-metrics.ts",
     "dev": "tsx src/cli.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

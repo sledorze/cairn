@@ -16,8 +16,12 @@ each kind's real document instance actually serve its stated purpose, verified b
 actual text, not just checking the link exists; (b) schema expressiveness: attempt to
 express 3+ concrete domain needs as valid `checks.coverage` config against the real
 `KindSelector`/`CoverageTarget`/`CoverageRequirement`/`CoverageRule.scope` types, and report
-each failure as schema-fundamental versus merely unconfigured. Both prompts require quoted
-evidence and end with measurable, re-checkable criteria rather than a prose-only verdict.
+each failure as schema-fundamental versus merely unconfigured. Before writing up (b), the
+prompt now instructs running `pnpm run coverage-metrics` (`scripts/coverage-metrics.ts`) and
+citing its real printed output for the schema variant/hedge-language censuses, instead of
+hand-counting them by reading the schema file — the other four measurable checks are still
+hand-derived per domain. Both prompts require quoted evidence and end with measurable,
+re-checkable criteria rather than a prose-only verdict.
 
 **3. Worked example**: both prompts applied for real to `docs/adr/` (a corpus different from
 `docs/design/`) — proposed a `by: "frontmatter"` kind (classifying by each ADR's real
