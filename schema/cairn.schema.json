@@ -226,6 +226,18 @@
       "additionalProperties": false,
       "description": "Opt-in check that a doc's real git history is no older than its own matching rule's `maxAgeDays`. A doc with no commit history yet is silently excluded (nothing to measure an age from), never reported stale or fresh. Absent by default — presence enables it."
     },
+    "CairnProseRefsConfig": {
+      "type": "object",
+      "properties": {
+        "ignore": {
+          "type": "array",
+          "description": "Backticked prose citations (exact text, or a glob over it) to always treat as illustrative — never checked for existence, same as a citation that already resolves. For a path-shaped example in a format table or a case study using a fictitious filename, not for excluding real, resolvable citations. Matched against the literal backticked text (e.g. `src/a.ts`), not a filesystem path.",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Tuning for `--prose-refs` (a CLI-flag opt-in check; this config section only tunes it, it does not enable it — absent means no ignore list, not disabled)."
+    },
     "CairnChecksConfig": {
       "type": "object",
       "properties": {
@@ -259,6 +271,7 @@
         },
         "freshness": { "anyOf": [{ "$ref": "#/$defs/CairnFreshnessConfig" }, { "type": "boolean", "enum": [false] }] },
         "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
+        "proseRefs": { "$ref": "#/$defs/CairnProseRefsConfig" },
         "summaries": {
           "type": "boolean",
           "description": "Enable summary freshness checking (content-hash based). Default true."

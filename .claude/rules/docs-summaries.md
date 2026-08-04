@@ -77,8 +77,11 @@ When you create or edit any doc:
   target; a later `--refs` run reports any that changed since.
 - `--prose-refs` — safe for permanent, ongoing use (not just a one-time migration
   step): flags a bare-backtick file citation in prose (e.g. a citation with no
-  `[text](path)` syntax) whose target has moved or been deleted. Silent for
-  anything that still resolves.
+  `[text](path)` syntax) whose target does not resolve. Silent for anything that
+  does. It's a live existence check with no history — it can't tell a real
+  citation that was moved/deleted from a path-shaped example that was never a
+  citation at all; use `checks.proseRefs.ignore` in config to exempt the latter
+  (e.g. a documented sample path in a table).
 - `checks.coverage` (config only, no CLI flag) — for docs beyond code reference
   (PRDs, specs, decision logs): declares doc **kinds** by path glob and **rules**
   ("every `feature` doc must link to a `decision` doc"), then reports missing

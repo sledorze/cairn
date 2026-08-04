@@ -306,6 +306,41 @@ describe('cli.ts (real subprocess) — every documented flag is exercised by nam
     expect(helpText).toContain('--prose-refs')
     expect(helpText.toLowerCase()).not.toContain('migration aid')
   })
+
+  // REX feedback: a doc documenting a path FORMAT (e.g. a sample-path table)
+  // has real, path-shaped, never-real backticked text `--prose-refs` can't
+  // tell apart from a genuine citation on its own. `checks.proseRefs.ignore`
+  // is the config-level exemption — proven here through the REAL CLI +ᅟa
+  // real config file, not just the program-level unit test, since the
+  // config->plugin wiring itself (core/Config.ts's `layerConfig` ->
+  // `resolved.checks.proseRefs.ignore` -> `CheckProseRefs.ts`'s plugin
+  // `run`) is exactly what could silently break without this.
+  it('checks.proseRefs.ignore (config) exempts an illustrative citation the CLI would otherwise report', () => {
+    const withoutIgnore = project('cli-prose-refs-ignore-absent', {
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/guide.md': '| `src/a.ts` | silent |\n',
+      // `src/` must be a REAL top-level entry — resolveOne's false-positive
+      // guard silently skips any candidate whose first path segment doesn't
+      // resolve, which would make this assertion pass for the wrong reason
+      // (skipped, not reported-then-ignored) without a real `src/`.
+      'src/other.ts': 'export {}\n',
+    })
+    const reported = runCli(withoutIgnore.root, ['check', '--prose-refs'])
+    expect(reported.exitCode).toBe(1)
+    expect(reported.stdout).toContain('src/a.ts')
+
+    const withIgnore = project('cli-prose-refs-ignore-present', {
+      '.cairnrc.json': JSON.stringify({
+        checks: { proseRefs: { ignore: ['src/a.ts'] } },
+        requireDirSummaries: false,
+      }),
+      'docs/guide.md': '| `src/a.ts` | silent |\n',
+      'src/other.ts': 'export {}\n',
+    })
+    const exempted = runCli(withIgnore.root, ['check', '--prose-refs'])
+    expect(exempted.exitCode).toBe(0)
+    expect(exempted.stdout).not.toContain('src/a.ts')
+  })
 })
 
 describe('cli.ts (real subprocess) — flags with no prior CLI-level test coverage', () => {

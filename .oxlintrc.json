@@ -112,7 +112,8 @@
         "src/program/summaries/CheckSummaries.unit.test.ts",
         "src/program/structure/CheckFreshness.unit.test.ts",
         "src/program/structure/CheckFreshness.plugin.unit.test.ts",
-        "src/program/structure/CheckCoverage.unit.test.ts"
+        "src/program/structure/CheckCoverage.unit.test.ts",
+        "src/program/links/CheckProseRefs.unit.test.ts"
       ],
       "rules": {
         "vitest/no-duplicate-hooks": "off",
