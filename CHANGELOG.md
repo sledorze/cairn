@@ -1,5 +1,210 @@
 # @sledorze/cairn
 
+## 0.9.0
+
+### Minor Changes
+
+- 101c0ea: Added `checks.freshness`, a new opt-in check: a doc whose real git history (committer date of
+  its last real commit, not filesystem mtime) is older than its own matching rule's `maxAgeDays`
+  is reported stale.
+
+  ```json
+  "checks": {
+    "freshness": {
+      "rules": [{ "glob": "docs/adr/**", "maxAgeDays": 365 }]
+    }
+  }
+  ```
+
+  `rules` is an ordered array of `{ glob, maxAgeDays }`; the FIRST rule (declared order) whose
+  glob matches a doc's path applies, and a doc matching none is skipped entirely (not reported,
+  not counted). A doc with no commit history yet is silently excluded from staleness reporting —
+  nothing to measure an age from. Absent by default — presence enables it, matching
+  `checks.docCoverage`'s own opt-in shape. Existing configs are unaffected.
+
+- 101c0ea: `checks.coverage`'s rule `description` field is now **mandatory whenever a rule has a
+  `name`** — enforced at config decode time, alongside the existing undeclared-kind check. A
+  named rule (e.g. `{ from: "spec", name: "implements", to: "decision" }`) with no
+  `description` will now fail to decode entirely, not just produce a config warning.
+
+  This is a real, stricter check, not just a bugfix — if you already use `checks.coverage`
+  with a named rule and no `description`, `cairn check` will start failing to even load your
+  config after upgrading. Add a `description` string explaining what the relationship means
+  and how to satisfy it (rendered directly in the report when the rule is unmet) to fix it. An
+  unnamed rule (no `name`) is unaffected — its report line is already self-explanatory, so
+  `description` stays optional there.
+
+  Rationale: `name` alone was found to only ever feed a bare disambiguating label into the
+  report — useful for telling two rules apart, but explaining nothing to a reader unfamiliar
+  with the vocabulary. Making `description` mandatory exactly where that gap exists (not for
+  every rule, which would just produce restated filler on already-self-explanatory rules)
+  closes it by construction instead of leaving it to be remembered.
+
+- 101c0ea: Added a third `CoverageTarget` variant to a `checks.coverage` rule's `to` field:
+  `{ external: 'url', pattern: '...' }` — satisfied by a doc's outbound Markdown link whose
+  raw href CONTAINS `pattern` (a plain substring match, not a regex/glob DSL). Closes a real,
+  previously self-reported gap: `to` could only name a declared kind id or `{ external: 'path'
+}` (a link resolving to a real file on disk), with no way to require a link to an external
+  URL — e.g. every design-package `problem-space.md` must link its originating GitHub issue.
+
+  ```json
+  {
+    "from": "problem-space",
+    "name": "traces_to",
+    "to": { "external": "url", "pattern": "https://github.com/OWNER/REPO/issues/" }
+  }
+  ```
+
+  Purely additive and opt-in — an existing `checks.coverage` config (including one already
+  using `{ external: 'path' }`) decodes and behaves identically with no `{ external: 'url' }`
+  rule present.
+
+- 101c0ea: `checks.coverage`'s `KindSelector` gains a second, additive variant: `{ "by": "frontmatter", "field": "status", "equals": "accepted" }` classifies a doc into a kind by matching a flat, top-level YAML frontmatter key/value pair, alongside the existing `{ "by": "path", "glob": "..." }` variant.
+
+  Closes a real, concretely-scoped gap this repo's own ADRs (`docs/adr/*.md`) exposed while validating `checks.coverage` against a corpus outside `docs/design/`: every ADR shares one path glob, but a real structural distinction between them (e.g. `status: proposed` vs `status: accepted`) can't be expressed by path alone — only by reading each file's own frontmatter. This lets a rule like "every accepted ADR must be linked from an architecture overview doc" be expressed and enforced, which was previously inexpressible in this schema.
+
+  Reads only a flat, top-level `key: value` frontmatter block (no nested YAML, no lists, no multi-line scalars). A doc with no frontmatter, or missing the selector's `field`, simply doesn't match that kind — never a decode error. A doc can match kinds from both selector variants at once.
+
+  Purely additive and opt-in: an existing config using only `by: "path"` selectors decodes and behaves identically.
+
+- 101c0ea: Added two new optional fields to a `checks.coverage` rule:
+
+  - `scope: "sibling"` restricts rule satisfaction to a `to`-kind doc in the SAME parent
+    directory as the `from` doc, instead of anywhere in the scanned corpus. Closes a real,
+    verified gap: a shared, wildcard kind glob (e.g. matching every instance of a repeated
+    document-package pattern) let one instance satisfy its rules by cross-linking a completely
+    unrelated instance's real docs — a fully hollow "package" could pass with zero warnings by
+    linking to a real sibling's content instead of writing its own. `scope: "sibling"` lets one
+    small, generic, wildcard-based `kinds`/`rules` block correctly enforce structural
+    completeness across many repeated instances of the same pattern (e.g. many independent
+    design-doc packages under a shared parent directory) without per-instance config
+    duplication, and without reopening a silent "forgot to configure a new instance" gap that
+    a naive per-instance-scoped config would otherwise introduce.
+  - `description` on a rule renders as a real, in-context guidance line under a
+    missing-coverage report entry, alongside the existing `name` (which only ever
+    disambiguates two rules sharing a `from`/`to` pair — it was never meant to explain
+    anything, and didn't). Optional; omitted entirely when absent, never a blank line.
+
+  Both fields are additive and opt-in — an existing `checks.coverage` config decodes and
+  behaves identically with neither field present.
+
+- 101c0ea: `checks.coverage`'s `scope: { under: "..." }` is now validated for real, closing a known limitation recorded in a previous release: a typo'd or out-of-corpus `under` value used to decode successfully and then silently, permanently report every rule using it as unsatisfiable, with nothing pointing at the real cause.
+
+  `cairn check` now surfaces a non-fatal warning line for any `under` value that matches zero scanned docs of any kind:
+
+  ```
+  ⚠️  scope { under: "docs/desing/team-b" } matched 0 scanned docs of any kind — check it for a typo, that it names a directory under a configured `root`, or that no docs simply exist there yet.
+  ```
+
+  This is checked at `cairn check` run time, once the doc corpus is actually scanned — not at config-decode time, unlike a `from`/`to` kind-id typo (`roots` and `checks.coverage` can be set in different `extends` layers, so no single-layer decode can see both together). Like the existing `unmatchedKinds` warning, it never fails the build on its own (a legitimately not-yet-populated directory looks the same as a typo from this check alone) — it's a diagnostic hint, not a new violation class.
+
+- 101c0ea: `checks.coverage`'s rule `scope` gains a second, additive option: `{ under: "some/project/relative/dir" }`. It restricts rule satisfaction to a `to`-kind doc whose resolved path is nested anywhere below the given directory — narrower than the unscoped default (satisfied by a `to`-kind doc anywhere in the scanned corpus), broader than `scope: "sibling"` (exact same parent directory only). Useful for scoping a wildcard-glob rule to a named sub-tree (e.g. one team's own `docs/design/` packages) without limiting it to a single directory or opening it to the whole corpus.
+
+  ```json
+  { "from": "roadmap", "to": "spikes", "scope": { "under": "docs/design/team-b" } }
+  ```
+
+  `scope: "sibling"` and the unscoped default keep decoding and behaving exactly as before — purely additive, no config written before this field existed changes meaning.
+
+  `under` is rejected at config-decode time when it's empty or only slashes (`""`, `"/"`, `"///"`) — that value would otherwise collapse the matcher's `**/<under>/**` glob into one that matches every path in the corpus, a silent, vacuous "scope" indistinguishable in a report from a real, intentional one (found by adversarial review before this shipped).
+
+  Known limitation, recorded rather than silently left implicit: `under` is otherwise a plain string with no validation against the config's own `roots` — a typo or an out-of-scope value still decodes successfully and then silently, permanently reports every rule using it as unsatisfiable, unlike a `from`/`to` kind-id typo (already rejected at decode time). See `docs/design/review-prompts.md`'s section 4 for the full finding.
+
+- 101c0ea: `checks.coverage`'s rule `to` field now accepts an ARRAY of targets, satisfied by a link matching ANY ONE of them — alternation/OR, additive alongside the existing single-target shape:
+
+  ```json
+  { "from": "roadmap", "to": ["spikes", "external-evidence"] }
+  ```
+
+  The rule above is satisfied by a `roadmap` doc linking to EITHER a `spikes`-kind doc OR an `external-evidence`-kind doc — either one is enough. An array `to` can mix a declared kind id with `{ external: "path" }` and/or `{ external: "url", pattern }` targets, e.g. `["decision", { "external": "url", "pattern": "https://github.com/OWNER/REPO/issues/" }]`.
+
+  `scope: "sibling"` / `scope: { under: "..." }` still apply per kind-target alternative; every kind alternative is still orphan-checkable, not just the first. The missing-coverage report gets a dedicated line for an array `to`: `no link to ANY of: a "spikes"-kind doc, or a link matching "..." (required by kind "roadmap")`.
+
+  A plain (non-array) `to` — every config written before this shipped — keeps decoding and behaving exactly as before; this is purely additive.
+
+  Not included: general N-of-M cardinality (e.g. "at least 2 of these 3 alternatives must be linked"). Only "at least one of N" (OR/alternation) is expressed today — a real, narrower, still-open gap, recorded in `docs/design/CONVENTION.md`/`docs/design/review-prompts.md` rather than claimed closed.
+
+- 101c0ea: `checks.coverage`'s rule `to` field now also accepts `{ atLeast: { n, of } }` — general N-of-M cardinality, satisfied when at least `n` of `of`'s targets EACH have their own satisfying link (not `n` links to the same target), additive alongside the existing single-target and array/`{ any }` shapes:
+
+  ```json
+  { "from": "roadmap", "to": { "atLeast": { "n": 2, "of": ["spikes", "external-evidence", "prior-art"] } } }
+  ```
+
+  The rule above requires a `roadmap` doc to link to at least 2 of the 3 listed kinds — linking to only one is not enough, and linking twice to the same one does not count as two. Requiring "all of these" needs no separate shape: it's `n` equal to `of`'s length over the same `atLeast` object.
+
+  `{ any: [...] }` is also added as the explicit, named spelling of the array `to` shape that shipped previously (`to: [...]`) — both are accepted and behave identically; the bare array is not deprecated.
+
+  Validated at config-decode time, the same as every other structural constraint in this schema: `atLeast.n` must be a positive integer (`n: 0` or negative is rejected — it would make the rule vacuously satisfied by nothing), must not exceed `atLeast.of.length` (a higher `n` could never be satisfied), `atLeast.of` must be non-empty, and `atLeast.of` must not contain a duplicate target (a duplicate would let one real satisfying link count toward `n` twice).
+
+  A plain single target, an array `to`, or `{ any: [...] }` — every config written before this shipped — keeps decoding and behaving exactly as before; this is purely additive. This closes the general N-of-M cardinality gap that the previous array-`to` release deliberately left open (only "any one of N" was expressed then).
+
+- 101c0ea: `cairn init --agent claude` now also scaffolds a second skill file,
+  `.claude/skills/cairn-design-package/SKILL.md`, teaching how to build a structurally-enforced
+  design package (problem-space/solution-space/spikes/story-map/roadmap/implementation-details/knowledge)
+  using `checks.coverage`'s existing kinds/rules, with one small generic `scope: "sibling"`
+  config block that closes a real, verified capturability gap (a shared wildcard kind lets a
+  hollow package pass by cross-linking a real sibling's docs) without any per-package config,
+  a vocabulary for naming relationships precisely (`grounded_by`/`builds_on`/`derived_from`/
+  `sourced_from`, checked against real content rather than picked for sound), and guidance on
+  stress-testing your own package before trusting it. Distinct from the existing
+  `.claude/skills/cairn/SKILL.md` (summary-writing methodology) — different trigger, different
+  content, own file.
+- 101c0ea: `checks.coverage`'s `KindDef.description` field is now **unconditionally mandatory** —
+  enforced at config decode time. Every kind declaration (e.g. `{ "id": "spec", "select": {
+"by": "path", "glob": "docs/specs/*.md" } }`) must now also carry a `description` string.
+
+  This is a real, stricter check, not just a bugfix — if you already use `checks.coverage`
+  with a `kinds` array, `cairn check` will start failing to even load your config after
+  upgrading unless every kind has a `description`. Add one explaining what the kind represents
+  to fix it.
+
+  Rationale: unlike a rule, which at least gets an auto-generated report sentence around it
+  (`no link ("name") to a "X"-kind doc`), a bare kind id has no surrounding sentence at all —
+  so there's no self-explanatory fallback to fall back on the way an unnamed rule has. Every
+  kind needs its own real description to be legible to a reader with no prior context.
+
+### Patch Changes
+
+- 101c0ea: The generated `schema/cairn.schema.json` now expresses `checks.coverage`'s `to: { atLeast: { n,
+of } }` rule shape's "`of` must not contain a duplicate target" requirement STRUCTURALLY, via the
+  standard `uniqueItems: true` JSON Schema keyword on `atLeast.of` — closing a narrower follow-up
+  left open by the previous `jsonschema-crossfield-hints` release, which could only add a prose
+  `description` for this same constraint, not a real structural keyword. Verified against an
+  independent JSON Schema engine (`ajv`), not just by re-reading the generated file: a config with a
+  duplicate `atLeast.of` target is now rejected by editor-side JSON Schema validation, before `cairn
+check` ever runs.
+
+  No decode-time accept/reject outcome changes — every config that decoded successfully before
+  still does, and every config `cairn check` rejected before is still rejected. The internal
+  enforcement mechanism did change: `atLeast.of`'s duplicate-target rejection now lives entirely in
+  `effect`'s own `Schema.isUnique()` (structural, key-order-insensitive comparison) rather than a
+  hand-rolled `JSON.stringify` compare, which also happens to fix a real latent gap in the old
+  check (two targets differing only in object-key order were previously, incorrectly, treated as
+  distinct).
+
+- 101c0ea: Fixed a latent bug in `checks.coverage`'s rule-deduplication: the dedup key used plain
+  `JSON.stringify`, which is sensitive to object-property insertion order. Two `CoverageRule`
+  values that were semantically identical but had their nested `to`/`scope` object keys built in
+  a different order (possible via a hand-written config or a future programmatic rule-builder)
+  could be treated as two _different_ rules instead of deduplicating to one — under-reporting
+  the opposite way from every prior dedup-key bug this feature has hit. Fixed by canonicalizing
+  object keys (recursively sorted) before stringifying. No config shape changed; this only
+  affects internal deduplication, not what a valid config looks like.
+- 101c0ea: The generated `schema/cairn.schema.json` now surfaces a prose `description` for every
+  cross-field/cross-element constraint `checks.coverage` enforces at config-decode time but
+  that plain JSON Schema cannot express structurally: an array `to`'s non-empty requirement,
+  `{ atLeast: { n, of } }`'s `n`/`of` relationship (non-empty, no duplicate target, `n` not
+  exceeding `of.length`), `scope: { under }`'s non-empty-after-trim requirement, and the
+  top-level rule's undeclared-kind-id / description-mandatory-when-named checks.
+
+  This does not add structural validation an editor's own JSON Schema tooling can enforce
+  before `cairn check` runs — investigated directly against `effect`'s
+  `Schema.toJsonSchemaDocument`, this is a genuine limit of plain JSON Schema for an
+  arbitrary cross-field predicate, not something this release works around. It does mean an
+  editor's autocomplete/tooltip can now at least explain the rule in prose instead of showing
+  nothing at all for these fields. No decode-time behavior changes — every config that
+  decoded successfully before still does, with the exact same accept/reject outcome.
+
 ## 0.8.0
 
 ### Minor Changes
