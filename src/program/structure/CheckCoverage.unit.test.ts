@@ -628,6 +628,111 @@ describe('checkCoverage()', () => {
     })
   })
 
+  // The still-open half of the N-of-M/alternation gap `to: [...]` (above)
+  // only ever closed the OR/"any one" reading of — `{ atLeast: { n, of } }`
+  // requires at least `n` of `of`'s targets to EACH have their own
+  // satisfying link, not just any single one.
+  describe('to: { atLeast: { n, of } } — general N-of-M cardinality, end-to-end', () => {
+    const atLeastKinds = [
+      { id: 'roadmap', select: { by: 'path' as const, glob: '/r/design/**/roadmap.md' } },
+      { id: 'spikes', select: { by: 'path' as const, glob: '/r/design/**/spikes.md' } },
+      { id: 'evidence', select: { by: 'path' as const, glob: '/r/design/**/evidence.md' } },
+      { id: 'prior-art', select: { by: 'path' as const, glob: '/r/design/**/prior-art.md' } },
+    ]
+    const atLeastRules: CoverageRule[] = [
+      { from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } },
+    ]
+
+    it('reports nothing when the doc links to exactly 2 of the 3 listed targets', async () => {
+      const layer = makeTestDocsFs({
+        '/r/design/pkg/evidence.md': { content: '# Evidence', mtimeMs: 1 },
+        '/r/design/pkg/roadmap.md': { content: '# Roadmap\n\n[a](./spikes.md) [b](./evidence.md)', mtimeMs: 1 },
+        '/r/design/pkg/spikes.md': { content: '# Spikes', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: atLeastKinds, roots: ['/r'], rules: atLeastRules }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([])
+    })
+
+    it('reports nothing when the doc links to all 3 (more than the required minimum)', async () => {
+      const layer = makeTestDocsFs({
+        '/r/design/pkg/evidence.md': { content: '# Evidence', mtimeMs: 1 },
+        '/r/design/pkg/prior-art.md': { content: '# Prior art', mtimeMs: 1 },
+        '/r/design/pkg/roadmap.md': {
+          content: '# Roadmap\n\n[a](./spikes.md) [b](./evidence.md) [c](./prior-art.md)',
+          mtimeMs: 1,
+        },
+        '/r/design/pkg/spikes.md': { content: '# Spikes', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: atLeastKinds, roots: ['/r'], rules: atLeastRules }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([])
+    })
+
+    // FALSIFIED: the same shape as the "exactly 2" passing case above, but
+    // with only ONE of the 3 targets actually linked — proves this is a real
+    // MINIMUM count, not just "at least one," the exact gap `to: [...]`
+    // itself never closed. A single link is enough to satisfy `to: [...]`
+    // (OR) but must NOT be enough here.
+    it('reports missing coverage when the doc links to only 1 of the 3 listed targets — one link is not enough', async () => {
+      const layer = makeTestDocsFs({
+        '/r/design/pkg/evidence.md': { content: '# Evidence', mtimeMs: 1 },
+        '/r/design/pkg/roadmap.md': { content: '# Roadmap\n\n[a](./spikes.md)', mtimeMs: 1 },
+        '/r/design/pkg/spikes.md': { content: '# Spikes', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: atLeastKinds, roots: ['/r'], rules: atLeastRules }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([
+        {
+          path: '/r/design/pkg/roadmap.md',
+          rule: { from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } },
+        },
+      ])
+    })
+
+    it('reports missing coverage when the doc links to none of the listed targets', async () => {
+      const layer = makeTestDocsFs({
+        '/r/design/pkg/evidence.md': { content: '# Evidence', mtimeMs: 1 },
+        '/r/design/pkg/roadmap.md': { content: '# Roadmap, no links at all', mtimeMs: 1 },
+        '/r/design/pkg/spikes.md': { content: '# Spikes', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: atLeastKinds, roots: ['/r'], rules: atLeastRules }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toHaveLength(1)
+    })
+
+    // Two separate links to the SAME target must not double-count toward a
+    // DIFFERENT target's own requirement — `n: 2` needs 2 DISTINCT targets
+    // satisfied, not 2 links total.
+    it('does not let two links to the SAME target count as two distinct targets satisfied', async () => {
+      const layer = makeTestDocsFs({
+        '/r/design/pkg/roadmap.md': {
+          content: '# Roadmap\n\n[a](./spikes.md) [b](./spikes.md#other-heading)',
+          mtimeMs: 1,
+        },
+        '/r/design/pkg/spikes.md': { content: '# Spikes\n\n## Other heading', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: atLeastKinds, roots: ['/r'], rules: atLeastRules }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toHaveLength(1)
+    })
+  })
+
   // Issue #28's third v1 check, doc→code reference resolution: a rule whose
   // `to` is `{ external: 'path' }` is satisfied by a link resolving to a
   // REAL FILE on disk — a non-`.md` source file the coverage scan itself
@@ -1171,6 +1276,28 @@ describe('formatCoverageReport()', () => {
       { locale: 'fr' },
     )
     expect(frLines.some((l) => l.includes('L’UN des éléments suivants'))).toBeTruthy()
+  })
+
+  // `{ atLeast: { n, of } }` report line: its own wording ("to AT LEAST n
+  // of: ..."), distinct from the array/`{ any }` "to ANY of:" line above —
+  // a reader must be able to tell "any one suffices" apart from "a minimum
+  // count is required" at a glance, not just by re-deriving it from config.
+  it('reports an `{ atLeast }` missing-coverage finding, naming the minimum count and every candidate', () => {
+    const missing = [
+      {
+        path: '/r/design/pkg/roadmap.md',
+        rule: { from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } },
+      },
+    ]
+    const enLines = formatCoverageReport({ checked: 1, emptyScopeUnders: [], missing, orphans: [], unmatchedKinds: [] })
+    expect(enLines).toContain(
+      '    ✗ no link to AT LEAST 2 of: a "spikes"-kind doc, a "evidence"-kind doc, a "prior-art"-kind doc (required by kind "roadmap")',
+    )
+    const frLines = formatCoverageReport(
+      { checked: 1, emptyScopeUnders: [], missing, orphans: [], unmatchedKinds: [] },
+      { locale: 'fr' },
+    )
+    expect(frLines.some((l) => l.includes('AU MOINS 2 des éléments suivants'))).toBeTruthy()
   })
 
   it('lists a missing-coverage finding with no orphan section at all when orphans is empty', () => {

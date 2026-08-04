@@ -71,12 +71,46 @@
       ],
       "description": "A declared kind id (a doc-kind target), `{ external: \"path\" }` — a link must resolve to a real file on disk, not to a scanned doc — or `{ external: \"url\", pattern }` — a link's raw href must contain `pattern`."
     },
+    "CairnCoverageTargetAny": {
+      "type": "object",
+      "properties": { "any": { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageTarget" } } },
+      "required": ["any"],
+      "additionalProperties": false,
+      "description": "The explicit, named form of a bare-array `to` — satisfied by a link matching ANY ONE of `any`'s targets (alternation/OR). Equivalent to `to: [...]`, not a replacement for it."
+    },
+    "CairnCoverageTargetAtLeast": {
+      "type": "object",
+      "properties": {
+        "atLeast": {
+          "type": "object",
+          "properties": {
+            "n": {
+              "type": "integer",
+              "allOf": [
+                {
+                  "minimum": 1,
+                  "description": "The minimum number of `atLeast.of` targets that must each independently have at least one satisfying link. A positive integer — `n: 0` would make the rule vacuously satisfied by nothing, defeating the point of requiring a minimum."
+                }
+              ]
+            },
+            "of": { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageTarget" } }
+          },
+          "required": ["n", "of"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["atLeast"],
+      "additionalProperties": false,
+      "description": "Satisfied when at least `n` of `of`'s targets EACH have their own satisfying link — general N-of-M cardinality, e.g. `{ atLeast: { n: 2, of: [\"spikes\", \"external-evidence\", \"prior-art\"] } }` requires links to at least 2 of the 3 listed kinds. \"All of these\" is `n: of.length`; there is no separate `all` variant."
+    },
     "CairnCoverageTargetOrAlternatives": {
       "anyOf": [
         { "$ref": "#/$defs/CairnCoverageTarget" },
-        { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageTarget" } }
+        { "type": "array", "items": { "$ref": "#/$defs/CairnCoverageTarget" } },
+        { "$ref": "#/$defs/CairnCoverageTargetAny" },
+        { "$ref": "#/$defs/CairnCoverageTargetAtLeast" }
       ],
-      "description": "A single coverage target (satisfied by any one matching link), or an ARRAY of targets (satisfied by a link matching ANY ONE of them — alternation/OR, e.g. `to: [\"spikes\", \"external-evidence\"]`). A non-empty array only — see each element's own `CairnCoverageTarget` shape."
+      "description": "A single coverage target (satisfied by any one matching link); an ARRAY of targets, or the equivalent `{ any: [...] }`, satisfied by a link matching ANY ONE of them (alternation/OR, e.g. `to: [\"spikes\", \"external-evidence\"]`); or `{ atLeast: { n, of } }`, satisfied when at least `n` of `of`'s targets EACH have a satisfying link (general N-of-M). Every array form is non-empty — see each element's own `CairnCoverageTarget` shape."
     },
     "CairnCoverageRequirement": {
       "type": "object",

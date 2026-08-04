@@ -31,8 +31,8 @@
 
 import { Effect } from 'effect'
 
-import type { CoverageRule, CoverageTarget, KindDef } from '../../core/Config.ts'
-import { isKindTarget, isTargetArray, isUrlTarget, targetsOf } from '../../core/Config.ts'
+import type { CoverageRule, CoverageTarget, CoverageToSpec, KindDef } from '../../core/Config.ts'
+import { isAnyTarget, isAtLeastTarget, isKindTarget, isTargetArray, isUrlTarget, targetsOf } from '../../core/Config.ts'
 import { matchesAny, matchesGlob } from '../../core/glob.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
@@ -229,9 +229,15 @@ export const checkCoverage = ({
     // the exact same logic instead of re-deriving it as a second, divergent
     // copy. `missing` here is just "which edges had zero satisfying refs."
     const edges = resolveRuleEdges({ docs, exempt, externalExists, rules: uniqueRules })
-    const missing: MissingCoverage[] = edges
-      .filter((e) => e.satisfiedBy.length === 0)
-      .map((e) => ({ path: e.doc, rule: e.rule }))
+    // `e.satisfied` (../../core/structure/Coverage.ts), not
+    // `e.satisfiedBy.length === 0` — the two agreed for every `to` shape
+    // that existed before `{ atLeast: { n, of } }`, but a rule requiring a
+    // MINIMUM COUNT across several distinct targets can have a non-empty
+    // `satisfiedBy` (some link matched something) while still being
+    // genuinely unsatisfied (fewer than `n` distinct targets matched) —
+    // `satisfied` is the one field that resolves this correctly for every
+    // shape, not just the ones that predate `atLeast`.
+    const missing: MissingCoverage[] = edges.filter((e) => !e.satisfied).map((e) => ({ path: e.doc, rule: e.rule }))
 
     // Orphan status only applies to a kind that's actually SUPPOSED to be
     // referenced — a rule's `to` side (matches the real-world "orphan
@@ -309,6 +315,38 @@ const describeCoverageTarget = (target: CoverageTarget, locale: Locale): string 
         })
       : pick(locale, { en: 'an existing file', fr: 'un fichier existant' })
 
+/** The full "...to/matching/etc" phrase that follows `no link${named} ` in a
+ * missing-coverage report line — one branch per `CoverageToSpec` shape.
+ * Extracted out of `formatCoverageReport`'s own loop so the four-way (now
+ * five-way, with `{ atLeast }`) branch reads as one small table instead of a
+ * deepening ternary chain. The array/single/url/external-file branches keep
+ * their EXACT pre-existing wording verbatim — changing that text would be a
+ * needless behavior change to every existing config's report output, the
+ * opposite of what every prior additive `to` change here has promised. */
+const describeToRequirement = (to: CoverageToSpec, locale: Locale): string => {
+  if (isTargetArray(to) || isAnyTarget(to)) {
+    const alternatives = isTargetArray(to) ? to : to.any
+    return pick(locale, {
+      en: `to ANY of: ${alternatives.map((t) => describeCoverageTarget(t, locale)).join(', or ')}`,
+      fr: `vers L’UN des éléments suivants : ${alternatives.map((t) => describeCoverageTarget(t, locale)).join(', ou ')}`,
+    })
+  }
+  if (isAtLeastTarget(to)) {
+    const { n, of } = to.atLeast
+    return pick(locale, {
+      en: `to AT LEAST ${n} of: ${of.map((t) => describeCoverageTarget(t, locale)).join(', ')}`,
+      fr: `vers AU MOINS ${n} des éléments suivants : ${of.map((t) => describeCoverageTarget(t, locale)).join(', ')}`,
+    })
+  }
+  if (isKindTarget(to)) {
+    return pick(locale, { en: `to a "${to}"-kind doc`, fr: `vers un document de type « ${to} »` })
+  }
+  if (isUrlTarget(to)) {
+    return pick(locale, { en: `matching "${to.pattern}"`, fr: `correspondant à « ${to.pattern} »` })
+  }
+  return pick(locale, { en: 'to an existing file', fr: 'vers un fichier existant' })
+}
+
 /** Human-readable report lines (pure, so it's unit-tested independently of any IO). */
 export const formatCoverageReport = (result: CoverageResult, options: CoverageReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
@@ -355,37 +393,17 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       // — two rules can share a (from, to) pair (see CoverageRule's own
       // comment) and would otherwise be indistinguishable in the report.
       const named = rule.name === undefined ? '' : ` ("${rule.name}")`
+      // Five `to` shapes, one line each, resolved by `describeToRequirement`
+      // (above) so this loop doesn't itself keep growing a ternary chain
+      // every time `to` grows a new variant — the pattern/kind/alternatives
+      // themselves are shown so a reader isn't left guessing what's actually
+      // required (`description`, below, still carries the WHY).
       lines.push(
         `  ${p}`,
-        // Three `to` shapes, three report lines: a declared kind id, a
-        // real-file `{ external: 'path' }`, or a `{ external: 'url',
-        // pattern }` — the pattern itself is shown so a reader isn't left
-        // guessing which external URL is required (`description`, below,
-        // still carries the WHY). A rule with an ARRAY `to` (alternation —
-        // see `targetsOf`'s own comment in ../../core/Config.ts) gets a
-        // fourth, distinct line listing every alternative, so a reader can
-        // tell "must link X" (a single required target) apart from "must
-        // link EITHER X OR Y" (any one suffices) at a glance, not just by
-        // re-deriving it from the config.
-        isTargetArray(rule.to)
-          ? pick(locale, {
-              en: `    ✗ no link${named} to ANY of: ${rule.to.map((t) => describeCoverageTarget(t, locale)).join(', or ')} (required by kind "${rule.from}")`,
-              fr: `    ✗ aucun lien${named} vers L’UN des éléments suivants : ${rule.to.map((t) => describeCoverageTarget(t, locale)).join(', ou ')} (requis pour le type « ${rule.from} »)`,
-            })
-          : isKindTarget(rule.to)
-            ? pick(locale, {
-                en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
-                fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
-              })
-            : isUrlTarget(rule.to)
-              ? pick(locale, {
-                  en: `    ✗ no link${named} matching "${rule.to.pattern}" (required by kind "${rule.from}")`,
-                  fr: `    ✗ aucun lien${named} correspondant à « ${rule.to.pattern} » (requis pour le type « ${rule.from} »)`,
-                })
-              : pick(locale, {
-                  en: `    ✗ no link${named} to an existing file (required by kind "${rule.from}")`,
-                  fr: `    ✗ aucun lien${named} vers un fichier existant (requis pour le type « ${rule.from} »)`,
-                }),
+        pick(locale, {
+          en: `    ✗ no link${named} ${describeToRequirement(rule.to, locale)} (required by kind "${rule.from}")`,
+          fr: `    ✗ aucun lien${named} ${describeToRequirement(rule.to, locale)} (requis pour le type « ${rule.from} »)`,
+        }),
       )
       // Real, in-context guidance — see CoverageRuleInputSchema's own comment
       // for why this exists alongside `name`: a bare rule name/label doesn't

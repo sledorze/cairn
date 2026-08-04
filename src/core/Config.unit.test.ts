@@ -705,6 +705,222 @@ describe('decodeConfig()', () => {
     })
   })
 
+  // The still-open half of the N-of-M/alternation gap `to: [...]` (above)
+  // only ever closed the OR/"any one" reading of (docs/design/
+  // CONVENTION.md's "Judging this convention" Claim 2, docs/design/
+  // review-prompts.md section 5): `{ atLeast: { n, of } }` requires at
+  // least `n` DISTINCT `of`-targets to each have their own satisfying
+  // link, and `{ any: [...] }` is the explicit, named spelling of the
+  // bare-array form.
+  describe('`to` as `{ any: [...] }` or `{ atLeast: { n, of } }`', () => {
+    it('decodes `{ any: [...] }` — the explicit spelling of alternation/OR, equivalent to a bare array', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              {
+                description: 'A roadmap doc.',
+                id: 'roadmap',
+                select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+              },
+              {
+                description: 'A feasibility-spike doc.',
+                id: 'spikes',
+                select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+              },
+            ],
+            rules: [{ from: 'roadmap', to: { any: ['spikes'] } }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('returns a Failure when `{ any: [] }` is an empty array — same trap as a bare empty `to` array', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+            rules: [{ from: 'spec', to: { any: [] } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('decodes a valid `{ atLeast: { n, of } }` requiring 2 of 3 targets', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+              { description: 'An evidence doc.', id: 'evidence', select: { by: 'path', glob: 'docs/evidence/**' } },
+              {
+                description: 'A prior-art doc.',
+                id: 'prior-art',
+                select: { by: 'path', glob: 'docs/prior-art/**' },
+              },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    // The vacuity-prone shape this repo's own review found across THREE
+    // separate rounds this session (`**` matching zero segments, an empty
+    // `scope.under`, and now this): `n: 0` would make the rule vacuously
+    // satisfied by nothing, the same "silently matches everything" failure
+    // class as an empty `under`, just satisfied-by-default instead of
+    // scoped-to-everything.
+    it('returns a Failure when `atLeast.n` is 0 — would be vacuously satisfied by nothing', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 0, of: ['spikes'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.n` is negative', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: -1, of: ['spikes'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.of` is an empty array', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 1, of: [] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    // A rule requiring more targets than are listed can never be satisfied
+    // — the same permanently-unsatisfiable trap a typo'd/out-of-scope
+    // `under` and an empty `to` array already fall into, closed at decode
+    // time here too rather than left to silently report every `from`-kind
+    // doc as missing coverage forever.
+    it('returns a Failure when `atLeast.n` exceeds `atLeast.of.length`', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+              { description: 'An evidence doc.', id: 'evidence', select: { by: 'path', glob: 'docs/evidence/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 3, of: ['spikes', 'evidence'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('accepts `atLeast.n` equal to `atLeast.of.length` — "all of these" needs no separate variant', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+              { description: 'An evidence doc.', id: 'evidence', select: { by: 'path', glob: 'docs/evidence/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence'] } } }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    // Found via adversarial self-review (this task's own Part D), not
+    // assumed: a duplicate target in `of` lets ONE real satisfying link
+    // count toward `n` TWICE (`../structure/Coverage.ts`'s
+    // `countSatisfiedTargets` checks each `of` index independently) —
+    // confirmed with `resolveRuleEdges` directly before this check existed:
+    // a single link to a `spikes`-kind doc reported `satisfied: true` for
+    // `atLeast: { n: 2, of: ['spikes', 'spikes'] }`, the exact "requires
+    // fewer distinct things than `n` implies" vacuity this whole feature
+    // exists to prevent.
+    it('returns a Failure when `atLeast.of` contains a duplicate target — one link must not count twice toward `n`', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'spikes'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.of` contains a duplicate `{ external: "path" }` target, not just a duplicate kind id', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: [{ external: 'path' }, { external: 'path' }] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.of` names an undeclared kind id, pinned to its own array index', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 1, of: ['nonexistent'] } } }],
+          },
+        },
+      })
+      if (!Result.isFailure(result)) {
+        throw new Error('expected a Failure')
+      }
+      expect(result.failure.message).toContain('references undeclared kind "nonexistent"')
+    })
+
+    it('returns a Failure when `{ any: [...] }` names an undeclared kind id, pinned to its own array index', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { any: ['nonexistent'] } }],
+          },
+        },
+      })
+      if (!Result.isFailure(result)) {
+        throw new Error('expected a Failure')
+      }
+      expect(result.failure.message).toContain('references undeclared kind "nonexistent"')
+    })
+  })
+
   it('returns a Failure on a wrong-typed field instead of silently reverting to the default', () => {
     expect(Result.isFailure(decodeConfig({ roots: 'docs' }))).toBeTruthy()
     expect(Result.isFailure(decodeConfig({ thresholdLines: 'many' }))).toBeTruthy()

@@ -73,3 +73,28 @@ edge cases (order-sensitive array `to`, untrimmed-vs-trimmed `under` dedup) left
 recorded, and one pre-existing (not newly introduced) JSON-Schema `minItems` discoverability gap
 shared with the existing `under` non-empty check. General N-of-M cardinality (not just OR) stays
 open, recorded explicitly rather than claimed closed by the narrower alternation shipped here.
+
+**6. Closing general N-of-M/`atLeast`, a systematic vacuity-safeguard table, and this file's
+own adversarial-judge prompt run against both**: closes the narrower N-of-M reading section 5
+left open — `to` gains `{ atLeast: { n, of } }`, satisfied when at least `n` of `of`'s targets
+EACH have their own link (not `n` links to the same one); `{ any: [...] }` is added as the
+explicit, named spelling of the array form, additive alongside it. `RuleEdge` gains a
+`satisfied` field (`satisfiedBy.length > 0` alone can't answer "is this rule met" once a
+MINIMUM COUNT is possible); dogfooded both directions with the real CLI; "Round 7" of the
+dedup-key's standing recurring-bug warning checked and found NOT triggered (no new top-level
+`CoverageRule` field was added). Since `fast-check` is confirmed absent from `package.json`, Part
+B's systematic vacuity safeguard is a table-driven test (`VacuousShapes.unit.test.ts`) covering
+`**` matching zero segments (a deliberate non-fix — that's a real, already-used feature
+elsewhere in this codebase, not a defect), empty `scope.under`, an empty `to` array, and the new
+`atLeast.n`/`of` edge cases. Running this file's own adversarial-judge prompt (with its steelman
+second pass) against this task's own work surfaced a REAL bug its first-pass self-review had
+missed: a DUPLICATE target in `atLeast.of` let one real link count toward `n` twice — proved
+concretely (`resolveRuleEdges` returning `satisfied: true` for `n: 2` with only one real link),
+fixed at decode time before commit (`checkAtLeastSane` now rejects a structurally-duplicate
+`of` entry), and falsified both directions. The schema-expressiveness pass found one genuinely
+new fundamental gap (no relative/scaling `n`, e.g. "a majority of `of`") not yet promoted into
+`CONVENTION.md`'s tracked list, and one configuration-only cost (a per-doc minimum needs one
+extra rule per distinct value) whose steelman pass showed real ergonomic friction the first pass
+had understated. The pre-existing JSON-Schema cross-field-constraint gap (section 5's own
+`minItems` finding) is re-confirmed, not newly introduced, for `atLeast`'s three struct-level
+checks.

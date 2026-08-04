@@ -9,15 +9,18 @@
 // exactly the kind of duplicated LOGIC (not just duplicated config) this
 // extraction exists to prevent.
 //
-// Every satisfying ref is collected, not collapsed to a boolean — a future
-// cardinality rule (`via: { by: 'link', minCount: 2 }`) needs the count, and
-// a future stale-link check needs every target path to hash-track, not just
-// one arbitrarily-chosen "the" satisfying ref.
+// Every satisfying ref is collected, not collapsed to a boolean — a stale-
+// link check needs every target path to hash-track, not just one
+// arbitrarily-chosen "the" satisfying ref. The cardinality rule this comment
+// used to call hypothetical (`via: { by: 'link', minCount: 2 }`) now exists,
+// shaped differently than guessed here: `to: { atLeast: { n, of } }`
+// (../Config.ts) rather than a `via` field — see `quantifierOf`'s own
+// comment for why `RuleEdge.satisfied` (below) is what actually resolves it.
 
 import * as nodePath from 'node:path'
 
 import type { CoverageRule, CoverageTarget } from '../Config.ts'
-import { isKindTarget, isUrlTarget, targetsOf } from '../Config.ts'
+import { isKindTarget, isUrlTarget, quantifierOf, targetsOf } from '../Config.ts'
 import { matchesAny, matchesGlob } from '../glob.ts'
 import type { DocMetadata, StructureNode } from './DocMetadata.ts'
 
@@ -40,8 +43,21 @@ export interface RuleEdge {
   /** The `from`-kind doc's own path. */
   readonly doc: string
   readonly rule: CoverageRule
-  /** Every ref (zero or more) in `doc` that resolves to a `to`-kind doc.
-   * Empty means the rule is unsatisfied for this doc. */
+  /** Whether the rule counts as satisfied for `doc`. For a single target or
+   * an OR-shaped `to` (array / `{ any }`, `quantifierOf`'s `n: 1` case) this
+   * is exactly `satisfiedBy.length > 0` — unchanged from before `{ atLeast
+   * }` existed. For `{ atLeast: { n, of } }` it's true only when at least
+   * `n` of `of`'s targets EACH have their own satisfying ref —
+   * `satisfiedBy.length > 0` alone can no longer answer "is this rule
+   * satisfied" once a MINIMUM COUNT across several distinct targets is
+   * possible, not just "some link matched something." Always computed via
+   * `quantifierOf` (../Config.ts), the one place a rule's cardinality is
+   * resolved. */
+  readonly satisfied: boolean
+  /** Every ref (zero or more) in `doc` that resolves to any of `to`'s
+   * targets — informational (which links actually matched), not by itself
+   * the satisfaction verdict once `{ atLeast }` exists; use `satisfied`
+   * for that. */
   readonly satisfiedBy: readonly SatisfyingRef[]
 }
 
@@ -150,7 +166,7 @@ const matchNode = (
   docsByPath: ReadonlyMap<string, DocMetadata>,
   externalExists: ReadonlySet<string>,
 ): string | null => {
-  for (const target of targetsOf(rule.to)) {
+  for (const target of quantifierOf(rule.to).targets) {
     const result = matchNodeAgainstTarget(rule, target, node, fromDir, docsByPath, externalExists)
     if (result !== null) {
       return result
@@ -158,6 +174,31 @@ const matchNode = (
   }
   return null
 }
+
+/** For `{ atLeast: { n, of } }` (and, degenerately, every other `to` shape,
+ * where it's equivalent to "is `satisfiedBy` non-empty"): how many of
+ * `targets` have AT LEAST ONE satisfying node in `doc`, checked
+ * independently per target (unlike `matchNode`'s own "first target wins"
+ * loop, which exists purely to pick ONE representative match per node for
+ * `satisfiedBy` — the right choice when only "matched something" matters,
+ * wrong for `atLeast`'s "how many DISTINCT targets were matched," which
+ * needs every target checked on its own regardless of what else the same
+ * node happens to also satisfy). */
+const countSatisfiedTargets = (
+  rule: CoverageRule,
+  targets: readonly CoverageTarget[],
+  nodes: readonly StructureNode[],
+  fromDir: string,
+  docsByPath: ReadonlyMap<string, DocMetadata>,
+  externalExists: ReadonlySet<string>,
+): number =>
+  targets.filter((target) =>
+    nodes.some(
+      (node) =>
+        (node.tag === 'ref' || node.tag === 'urlRef') &&
+        matchNodeAgainstTarget(rule, target, node, fromDir, docsByPath, externalExists) !== null,
+    ),
+  ).length
 
 /** For every (doc, rule) pair where `doc.kinds` includes `rule.from` and
  * `doc` doesn't match `exempt`, resolve every ref in `doc` that satisfies
@@ -197,7 +238,18 @@ export const resolveRuleEdges = ({
           satisfiedBy.push({ node, targetPath })
         }
       }
-      edges.push({ doc: doc.path, rule, satisfiedBy })
+      const { n, targets } = quantifierOf(rule.to)
+      // For `n === 1` (every `to` shape except `{ atLeast }` with `n > 1`),
+      // this is provably identical to `satisfiedBy.length > 0`: `targets`
+      // covers exactly the same candidates `matchNode` already looped over
+      // above, so at least one of them has a satisfying node iff
+      // `satisfiedBy` is non-empty. Only diverges from that shortcut when
+      // `n > 1`, which is exactly when the shortcut stops being correct in
+      // the first place — see `countSatisfiedTargets`'s own comment for why
+      // a SEPARATE, per-target-independent count is needed rather than
+      // reusing `satisfiedBy`.
+      const satisfied = countSatisfiedTargets(rule, targets, doc.nodes, fromDir, docsByPath, externalExists) >= n
+      edges.push({ doc: doc.path, rule, satisfied, satisfiedBy })
     }
   }
 

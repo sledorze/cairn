@@ -24,6 +24,7 @@ describe('resolveRuleEdges()', () => {
       {
         doc: '/r/features/f1.md',
         rule: { from: 'feature', to: 'decision' },
+        satisfied: true,
         satisfiedBy: [{ node: ref('../decisions/d1.md'), targetPath: '/r/decisions/d1.md' }],
       },
     ])
@@ -32,7 +33,9 @@ describe('resolveRuleEdges()', () => {
   it('returns an edge with an empty satisfiedBy when the rule is not satisfied at all', () => {
     const docs = [doc('/r/features/f1.md', ['feature'], []), doc('/r/decisions/d1.md', ['decision'])]
     const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
-    expect(edges).toEqual([{ doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfiedBy: [] }])
+    expect(edges).toEqual([
+      { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfied: false, satisfiedBy: [] },
+    ])
   })
 
   it('produces no edge at all for a doc that does not match the rule’s `from` kind', () => {
@@ -44,7 +47,9 @@ describe('resolveRuleEdges()', () => {
   it('a link to a doc that does not resolve to the required `to` kind does not satisfy — reported as unsatisfied, not simply absent', () => {
     const docs = [doc('/r/features/f1.md', ['feature'], [ref('../notes/other.md')]), doc('/r/notes/other.md', ['note'])]
     const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
-    expect(edges).toEqual([{ doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfiedBy: [] }])
+    expect(edges).toEqual([
+      { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfied: false, satisfiedBy: [] },
+    ])
   })
 
   // Groundwork for a future cardinality (`minCount`) rule variant: every
@@ -80,8 +85,8 @@ describe('resolveRuleEdges()', () => {
       ],
     })
     expect(edges).toEqual([
-      { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfiedBy: [] },
-      { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'spec' }, satisfiedBy: [] },
+      { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfied: false, satisfiedBy: [] },
+      { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'spec' }, satisfied: false, satisfiedBy: [] },
     ])
   })
 
@@ -116,7 +121,9 @@ describe('resolveRuleEdges()', () => {
       doc('/r/specs/s1.md', ['spec']),
     ]
     const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'spec' }] })
-    expect(edges).toEqual([{ doc: '/r/features/f1.md', rule: { from: 'feature', to: 'spec' }, satisfiedBy: [] }])
+    expect(edges).toEqual([
+      { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'spec' }, satisfied: false, satisfiedBy: [] },
+    ])
   })
 
   // Issue #28's third v1 check, doc→code reference resolution: a rule whose
@@ -137,6 +144,7 @@ describe('resolveRuleEdges()', () => {
         {
           doc: '/r/specs/s1.md',
           rule: { from: 'spec', to: { external: 'path' } },
+          satisfied: true,
           satisfiedBy: [{ node: ref('../../src/foo.ts'), targetPath: '/src/foo.ts' }],
         },
       ])
@@ -151,7 +159,7 @@ describe('resolveRuleEdges()', () => {
         rules: [{ from: 'spec', to: { external: 'path' } }],
       })
       expect(edges).toEqual([
-        { doc: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } }, satisfiedBy: [] },
+        { doc: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } }, satisfied: false, satisfiedBy: [] },
       ])
     })
 
@@ -159,7 +167,7 @@ describe('resolveRuleEdges()', () => {
       const docs = [doc('/r/specs/s1.md', ['spec'], [ref('../../src/foo.ts')])]
       const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'spec', to: { external: 'path' } }] })
       expect(edges).toEqual([
-        { doc: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } }, satisfiedBy: [] },
+        { doc: '/r/specs/s1.md', rule: { from: 'spec', to: { external: 'path' } }, satisfied: false, satisfiedBy: [] },
       ])
     })
 
@@ -200,6 +208,7 @@ describe('resolveRuleEdges()', () => {
         {
           doc: '/r/design/pkg/roadmap.md',
           rule: { from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } },
+          satisfied: true,
           satisfiedBy: [
             {
               node: urlRef('https://github.com/example/repo/issues/101'),
@@ -226,6 +235,7 @@ describe('resolveRuleEdges()', () => {
         {
           doc: '/r/design/pkg/roadmap.md',
           rule: { from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } },
+          satisfied: false,
           satisfiedBy: [],
         },
       ])
@@ -450,6 +460,133 @@ describe('to: [...] — alternation/OR over multiple targets', () => {
       rules: [{ from: 'roadmap', scope: 'sibling', to: ['spikes', 'evidence'] }],
     })
     expect(edges[0]?.satisfiedBy).toEqual([])
+  })
+})
+
+// `{ any: [...] }` — the explicit, named spelling of the bare array above.
+// Same "at least one" semantics, deliberately not re-testing every scope/
+// url-mixing case the array form already covers exhaustively (that would be
+// redundant, not more falsifying) — just confirming the alternate spelling
+// resolves identically.
+describe('to: { any: [...] } — the explicit spelling of alternation/OR', () => {
+  it('is satisfied by a link to either alternative, same as the bare array form', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./evidence.md')]),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', to: { any: ['spikes', 'evidence'] } }],
+    })
+    expect(edges[0]?.satisfied).toBeTruthy()
+  })
+
+  it('is unsatisfied when the doc links to neither alternative — not a vacuous always-pass', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./unrelated.md')]),
+      doc('/r/design/pkg/spikes.md', ['spikes']),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+      doc('/r/design/pkg/unrelated.md', ['other']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', to: { any: ['spikes', 'evidence'] } }],
+    })
+    expect(edges[0]?.satisfied).toBeFalsy()
+  })
+})
+
+// The still-open half of the N-of-M/alternation gap `to: [...]`/`{ any }`
+// above only ever closed the OR/"any one" reading of (docs/design/
+// CONVENTION.md's "Judging this convention" Claim 2, docs/design/
+// review-prompts.md section 5): `{ atLeast: { n, of } }` requires at least
+// `n` DISTINCT targets from `of` to each have their own satisfying link.
+describe('to: { atLeast: { n, of } } — general N-of-M cardinality', () => {
+  it('is satisfied when exactly `n` of the listed targets each have a satisfying link', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./spikes.md'), ref('./evidence.md', 2)]),
+      doc('/r/design/pkg/spikes.md', ['spikes']),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+      doc('/r/design/pkg/prior-art.md', ['prior-art']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } }],
+    })
+    expect(edges[0]?.satisfied).toBeTruthy()
+  })
+
+  // FALSIFIED: identical fixture to the passing case above, but the doc
+  // links to only ONE of the three listed targets — proves this is a real
+  // MINIMUM count, not `to: [...]`'s own "any one is enough" semantics.
+  it('is NOT satisfied when only ONE of the listed targets has a satisfying link — one is not enough for n: 2', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./spikes.md')]),
+      doc('/r/design/pkg/spikes.md', ['spikes']),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+      doc('/r/design/pkg/prior-art.md', ['prior-art']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } }],
+    })
+    expect(edges[0]?.satisfied).toBeFalsy()
+    expect(edges[0]?.satisfiedBy).toHaveLength(1)
+  })
+
+  it('is satisfied when ALL of the listed targets have a satisfying link (more than the required minimum)', () => {
+    const docs = [
+      doc(
+        '/r/design/pkg/roadmap.md',
+        ['roadmap'],
+        [ref('./spikes.md'), ref('./evidence.md', 2), ref('./prior-art.md', 3)],
+      ),
+      doc('/r/design/pkg/spikes.md', ['spikes']),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+      doc('/r/design/pkg/prior-art.md', ['prior-art']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } }],
+    })
+    expect(edges[0]?.satisfied).toBeTruthy()
+  })
+
+  // Two links to the SAME target must not count as two DISTINCT targets
+  // satisfied — `n` counts targets, not links.
+  it('does not let two links to the SAME target satisfy an n: 2 requirement over two DIFFERENT targets', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./spikes.md'), ref('./spikes.md#other', 2)]),
+      doc('/r/design/pkg/spikes.md', ['spikes']),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence'] } } }],
+    })
+    expect(edges[0]?.satisfied).toBeFalsy()
+  })
+
+  // `n: 1` over a list degenerates to exactly the OR/"any one" semantics
+  // `to: [...]`/`{ any }` already have — no separate code path, same
+  // `quantifierOf` (../Config.ts) resolves both.
+  it('behaves exactly like `{ any: [...] }` when `n: 1`', () => {
+    const docs = [
+      doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./evidence.md')]),
+      doc('/r/design/pkg/evidence.md', ['evidence']),
+    ]
+    const edges = resolveRuleEdges({
+      docs,
+      exempt: [],
+      rules: [{ from: 'roadmap', to: { atLeast: { n: 1, of: ['spikes', 'evidence'] } } }],
+    })
+    expect(edges[0]?.satisfied).toBeTruthy()
   })
 })
 

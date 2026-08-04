@@ -204,13 +204,58 @@ and the real doc corpus is scanned: a typo'd or out-of-corpus `under` is now a n
 naming the exact value, not silent. See `review-prompts.md` section 5 for the real dogfood/
 falsification evidence and an independent adversarial pass's findings on both this and the next
 gap); `CoverageRequirement.by` is still a single variant (`'link'`), but the N-of-M/alternation
-gap this named is now PARTIALLY closed a different way, on `to` rather than `by`: `to` may be a
-single target (unchanged) or a non-empty ARRAY of targets, satisfied by a link matching ANY ONE
-of them (`targetsOf`, `core/Config.ts`) — closes the "either A or B" (OR/alternation) reading of
-this gap, but not general N-of-M cardinality (e.g. "at least 2 of these 3"), which remains
-unmodeled and is recorded as such rather than claimed closed (`review-prompts.md` section 5); and
-nothing in the schema touches dates/mtimes at all, so a "doc must be re-validated after N months"
-freshness rule is outside its vocabulary entirely, not just unconfigured.
+gap this named is now CLOSED, on `to` rather than `by`, in two increments: `to` may be a single
+target (unchanged), a non-empty ARRAY of targets — or the equivalent, explicitly-named
+`{ any: [...] }` — satisfied by a link matching ANY ONE of them (`targetsOf`, `core/Config.ts`),
+which closed the "either A or B" (OR/alternation) reading of this gap first; and now
+`{ atLeast: { n, of } }` (`quantifierOf`, `core/Config.ts`; `core/structure/Coverage.ts`'s
+`RuleEdge.satisfied`), satisfied when at least `n` of `of`'s targets EACH have their own
+satisfying link, which closes the general N-of-M cardinality reading the first increment
+deliberately left open (e.g. "at least 2 of these 3" — a single link is not enough, unlike the
+OR shape). "All of these" needed no separate variant: it's `n: of.length` over the same shape,
+not a fourth `to` case. See `review-prompts.md` section 5 for the OR-only increment's dogfood/
+falsification evidence and its independent adversarial pass, and section 6 for the `atLeast`
+increment's own; and nothing in the schema touches dates/mtimes at all, so a "doc must be
+re-validated after N months" freshness rule is outside its vocabulary entirely, not just
+unconfigured.
+
+A third, adjacent structural critique was raised alongside this round's `atLeast` work but
+DELIBERATELY NOT BUILT: unifying `scope: 'sibling'` and `scope: { under: '...' }` into one
+general path-relation primitive. Recorded as noted-but-deferred, not silently generalized or
+silently dropped — see the dedicated paragraph below.
+
+**Noted-but-deferred structural observation: `scope` path-relation unification.** `scope`
+(`core/Config.ts`'s `CoverageRuleScopeInputSchema`) has exactly two real variants —
+`'sibling'` (same parent directory) and `{ under: 'some/dir' }` (nested anywhere below a named
+directory) — plus the unscoped, corpus-wide default. Structurally, both named variants are
+really the SAME kind of fact: "the `to`-kind doc's path stands in a particular relation to the
+`from`-kind doc's path, expressed as a directory template." A more general primitive (e.g. a
+single path-relation/template field capable of expressing `'sibling'`, `{ under }`, and
+whatever a THIRD scope relation turns out to need, in one shape rather than one union variant
+per relation) was raised as a critique of `CoverageRuleScopeInputSchema`'s own growth pattern —
+`'sibling'` first, `{ under }` added later as a second, structurally similar but syntactically
+unrelated variant. **Why it is not being built now**: this repo's own guidance (`AGENTS.md`:
+"three similar lines is better than a premature abstraction... don't design for hypothetical
+future requirements") applies directly here — TWO data points (`'sibling'`, `{ under }`) is not
+enough evidence to design a general primitive against. A general path-relation template would
+have to guess at a shape flexible enough for relations neither variant has needed yet (a sibling
+of a sibling? an ancestor-of-`n`-levels? a relation keyed off a THIRD field, not just path
+nesting?) — without a real third case grounding what that flexibility should actually look
+like, the "general" primitive would just be invented complexity wearing a more abstract-sounding
+name, exactly the failure mode `CoverageRequirement.by`'s own comment already warns against for
+a different field (room for a REAL future variant is fine; a speculative one designed before its
+second concrete instance exists is not). Two named, independently-motivated union variants are
+also not yet a maintenance burden: each was added, tested, and dogfooded on its own (see
+`review-prompts.md` sections 4 and 5), and `scripts/coverage-metrics.ts`'s schema variant census
+already tracks `CoverageRule.scope`'s variant count over time, so a THIRD ad hoc variant showing
+up later would itself be visible, measurable evidence — not a silent surprise. **What would
+justify revisiting it**: a genuine third scope-relation requirement surfacing from REAL use (a
+real config that needs a path relation neither `'sibling'` nor `{ under }` can express, the same
+bar every other gap in this section is held to — "attempted against the schema," not merely
+imagined), not a fourth round of this same introspective review re-noticing the same two data
+points. Until then, this observation itself — "we considered generalizing `scope` and chose not
+to, and why" — is recorded here as a real, useful finding in its own right, distinct from either
+silently generalizing prematurely or silently ignoring a structurally-valid critique.
 
 A prompt for re-checking these two claims later, and reusable checklists for applying the
 same kind of review to `checks.coverage` in any other domain, live in
@@ -260,13 +305,18 @@ not prose:**
   ALSO closed, though at run time rather than decode time (a real architectural difference from
   the kind-id cross-field check's own decode-time guarantee, not an oversight — `roots` and
   `checks.coverage` can live in different `extends` layers, so no single-layer decode can see
-  both), and the N-of-M/alternation gap is PARTIALLY closed (the OR/alternation reading, via an
-  array `to`; general N-of-M cardinality remains open) — see `review-prompts.md`'s section 5 for
-  the real dogfood/falsification evidence and an independent adversarial pass's findings on both.
-  The product-issue/vision layer and the narrower N-of-M-cardinality gap remain open. On a fixed
-  cadence (e.g. every time this doc is next substantively edited), check whether a remaining gap
-  has a real filed GitHub issue; an item surviving multiple such checks with no filed issue is a
-  signal the "future work" framing has gone stale, not active.
+  both), and the N-of-M/alternation gap is now FULLY closed, in two increments (the
+  OR/alternation reading first, via an array `to`/`{ any }`; then general N-of-M cardinality,
+  via `{ atLeast: { n, of } }`) — see `review-prompts.md`'s section 5 for the OR-only
+  increment's real dogfood/falsification evidence and an independent adversarial pass's
+  findings, and section 6 for the `atLeast` increment's own. A related structural critique
+  (unifying `scope`'s two variants into one general path-relation primitive) was raised in the
+  SAME round `atLeast` closed and deliberately NOT built — see the dedicated "Noted-but-deferred
+  structural observation" paragraph above; recorded as considered-and-declined, a third category
+  distinct from both "closed" and "open" in this tracking. The product-issue/vision layer remains
+  open. On a fixed cadence (e.g. every time this doc is next substantively edited), check whether
+  a remaining gap has a real filed GitHub issue; an item surviving multiple such checks with no
+  filed issue is a signal the "future work" framing has gone stale, not active.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release

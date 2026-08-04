@@ -469,3 +469,148 @@ still-open, narrower gap underneath this one, not silently claimed closed by thi
 independent adversarial pass found only cosmetic, non-exit-code-affecting edge cases in both, no
 crash, no false-negative silently swallowing a real violation, and confirmed the TypeScript
 narrowing justification in the new code comments is accurate rather than defensive over-engineering.
+
+## 6. Closing the general N-of-M/`atLeast` gap section 5 left open, plus a systematic vacuity
+
+safeguard and its own adversarial-judge pass (validation findings)
+
+Section 5 closed the OR/"any one" reading of the N-of-M/alternation gap and explicitly recorded
+the narrower reading — "at least N of these, N > 1" — as still open. This round closes that
+narrower reading, and runs this file's own adversarial-judge prompt (section 2, with its
+steelman-the-opposite second pass) against the result, per this task's own instruction.
+
+**The shape.** `CoverageRule.to` gains a third quantifier alongside the existing single-target
+and array/`{ any }` (OR) shapes: `{ atLeast: { n: number, of: CoverageTarget[] } }`, satisfied
+when at least `n` of `of`'s targets EACH have their OWN satisfying link — not `n` total links to
+the same target. Real example: `{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes',
+'evidence', 'prior-art'] } } }` requires a roadmap doc to link to at least 2 of the 3 listed
+kinds; linking to only `spikes` is NOT enough, linking to `spikes` twice (two different anchors
+in the same doc) is also NOT enough — dogfooded for real with the bundled CLI (`dist/cli.js`)
+against a throwaway fixture: reports `✗ no link to AT LEAST 2 of: a "spikes"-kind doc, a
+"evidence"-kind doc, a "prior-art"-kind doc` when only one of the three is linked, and goes
+silent (bar an unrelated pre-existing orphan warning for the un-linked third doc) the moment a
+second real link is added — confirmed both directions with the real CLI, not just unit tests.
+`{ any: [...] }` was added alongside it as the explicit, named spelling of the array form that
+already shipped in section 5 — both spellings decode and behave identically; the bare array is
+NOT deprecated, matching this task's own "must stay additive" instruction. "All of these" needed
+no fourth `to` variant: it's `n: of.length` over the same `atLeast` shape.
+
+Every existing consumer of `rule.to` was routed through two new centralized helpers rather than
+re-deriving cardinality inline: `targetsOf` (already existed, extended to flatten `any`/`atLeast`
+too — used where a consumer only needs "every target this rule could possibly match," e.g. the
+undeclared-kind check, orphan-candidate collection, external-path candidate collection) and the
+new `quantifierOf` (`{ n, targets }` — the ONE place `../structure/Coverage.ts`'s
+`resolveRuleEdges` reads a rule's required count from; a single target and the OR shapes are
+`n: 1` over their own target list, not a separate code path from `atLeast`). `RuleEdge` gained one
+new field, `satisfied: boolean` — `satisfiedBy.length > 0` alone can no longer answer "is this
+rule satisfied" once a rule can require a MINIMUM COUNT across several distinct targets rather
+than just "did any link match something"; `CheckCoverage.ts`'s `missing` computation was switched
+from `satisfiedBy.length === 0` to `!e.satisfied` accordingly, and the dedup key
+(`JSON.stringify(r.to)`, already unconditional since section 5's own Round 6 fix) needed no
+change — it already structurally discriminates any new `to` shape, including this one.
+
+**Round 7 of the standing dedup-key warning, checked and found NOT triggered.**
+`CheckCoverage.ts`'s own comment tracks six rounds of "a new discriminating field wasn't added to
+the dedup key" as a recurring bug class, and flags this task as "at least Round 7 if missed." Checked
+directly: `atLeast`'s `n`/`of` live entirely INSIDE `r.to`, which the dedup key already hashes via
+`JSON.stringify(r.to)` unconditionally — no new top-level `CoverageRule` field was added, so there
+was no seventh instance of the bug to introduce. Confirmed by construction, not just by reading the
+code: two rules on the same `from` differing only in `atLeast.n` (`{ n: 1, of: [...] }` vs `{ n: 2,
+of: [...] }`) produce two DIFFERENT `JSON.stringify(r.to)` keys and are correctly NOT deduped
+(covered by the existing "never collapses two same-`from` rules with structurally different object
+`to` values" test in `CheckCoverage.unit.test.ts`, which already exercised object-shaped `to`
+values before this task and needed no change to also cover `atLeast`).
+
+**Part B: the systematic vacuity safeguard.** `fast-check` (or any property-based testing
+library) is confirmed NOT a devDependency (`package.json`'s `devDependencies` has no such entry)
+— per this task's own instruction, no new dependency was added for this. Instead:
+`src/core/VacuousShapes.unit.test.ts`, one table per vacuity-prone shape (`**` matching zero path
+segments — a deliberate, documented NON-fix, since that zero-segment matching is a real, already-
+shipped feature elsewhere in this exact codebase, not a defect; empty/slashes-only `scope.under`;
+an empty `to` array; and the new `atLeast.n: 0`/negative/empty-`of` cases), each asserting the
+real, current safeguard rather than a hypothetical one.
+
+**A genuine finding from running this task's OWN Part D against itself, not a clean pass.**
+Writing that table surfaced a REAL bug this task's own first-pass self-review had NOT caught:
+`atLeast.of` containing a DUPLICATE target (e.g. `of: ['spikes', 'spikes']`) let ONE real
+satisfying link count toward `n` TWICE, since `countSatisfiedTargets` (`../structure/Coverage.ts`)
+checks each `of` INDEX independently rather than each distinct target. Proved concretely before
+fixing it, not just reasoned about: a direct `resolveRuleEdges` call with `atLeast: { n: 2, of:
+['spikes', 'spikes'] }` against a doc carrying exactly ONE link to a `spikes`-kind doc came back
+`satisfied: true` — silently requiring FEWER distinct links than `n` implies, precisely the
+"expressive matcher silently degrades to always-true" failure class Part B exists to catch,
+found INSIDE the very feature meant to close that class, not in some unrelated corner. Fixed
+before this task's own commit, not left as a disclosed limitation: `checkAtLeastSane`
+(`core/Config.ts`) now rejects, at decode time, any `atLeast.of` containing a structurally
+duplicate target (`JSON.stringify`-compared, matching this file's own dedup-key precedent so a
+repeated `{ external: 'path' }` object is caught too, not just a repeated string kind id).
+Falsified for real: reverting the duplicate check makes the new
+`VacuousShapes.unit.test.ts`/`Config.unit.test.ts` tests for it fail (`Result.isFailure` false),
+restoring makes them pass again.
+
+**Adversarial-judge pass (schema expressiveness), against the shipped `atLeast` shape.**
+Attempted per the section 2 prompt's own discipline — a real requirement, actually written as
+config, not asserted as a gap:
+
+1. _"At least 2 of these 3, where one of the 3 is itself an `{ external: 'url', pattern }`
+   target"_ — succeeds, no gap: `atLeast.of` accepts any mix of `CoverageTarget` variants, the
+   same heterogeneity the array/`{ any }` shape already allowed (`review-prompts.md` section 5's
+   own "mixes a kind alternative with a `{ external: 'url', pattern }` alternative" test, mirrored
+   for `atLeast` in `Coverage.unit.test.ts`).
+2. _"Require `n` to scale with `of.length` automatically (e.g. 'a majority,' not a fixed number)"_
+   — fails, a real schema-fundamental gap: `n` is a literal integer, not an expression or a
+   percentage; a config author who wants "at least half" must compute and hardcode that number
+   themselves, and update it by hand if `of` ever grows. Newly found by this review, not a
+   restatement of an existing `CONVENTION.md` gap — recorded here, not yet added to
+   `CONVENTION.md`'s own tracked-gap list, since it has not yet been independently corroborated by
+   a second real request the way that list's own discipline expects.
+3. _"A DIFFERENT minimum count per `from`-kind doc, not a fixed `n` for every doc of that kind"_ —
+   fails as CONFIGURATION-only, not schema-fundamental: `CoverageRule` is declared once per rule,
+   not per doc instance, so every `from`-kind doc sharing a rule shares its `n` — but a config
+   author CAN already express a per-subset minimum today by writing two separate rules with
+   `scope: { under }` partitioning the corpus, each with its own `n`. Not a schema gap; a config
+   pattern that already exists.
+
+**Second pass — steelman each finding, per section 2's own discipline.**
+
+- _Duplicate-target bug, steelmanned as NOT a real bug_: could a duplicate `of` entry ever be
+  intentional — e.g. "weight this target twice"? No real semantics for `CoverageRule.to` supports
+  a WEIGHTED target anywhere else in this schema (array/`{ any }` treats every alternative
+  equally; `scope`/`via` have no per-target weighting concept either) — there is no existing
+  vocabulary a duplicate could be "using," so the steelman does not hold; rejecting it outright
+  remains correct.
+- _`n` scaling with `of.length`, steelmanned as NOT actually a gap_: could this already be
+  expressed via `n: of.length` for "all" and a hand-picked literal for anything else, making
+  "scale automatically" an ergonomics wish rather than an expressiveness gap? Partially holds —
+  the FIXED-`n` cases (all, or a specific hardcoded count) are fully expressible today; only the
+  "recompute as `of` grows" case is genuinely unexpressible, since the schema has no relative/
+  percentage concept at all. Downgraded from "the schema can't express minimums" (too broad, false)
+  to the narrower, accurate claim recorded above (finding 2): only a RELATIVE minimum is the real
+  gap, not minimums in general.
+- _Per-doc `n`, steelmanned as a real schema gap after all_: is the `scope: { under }` workaround
+  in finding 3 actually usable, or too costly to count as "already expressible"? Checked against
+  `CONVENTION.md`'s own precedent for a structurally similar workaround (one kinds/rules block
+  covering every design package via a wildcard glob, `scope: 'sibling'`) — that pattern was
+  praised specifically because it needed ZERO additional config per instance; the `scope: {
+under }` workaround for a per-subset `n` needs ONE ADDITIONAL RULE per distinct minimum, which
+  does NOT scale the same way. The steelman partially holds: this is a real, if minor, ergonomic
+  cost this review's first pass understated by calling it simply "not a schema gap" — still
+  correctly classified as configuration-only (nothing is UNEXPRESSIBLE), but the "already
+  expressible" framing undersold the real cost, corrected here.
+
+**Verdict.** Part A closes the STATED gap — general N-of-M cardinality, not just OR/alternation —
+verified by construction (real CLI dogfood both directions) and confirmed NOT to reintroduce the
+standing Round-1-through-6 dedup-key bug (Round 7 checked and found clean). Part B's systematic
+safeguard is the smaller, explicit table this task's own instructions called for in the absence of
+`fast-check`, and it did its actual job: running it surfaced a REAL, previously-unfound vacuity bug
+in this SAME task's own Part A work (the duplicate-`of`-target case), which was fixed and falsified
+before commit — the single strongest piece of evidence in this section that Part D's adversarial
+posture was applied genuinely, not performed. The schema-expressiveness pass found one real,
+newly-surfaced fundamental gap (relative/scaling `n`) not yet promoted into `CONVENTION.md`'s
+tracked-gap list, and one configuration-only cost (per-doc `n`) whose steelman pass revealed real,
+if minor, ergonomic friction the first-pass framing had understated. Pre-existing, not a
+regression: `schema/cairn.schema.json`'s generated JSON Schema still has no way to express
+`atLeast.of`'s non-empty/no-duplicate/`n ≤ of.length` cross-field constraints (only the single-field
+`n ≥ 1` check propagates, via `minimum: 1`) — the exact same `Schema.check`-filters-don't-propagate
+limitation section 5 already disclosed for the array `to`'s own `minItems`, re-confirmed here for
+`atLeast`'s three struct-level checks rather than newly introduced by this task.

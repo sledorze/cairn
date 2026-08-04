@@ -143,12 +143,104 @@ const checkToArrayNotEmpty = (targets: readonly unknown[]): string | undefined =
 
 const toArrayNotEmptyFilter = Schema.makeFilter(checkToArrayNotEmpty)
 
+// `{ any: [...] }` — the explicit, named form of the bare-array alternation
+// shape just above (`to: ['spikes', 'evidence']`). Added alongside the new
+// `atLeast` variant below purely for naming symmetry — once a rule can also
+// say "at least N of these," a reader benefits from an explicit "any of
+// these" counterpart instead of a bare array meaning one thing and a
+// labelled object meaning another. Deliberately NOT a replacement for the
+// bare array: that shape already shipped (docs/design/CONVENTION.md, docs/
+// design/review-prompts.md section 5) and every config written against it
+// must keep decoding and behaving exactly as it did — `to: [...]` and
+// `to: { any: [...] }` are two spellings of the identical "at least one of
+// these" semantics, both supported, neither deprecated.
+const AnyTargetInputSchema = Schema.Struct({
+  any: Schema.Array(CoverageTargetInputSchema).pipe(Schema.check(toArrayNotEmptyFilter)),
+}).annotate({
+  description:
+    "The explicit, named form of a bare-array `to` — satisfied by a link matching ANY ONE of `any`'s targets (alternation/OR). Equivalent to `to: [...]`, not a replacement for it.",
+  identifier: 'CairnCoverageTargetAny',
+})
+
+// `{ atLeast: { n, of } }` — the still-open half of the N-of-M/alternation
+// gap `docs/design/CONVENTION.md`'s "Judging this convention" Claim 2 and
+// `docs/design/review-prompts.md` section 5 both named and left unclosed:
+// the bare-array/`any` shape only ever expresses "at least ONE of these";
+// nothing could express "at least N of these" for N > 1, nor an explicit
+// "every one of these" distinct from N separately-AND'd rules on the same
+// `from`. `atLeast` closes the general case: `n` targets, `of` a candidate
+// list — satisfied when at least `n` of `of`'s elements EACH have their own
+// satisfying link (not `n` total links to the SAME element). Requiring
+// "all" is just `atLeast: { n: of.length, of }` — no separate `all` variant
+// needed, matching this repo's own minimal-surface discipline (`AGENTS.md`:
+// don't add an abstraction the schema doesn't need). Validated at decode
+// time, not left to silently misbehave: `n` must be a positive integer
+// (`n: 0` would be vacuously satisfied by nothing — the same "silently
+// matches everything" failure class `ScopeUnderPathSchema`'s own empty-
+// `under` check exists to catch, just satisfied-by-default instead of
+// scoped-to-everything) and must not exceed `of.length` (a higher `n` could
+// never be satisfied, the same permanently-unsatisfiable trap an empty `to`
+// array already falls into).
+//
+// Adversarial self-review, before this shipped (this task's own Part D):
+// `of` containing a DUPLICATE target (e.g. `of: ['spikes', 'spikes']`) lets
+// ONE real satisfying link count toward the minimum TWICE — `../structure/
+// Coverage.ts`'s `countSatisfiedTargets` checks each `of` index
+// independently, so two identical entries both register as "satisfied" the
+// moment a single link matches either one. Proved concretely, not just
+// reasoned: `resolveRuleEdges({ rules: [{ from: 'roadmap', to: { atLeast: {
+// n: 2, of: ['spikes', 'spikes'] } } }] })` against a doc with exactly ONE
+// link to a `spikes`-kind doc came back `satisfied: true` before this
+// check existed — the exact "silently requires fewer DISTINCT things than
+// `n` implies" failure class this whole feature exists to prevent, now
+// nearly shipped by the feature meant to prevent it. Rejected at decode
+// time, the same "reject the vacuity-prone shape before it can run" pattern
+// every other check in this function follows — compared structurally
+// (`JSON.stringify`), matching this file's own `to`-shape dedup-key
+// precedent (`../../program/structure/CheckCoverage.ts`'s rule-dedup key)
+// rather than a reference-equality check that `'spikes' === 'spikes'`
+// would already catch for strings but a repeated `{ external: 'path' }`
+// object would not.
+const checkAtLeastSane = (v: { readonly n: number; readonly of: readonly unknown[] }): string | undefined => {
+  if (v.of.length === 0) {
+    return '`atLeast.of` must not be an empty array — the same permanently-unsatisfiable trap a bare empty `to` array falls into'
+  }
+  if (v.n > v.of.length) {
+    return `\`atLeast.n\` (${v.n}) must not exceed \`atLeast.of.length\` (${v.of.length}) — a rule requiring more targets than are listed can never be satisfied`
+  }
+  const seen = new Set(v.of.map((target) => JSON.stringify(target)))
+  if (seen.size !== v.of.length) {
+    return '`atLeast.of` must not contain a duplicate target — a duplicate lets ONE satisfying link count toward `n` twice, silently requiring fewer DISTINCT links than `n` implies'
+  }
+  return undefined
+}
+
+const atLeastSaneFilter = Schema.makeFilter(checkAtLeastSane)
+
+const AtLeastNSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1))).annotate({
+  description:
+    'The minimum number of `atLeast.of` targets that must each independently have at least one satisfying link. A positive integer — `n: 0` would make the rule vacuously satisfied by nothing, defeating the point of requiring a minimum.',
+})
+
+const AtLeastTargetInputSchema = Schema.Struct({
+  atLeast: Schema.Struct({
+    n: AtLeastNSchema,
+    of: Schema.Array(CoverageTargetInputSchema),
+  }).pipe(Schema.check(atLeastSaneFilter)),
+}).annotate({
+  description:
+    'Satisfied when at least `n` of `of`\'s targets EACH have their own satisfying link — general N-of-M cardinality, e.g. `{ atLeast: { n: 2, of: ["spikes", "external-evidence", "prior-art"] } }` requires links to at least 2 of the 3 listed kinds. "All of these" is `n: of.length`; there is no separate `all` variant.',
+  identifier: 'CairnCoverageTargetAtLeast',
+})
+
 const CoverageTargetOrAlternativesInputSchema = Schema.Union([
   CoverageTargetInputSchema,
   Schema.Array(CoverageTargetInputSchema).pipe(Schema.check(toArrayNotEmptyFilter)),
+  AnyTargetInputSchema,
+  AtLeastTargetInputSchema,
 ]).annotate({
   description:
-    'A single coverage target (satisfied by any one matching link), or an ARRAY of targets (satisfied by a link matching ANY ONE of them — alternation/OR, e.g. `to: ["spikes", "external-evidence"]`). A non-empty array only — see each element\'s own `CairnCoverageTarget` shape.',
+    'A single coverage target (satisfied by any one matching link); an ARRAY of targets, or the equivalent `{ any: [...] }`, satisfied by a link matching ANY ONE of them (alternation/OR, e.g. `to: ["spikes", "external-evidence"]`); or `{ atLeast: { n, of } }`, satisfied when at least `n` of `of`\'s targets EACH have a satisfying link (general N-of-M). Every array form is non-empty — see each element\'s own `CairnCoverageTarget` shape.',
   identifier: 'CairnCoverageTargetOrAlternatives',
 })
 
@@ -308,17 +400,34 @@ const CoverageInputSchema = Schema.Struct({
           }
           // `to` names no kind at all when it's `{ external: 'path' }` — the
           // undeclared-kind check only applies to the plain kind-id string
-          // shape. `to` may also be an ARRAY of alternatives (see
+          // shape. `to` may also be an ARRAY of alternatives, `{ any: [...] }`,
+          // or `{ atLeast: { n, of } }` (see
           // `CoverageTargetOrAlternativesInputSchema`'s own comment) — every
-          // element gets the same undeclared-kind check, each pinned to its
-          // own array index so a typo in the SECOND alternative doesn't read
-          // as pointing at the whole `to` field.
-          const toTargets = Array.isArray(rule.to) ? rule.to : [rule.to]
-          toTargets.forEach((target, j) => {
-            if (isKindTarget(target) && !declaredIds.has(target)) {
+          // element of whichever shape gets the same undeclared-kind check,
+          // each pinned to its own path (including array index) so a typo in
+          // one alternative doesn't read as pointing at the whole `to` field.
+          const toTargetEntries: { readonly path: readonly (number | string)[]; readonly target: unknown }[] =
+            Array.isArray(rule.to)
+              ? rule.to.map((target, j) => ({ path: ['rules', i, 'to', j], target }))
+              : typeof rule.to === 'object' && rule.to !== null && 'any' in rule.to && Array.isArray(rule.to.any)
+                ? rule.to.any.map((target: unknown, j: number) => ({ path: ['rules', i, 'to', 'any', j], target }))
+                : typeof rule.to === 'object' &&
+                    rule.to !== null &&
+                    'atLeast' in rule.to &&
+                    typeof rule.to.atLeast === 'object' &&
+                    rule.to.atLeast !== null &&
+                    'of' in rule.to.atLeast &&
+                    Array.isArray(rule.to.atLeast.of)
+                  ? rule.to.atLeast.of.map((target: unknown, j: number) => ({
+                      path: ['rules', i, 'to', 'atLeast', 'of', j],
+                      target,
+                    }))
+                  : [{ path: ['rules', i, 'to'], target: rule.to }]
+          toTargetEntries.forEach(({ path: targetPath, target }) => {
+            if (typeof target === 'string' && !declaredIds.has(target)) {
               issues.push({
                 issue: `references undeclared kind "${target}"`,
-                path: Array.isArray(rule.to) ? ['rules', i, 'to', j] : ['rules', i, 'to'],
+                path: targetPath,
               })
             }
           })
@@ -541,29 +650,80 @@ export const isKindTarget = (target: CoverageTarget): target is string => typeof
 export const isUrlTarget = (target: CoverageTarget): target is { readonly external: 'url'; readonly pattern: string } =>
   !isKindTarget(target) && target.external === 'url'
 
-/** Normalises `CoverageRule.to` (a single target, or an array of
- * alternatives — see `CoverageTargetOrAlternativesInputSchema`'s own
- * comment) into a uniform, non-empty list — the ONE place every consumer
- * (`../structure/Coverage.ts`'s `matchNode`, `../../program/structure/
- * CheckCoverage.ts`'s dedup key and orphan-candidate/external-candidate
- * collection) turns "one target or many" into "a list of targets to try,"
- * matching `isKindTarget`/`isUrlTarget`'s own centralization precedent
- * above: a future consumer of `to` needs this ONE function updated, not a
- * `Array.isArray(rule.to) ? rule.to : [rule.to]` re-derived at every call
- * site. */
-export const targetsOf = (to: CoverageTarget | readonly CoverageTarget[]): readonly CoverageTarget[] =>
-  isTargetArray(to) ? to : [to]
+/** The explicit, named spelling of a bare-array `to` — see
+ * `AnyTargetInputSchema`'s own comment for why both spellings are kept. */
+export interface CoverageTargetAny {
+  readonly any: readonly CoverageTarget[]
+}
+
+/** General N-of-M cardinality — see `AtLeastTargetInputSchema`'s own comment
+ * for the gap this closes and why "all of these" has no separate variant. */
+export interface CoverageTargetAtLeast {
+  readonly atLeast: {
+    readonly n: number
+    readonly of: readonly CoverageTarget[]
+  }
+}
+
+/** Every shape `CoverageRule.to` can take: a single target (satisfied by any
+ * one matching link); an array, or the equivalent `{ any: [...] }` (either
+ * spelling satisfied by a link matching ANY ONE of them — alternation/OR);
+ * or `{ atLeast: { n, of } }` (satisfied when at least `n` of `of`'s targets
+ * EACH have their own satisfying link — general N-of-M). See
+ * `CoverageTargetOrAlternativesInputSchema` (../Config.ts) for the schema
+ * this type mirrors. */
+export type CoverageToSpec = CoverageTarget | readonly CoverageTarget[] | CoverageTargetAny | CoverageTargetAtLeast
 
 /** A trusted type predicate (not just `Array.isArray` inline) — TS doesn't
  * reliably narrow a `T | readonly T[]` union back down to the bare `T` in
  * the `false` branch of an inline `Array.isArray(...)` check (confirmed:
  * `../program/structure/CheckCoverage.ts`'s report formatter hit exactly
- * this), so both `targetsOf` above and every OTHER consumer that needs to
+ * this), so both `targetsOf` below and every OTHER consumer that needs to
  * branch on "array of alternatives or a single target" go through this one
  * named, exported predicate instead of repeating an inline `Array.isArray`
  * that silently fails to narrow. */
-export const isTargetArray = (to: CoverageTarget | readonly CoverageTarget[]): to is readonly CoverageTarget[] =>
-  Array.isArray(to)
+export const isTargetArray = (to: CoverageToSpec): to is readonly CoverageTarget[] => Array.isArray(to)
+
+/** True when `to` is the explicit `{ any: [...] }` spelling (not the bare
+ * array, not `{ atLeast: ... }`, not a single target) — centralized the same
+ * way `isKindTarget`/`isUrlTarget` are, for the same reason: every consumer
+ * branching on `to`'s shape goes through one named predicate, not a
+ * re-derived `'any' in to` inline check. */
+export const isAnyTarget = (to: CoverageToSpec): to is CoverageTargetAny =>
+  !isTargetArray(to) && typeof to === 'object' && to !== null && 'any' in to
+
+/** True when `to` is `{ atLeast: { n, of } }` — see `isAnyTarget`'s own
+ * comment for why this is a centralized predicate rather than an inline
+ * `'atLeast' in to` re-derived at each call site. */
+export const isAtLeastTarget = (to: CoverageToSpec): to is CoverageTargetAtLeast =>
+  !isTargetArray(to) && typeof to === 'object' && to !== null && 'atLeast' in to
+
+/** Normalises `CoverageRule.to` (any of its four shapes — see
+ * `CoverageToSpec`) into a uniform, non-empty list of individual targets —
+ * the ONE place every consumer that just needs "every target this rule
+ * could possibly match" (`../../program/structure/CheckCoverage.ts`'s
+ * dedup key and orphan-candidate/external-candidate collection) turns "one
+ * target or many, however grouped" into "a flat list to try," matching
+ * `isKindTarget`/`isUrlTarget`'s own centralization precedent above. Does
+ * NOT carry `atLeast`'s cardinality (`n`) — a consumer that needs to know
+ * HOW MANY of these must be satisfied, not just which targets are possible,
+ * needs `quantifierOf` instead. */
+export const targetsOf = (to: CoverageToSpec): readonly CoverageTarget[] =>
+  isTargetArray(to) ? to : isAnyTarget(to) ? to.any : isAtLeastTarget(to) ? to.atLeast.of : [to]
+
+/** The general shape every `to` variant reduces to: "at least `n` of
+ * `targets` must each have their own satisfying link." A single target and
+ * the OR-shaped variants (array / `{ any }`) are `n: 1` over their own
+ * target list — the same "at least one" semantics they always had, just
+ * expressed through the same lens `{ atLeast }` introduces, rather than as a
+ * separate special case. This is the ONE place `../structure/Coverage.ts`'s
+ * `resolveRuleEdges` reads a rule's cardinality from — a future quantifier
+ * shape needs this function (and this function alone) updated to be
+ * resolved correctly. */
+export const quantifierOf = (
+  to: CoverageToSpec,
+): { readonly n: number; readonly targets: readonly CoverageTarget[] } =>
+  isAtLeastTarget(to) ? { n: to.atLeast.n, targets: to.atLeast.of } : { n: 1, targets: targetsOf(to) }
 
 export interface CoverageRule {
   /** Real, in-context guidance shown in the report when unmet — see
@@ -580,12 +740,14 @@ export interface CoverageRule {
    * `CoverageRuleInputSchema`'s own comment for why. Absent means today's
    * default: satisfied by a `to`-kind doc anywhere in the corpus. */
   readonly scope?: 'sibling' | { readonly under: string }
-  /** A single target (satisfied by any one matching link), or an ARRAY of
-   * targets — satisfied by a link matching ANY ONE of them (alternation/OR,
-   * e.g. requiring a link to EITHER a `spikes`-kind doc OR an
-   * `external-evidence`-kind doc). See `targetsOf` for how every consumer
-   * normalises this into a uniform list. */
-  readonly to: CoverageTarget | readonly CoverageTarget[]
+  /** A single target (satisfied by any one matching link); an array, or the
+   * equivalent `{ any: [...] }`, satisfied by a link matching ANY ONE of
+   * them (alternation/OR, e.g. requiring a link to EITHER a `spikes`-kind
+   * doc OR an `external-evidence`-kind doc); or `{ atLeast: { n, of } }`,
+   * satisfied when at least `n` of `of`'s targets EACH have a satisfying
+   * link (general N-of-M). See `targetsOf`/`quantifierOf` for how every
+   * consumer normalises this. */
+  readonly to: CoverageToSpec
   /** Defaults to `{ by: 'link' }` when absent — every rule written before
    * this field existed already meant that. */
   readonly via?: CoverageRequirement
