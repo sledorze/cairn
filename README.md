@@ -393,6 +393,43 @@ another doc that happens to link to it). A `coveredBy` group whose glob matches 
 doc files is reported as a non-fatal ⚠️ warning (likely a typo), the same
 `unmatchedKinds` safety net `checks.coverage` already has.
 
+### Doc staleness: `checks.freshness`
+
+`checks.coverage`/`checks.docCoverage` (above) both ask **relational** questions — does a
+doc link to the right other doc or source file. Neither asks a **temporal** one: is this
+doc's content actually still current, regardless of what it links to? A doc can pass every
+relational check above and still describe a system that moved on months ago.
+
+`checks.freshness` closes that gap using git's own history — **not filesystem mtime**,
+which resets to checkout time on every fresh clone/CI run and would make every doc look
+brand-new the moment CI runs:
+
+```json
+"checks": {
+  "freshness": {
+    "rules": [
+      { "glob": "docs/adr/**", "maxAgeDays": 365 },
+      { "glob": "docs/**", "maxAgeDays": 90 }
+    ]
+  }
+}
+```
+
+- **`rules`** — an ordered list of `{ glob, maxAgeDays }` pairs. The **first** rule (in
+  declared order) whose glob matches a doc's path wins; a doc matching no rule is skipped
+  entirely.
+- **`maxAgeDays`** — a doc whose most recent git commit touching it is older than this many
+  days is reported stale. A doc with no commit history yet (nothing committed, or git
+  itself unavailable) is silently excluded — never reported stale or fresh, since there's
+  nothing yet to measure an age from.
+
+Like `checks.coverage`/`checks.docCoverage`, this is opt-in via mere presence in config (no
+CLI flag — its `rules` have no CLI equivalent to express them with), and
+`checks.freshness: false` is the explicit way to re-disable it when inherited from an
+`extends` preset. It's deliberately its own minimal check rather than a `checks.coverage`
+rule field — freshness is a per-doc, temporal question ("how old is this"), not the
+relational, doc-to-doc question every `checks.coverage` rule asks.
+
 ### Upgrading from an older cairn
 
 **If you're upgrading past `0.3.0`**: link checking got stricter. Anchors and links outside
@@ -481,6 +518,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `checks.links`             | Enable Markdown link checking                                                                                                                                                                                                                                                                                                                                                        |
 | `checks.coverage`          | Opt-in structural coverage/orphan check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                                       |
 | `checks.docCoverage`       | Opt-in source-tree documentation coverage check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                               |
+| `checks.freshness`         | Opt-in git-history-based doc staleness check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                                  |
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                                                                                                                                                                                                                                                                                                                  |
 | `ignore`                   | Globs to exclude from scanning, matched against both the absolute path and the path relative to its containing root (issue #102) — a directory-shaped match is pruned before it's ever walked, not just filtered out afterward (issue #63). `.gitignore` is also consulted automatically for the same directory-level pruning, with no config needed, regardless of `onlyGitTracked` |
 | `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`                                                                                                                                                                                                                                                                                                |

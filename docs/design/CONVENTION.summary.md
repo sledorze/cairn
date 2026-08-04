@@ -39,7 +39,14 @@ ARRAY of targets (or the equivalent `{ any: [...] }`) satisfied by ANY ONE of th
 OR/alternation reading of the N-of-M gap — AND `{ atLeast: { n, of } }`, satisfied when at
 least `n` of `of`'s targets EACH have their own link, which closes the general N-of-M
 cardinality reading too (e.g. "at least 2 of 3"; "all of these" is `n: of.length`, no separate
-variant); a freshness rule is still unexpressible; `scope` now has a SECOND variant, `{ under:
+variant); the freshness gap is now CLOSED too — not inside `checks.coverage`, but as its own
+separate, minimal `checks.freshness` check (`{ rules: [{ glob, maxAgeDays }] }`, matched
+against real git commit history via `io/Git.ts`'s `lastCommitDate`, never filesystem mtime) —
+a genuinely TEMPORAL axis, not the RELATIONAL one every other gap in this section addresses,
+so it was deliberately NOT bolted onto `CoverageRule`. Its origin is the same real incident
+GitHub issue #101 documents ("found using cairn 0.6.0 in `sledorze/falsestart`" — `--refs`
+failing on every edit to a cited file regardless of whether the doc's own claims changed);
+`scope` now has a SECOND variant, `{ under:
 'some/dir' }` — closing the sibling/corpus-wide granularity gap this doc originally named —
 and `under` itself is now validated too, though at `checkCoverage` run time rather than decode
 time (`roots` and `checks.coverage` can live in different `extends` layers, so no single-layer
@@ -55,8 +62,11 @@ coverage-metrics`) rather than hand-counted — current real output (KindSelecto
 CoverageTarget: 3, CoverageRequirement.by: 1, CoverageRule.scope: 2; hedge phrases total 15)
 is quoted in full in this doc. Reusable, business-agnostic prompts for running this kind of
 review on any `checks.coverage` structure, plus a validated negative result against
-`README.md`/`docs/architecture.md` and the `atLeast` closure's own dogfood/adversarial-review
-evidence, are in [`review-prompts.md`](./review-prompts.md).
+`README.md`/`docs/architecture.md`, the `atLeast` closure's own dogfood/adversarial-review
+evidence, and `checks.freshness`'s own real dogfood run and dogfooding decision (NOT enabled
+in this repo's own `.cairnrc.json` — no real "doc silently rotted" incident here to ground a
+threshold in, unlike the repo that motivated it), are in
+[`review-prompts.md`](./review-prompts.md).
 
 Full historical narrative (what was tried, what failed, what was found) is in
 `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s amendments.

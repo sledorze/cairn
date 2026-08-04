@@ -28,7 +28,7 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 92.27,
+        branches: 92.51,
         // functions/statements: manually recalibrated (config.ts's move to
         // Effect's FileSystem service), not auto-raised.
         // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery
@@ -48,9 +48,9 @@ export default defineConfig({
         // ratio shift with no coverage lost: every real branch this
         // rewrite touches (the mixed file/directory glob-segment case
         // included) has its own real-filesystem test.
-        functions: 98.86,
-        lines: 99.42,
-        statements: 99.24,
+        functions: 98.91,
+        lines: 99.44,
+        statements: 99.27,
       },
     },
     // scripts/**/*.test.ts: a genuine exception to "tests live under src/" —

@@ -98,3 +98,24 @@ extra rule per distinct value) whose steelman pass showed real ergonomic frictio
 had understated. The pre-existing JSON-Schema cross-field-constraint gap (section 5's own
 `minItems` finding) is re-confirmed, not newly introduced, for `atLeast`'s three struct-level
 checks.
+
+**7. Closing the dates/mtimes gap — `checks.freshness`, its falsestart origin, and real
+dogfood evidence**: closes `CONVENTION.md`'s remaining named gap ("nothing in the schema
+touches dates/mtimes"), as its own separate `checks.freshness` check rather than a
+`CoverageRule` field — a TEMPORAL axis, not the RELATIONAL one every prior section closed.
+Origin is real, not invented for this task: GitHub issue #101 ("found using cairn 0.6.0 in
+`sledorze/falsestart`") — `--refs` failed on every edit to any of 14 cited implementation
+files even when a doc's own claims hadn't changed; `checks.freshness` is the adjacent concept
+issue #101 named in passing, built as its own thing, orthogonal to `--refs`'s own
+citation-drift detection. Shape: `{ rules: [{ glob, maxAgeDays }] }`, first-matching-glob-wins,
+checked against `io/Git.ts`'s real committer date (`lastCommitDate`, never filesystem mtime,
+`null` for a doc with no history yet — silently excluded, not reported). Dogfooded for real
+with the bundled CLI against a throwaway `.cairnrc.json` copy (`maxAgeDays: 1`): correctly
+flagged this repo's own older ADR docs as stale with accurate `(Nd > 1d)` ages, stayed silent
+on recently-touched docs, then reverted rather than committed — this repo's own docs have no
+real "silently rotted and nobody noticed" incident to ground a permanent threshold in, unlike
+the repo that motivated the check, so it stays available but NOT enabled in this repo's own
+config. New tests: `Freshness.unit.test.ts` (pure staleness logic, strict `>` boundary),
+`CheckFreshness.unit.test.ts`/`.plugin.unit.test.ts` (IO-level wiring, `GitUnavailableError`
+treated as no-history), and a new `GitFsLive().lastCommitDate()` block in
+`Git.integration.test.ts` against the real `git` binary.

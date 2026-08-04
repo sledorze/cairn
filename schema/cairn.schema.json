@@ -161,6 +161,34 @@
       "additionalProperties": false,
       "description": "Opt-in check that every source file matching `sources` is linked to by at least one doc matching one of the `coveredBy` groups. Absent by default — presence enables it. Direct links only (a citation chain through an intermediate doc does not count), matching `checks.coverage`'s own non-transitive rules."
     },
+    "CairnFreshnessRule": {
+      "type": "object",
+      "properties": {
+        "glob": {
+          "type": "string",
+          "description": "Which docs this rule applies to. The FIRST rule (in declared order) whose glob matches a doc wins."
+        },
+        "maxAgeDays": {
+          "type": "integer",
+          "allOf": [
+            {
+              "exclusiveMinimum": 0,
+              "description": "A doc last touched (per its git history — real content changes, not filesystem mtime) more than this many days ago is reported stale. A positive integer."
+            }
+          ]
+        }
+      },
+      "required": ["glob", "maxAgeDays"],
+      "additionalProperties": false,
+      "description": "One glob and its own staleness threshold. Matched against a doc's path the same two-step way every other check in this file does (absolute, then project-relative)."
+    },
+    "CairnFreshnessConfig": {
+      "type": "object",
+      "properties": { "rules": { "type": "array", "items": { "$ref": "#/$defs/CairnFreshnessRule" } } },
+      "required": ["rules"],
+      "additionalProperties": false,
+      "description": "Opt-in check that a doc's real git history is no older than its own matching rule's `maxAgeDays`. A doc with no commit history yet is silently excluded (nothing to measure an age from), never reported stale or fresh. Absent by default — presence enables it."
+    },
     "CairnChecksConfig": {
       "type": "object",
       "properties": {
@@ -187,6 +215,7 @@
         "docCoverage": {
           "anyOf": [{ "$ref": "#/$defs/CairnDocCoverageConfig" }, { "type": "boolean", "enum": [false] }]
         },
+        "freshness": { "anyOf": [{ "$ref": "#/$defs/CairnFreshnessConfig" }, { "type": "boolean", "enum": [false] }] },
         "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
         "summaries": {
           "type": "boolean",

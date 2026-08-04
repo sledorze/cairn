@@ -100,6 +100,16 @@ summary links to every child") — is one-directional and real, not a cycle.
        sees the IO layer's already-resolved `coverageByPath` map, never
        Markdown content — kept non-transitive by the same construction
        `Coverage.ts` uses.
+     - [`Freshness.ts`](../src/core/structure/Freshness.ts) — issue #101's
+       "found using cairn in `sledorze/falsestart`" freshness gap
+       (`docs/design/CONVENTION.md`'s "Judging this convention" Claim 2):
+       `findStaleDocs`, given a doc's own configured `maxAgeDays` and its
+       real last-commit date, decides staleness. Deliberately NOT built on
+       `Coverage.ts` above (despite that file's own header anticipating "a
+       future consumer, e.g. a stale-coverage-link freshness check" reusing
+       its kind-matching) — freshness turned out to be a per-doc TEMPORAL
+       question with no relational/kind-graph logic at all, so reusing
+       `Coverage.ts` would have imported machinery this check never needs.
    - **Shared by both domains** (top-level `core/`, not inside either
      subdirectory — genuinely used by both, verified by import graph, not
      assumed): [`sidecar.ts`](../src/core/sidecar.ts) (the `.cairn/**` path
@@ -128,11 +138,14 @@ summary links to every child") — is one-directional and real, not a cycle.
      are tested without touching disk.
    - [`Git.ts`](../src/io/Git.ts) — `onlyGitTracked` (issue #48)'s one real
      capability, plus issue #63's gitignore-aware/worktree-aware directory
-     pruning, plus issue #106's `--report-deletions` detection surface:
+     pruning, plus issue #106's `--report-deletions` detection surface, plus
+     issue #101's `checks.freshness` detection surface (`lastCommitDate`, the
+     committer date — never mtime — of a path's most recent commit, or `null`
+     when it has no commit history yet):
      `GitFsLive.listTrackedFiles`/`listIgnoredDirs`/`listWorktreeDirs`/
-     `listDeletedSince`/`readFileAtRef` shell out to the real `git` binary
+     `listDeletedSince`/`readFileAtRef`/`lastCommitDate` shell out to the real `git` binary
      (`ls-files`, `worktree list`, `diff --name-status --diff-filter=D`,
-     `show <ref>:<path>`) via
+     `show <ref>:<path>`, `log -1 --format=%cI`) via
      `effect`'s own `ChildProcess`/`ChildProcessSpawner`
      (`effect/unstable/process`), not raw `node:child_process` — a typed
      `PlatformError`/exit-code contract instead of hand-wiring a `Promise`
@@ -207,6 +220,16 @@ summary links to every child") — is one-directional and real, not a cycle.
        extractor `CheckRefs.ts` already uses) and hands the resulting
        `coverageByPath`/`matchedCounts` maps to `core/structure/
 DocCoverage.ts`'s pure functions.
+     - [`CheckFreshness.ts`](../src/program/structure/CheckFreshness.ts) —
+       issue #101, opt-in (`checks.freshness`'s mere presence, no CLI flag):
+       scans doc `roots` for the first `rules` glob (declared order) that
+       matches each doc, asks `io/Git.ts`'s `lastCommitDate` for its real
+       git committer date (never filesystem mtime — resets on every fresh
+       clone/CI checkout), and hands the result to `core/structure/
+Freshness.ts`'s pure `findStaleDocs`. A doc with no commit history yet, or
+       a real `GitUnavailableError`, is silently excluded from staleness —
+       surfaced only as a non-fatal warning when EVERY checked doc comes
+       back with no git data at all.
    - **Shared by more than one domain**: [`JsonReport.ts`](../src/program/JsonReport.ts)
      (combines a links/summaries run into the single
      `{ summaries, links, exitCode }` shape `--json` prints — only these two

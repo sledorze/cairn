@@ -503,6 +503,59 @@ const DocCoverageInputSchema = Schema.Struct({
 // back off with a plain `false`, not just override it with different globs.
 const DocCoverageOrDisabledSchema = Schema.Union([DocCoverageInputSchema, Schema.Literal(false)])
 
+// The "freshness/staleness rules" gap `docs/design/CONVENTION.md`'s "Judging
+// this convention" Claim 2 named and left open ("nothing in the schema
+// touches dates/mtimes at all, so a 'doc must be re-validated after N
+// months' freshness rule is outside its vocabulary entirely, not just
+// unconfigured"). Deliberately NOT a new field on `CoverageRule` — a
+// structural analysis recorded in this repo's own design docs found
+// freshness is a genuinely different axis from every other `CoverageRule`
+// field: TEMPORAL ("when was this doc last meaningfully touched"), not
+// RELATIONAL ("does this doc link to that doc"). Bolting it onto
+// `CoverageRule` would repeat the exact "one bespoke variant per round"
+// growth pattern `scope`'s own "Noted-but-deferred structural observation"
+// paragraph already flags as a design smell — so this is its own minimal,
+// separately opt-in check instead, matching how `checks.docCoverage` itself
+// is wired independently of `checks.coverage` rather than as a field
+// grafted onto it.
+// Extracted to a named schema (not inlined into the `Struct` field) purely
+// to keep call nesting within oxlint's `max-nested-calls`, matching
+// `ThresholdLinesSchema`/`AtLeastNSchema`'s own precedent just above/below
+// in this file — no behavior difference.
+const MaxAgeDaysSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))).annotate({
+  description:
+    'A doc last touched (per its git history — real content changes, not filesystem mtime) more than this ' +
+    'many days ago is reported stale. A positive integer.',
+})
+
+const FreshnessRuleInputSchema = Schema.Struct({
+  glob: Schema.String.annotate({
+    description: 'Which docs this rule applies to. The FIRST rule (in declared order) whose glob matches a doc wins.',
+  }),
+  maxAgeDays: MaxAgeDaysSchema,
+}).annotate({
+  description:
+    "One glob and its own staleness threshold. Matched against a doc's path the same two-step way every " +
+    'other check in this file does (absolute, then project-relative).',
+  identifier: 'CairnFreshnessRule',
+})
+
+const FreshnessInputSchema = Schema.Struct({
+  rules: Schema.Array(FreshnessRuleInputSchema),
+}).annotate({
+  description:
+    "Opt-in check that a doc's real git history is no older than its own matching rule's `maxAgeDays`. " +
+    'A doc with no commit history yet is silently excluded (nothing to measure an age from), never reported ' +
+    'stale or fresh. Absent by default — presence enables it.',
+  identifier: 'CairnFreshnessConfig',
+})
+
+// `FreshnessInputSchema | Literal(false)` — same escape hatch as
+// `CoverageOrDisabledSchema`/`DocCoverageOrDisabledSchema`, for the same
+// reason: a descendant config needs a way to turn an inherited `extends`
+// preset's freshness check back off with a plain `false`.
+const FreshnessOrDisabledSchema = Schema.Union([FreshnessInputSchema, Schema.Literal(false)])
+
 // `CoverageInputSchema | Literal(false)`, not just `CoverageInputSchema` —
 // `links`/`summaries` can be turned back off with a plain `false`, letting a
 // descendant config override an inherited `extends` preset; `checks.coverage`
@@ -517,6 +570,7 @@ const CoverageOrDisabledSchema = Schema.Union([CoverageInputSchema, Schema.Liter
 const ChecksInputSchema = Schema.Struct({
   coverage: Schema.optionalKey(CoverageOrDisabledSchema),
   docCoverage: Schema.optionalKey(DocCoverageOrDisabledSchema),
+  freshness: Schema.optionalKey(FreshnessOrDisabledSchema),
   links: Schema.optionalKey(
     Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
   ),
@@ -773,12 +827,27 @@ export interface DocCoverageConfig {
   readonly sources: readonly string[]
 }
 
+/** One glob and its own staleness threshold — see `FreshnessRuleInputSchema`'s
+ * own comment for why this is a separate check rather than a `CoverageRule`
+ * field. */
+export interface FreshnessRule {
+  readonly glob: string
+  readonly maxAgeDays: number
+}
+
+export interface FreshnessConfig {
+  readonly rules: readonly FreshnessRule[]
+}
+
 export interface ChecksConfig {
   /** `null` = disabled (the default) — presence of `checks.coverage` in a
    * config file is itself the opt-in, not a separate boolean flag. */
   readonly coverage: CoverageConfig | null
   /** `null` = disabled (the default), same convention as `coverage` above. */
   readonly docCoverage: DocCoverageConfig | null
+  /** `null` = disabled (the default), same convention as `coverage`/
+   * `docCoverage` above. */
+  readonly freshness: FreshnessConfig | null
   readonly links: boolean
   readonly summaries: boolean
 }
@@ -820,7 +889,7 @@ export interface Overrides {
 }
 
 export const DEFAULT_CONFIG: ResolvedConfig = {
-  checks: { coverage: null, docCoverage: null, links: true, summaries: true },
+  checks: { coverage: null, docCoverage: null, freshness: null, links: true, summaries: true },
   ignore: ['**/node_modules/**'],
   locale: 'en',
   naming: DEFAULT_NAMING,
@@ -898,6 +967,14 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
               exempt: layer.checks.docCoverage.exempt ?? [],
               sources: layer.checks.docCoverage.sources,
             },
+    // Same three-way (undefined inherits / false disables / anything else
+    // replaces wholesale) reasoning as `coverage`/`docCoverage` above.
+    freshness:
+      layer.checks?.freshness === undefined
+        ? base.checks.freshness
+        : layer.checks.freshness === false
+          ? null
+          : { rules: layer.checks.freshness.rules },
     links: layer.checks?.links ?? base.checks.links,
     summaries: layer.checks?.summaries ?? base.checks.summaries,
   },

@@ -180,7 +180,13 @@ describe('loadConfig()', () => {
     )
     const config = await run(loadConfig(cwd))
     expect(config.thresholdLines).toBe(50) // inherited from the base preset
-    expect(config.checks).toEqual({ coverage: null, docCoverage: null, links: false, summaries: false }) // deep-merged
+    expect(config.checks).toEqual({
+      coverage: null,
+      docCoverage: null,
+      freshness: null,
+      links: false,
+      summaries: false,
+    }) // deep-merged
     expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
   })
 
@@ -217,7 +223,13 @@ describe('loadConfig()', () => {
       JSON.stringify({ extends: ['./b.cairnrc.json', './c.cairnrc.json'] }),
     )
     const config = await run(loadConfig(cwd))
-    expect(config.checks).toEqual({ coverage: null, docCoverage: null, links: false, summaries: false })
+    expect(config.checks).toEqual({
+      coverage: null,
+      docCoverage: null,
+      freshness: null,
+      links: false,
+      summaries: false,
+    })
   })
 
   it('inherits `checks.coverage` from an `extends` preset when the local file does not set it', async () => {
@@ -373,6 +385,61 @@ describe('loadConfig()', () => {
     fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { docCoverage: false } }))
     const config = await run(loadConfig(cwd))
     expect(config.checks.docCoverage).toBeNull()
+  })
+
+  // Same three tests as `checks.coverage`/`checks.docCoverage` above, for
+  // `checks.freshness` — replace-wholesale on `extends`, re-disable with
+  // `false`, and the no-`extends`-at-all case.
+  it('replaces (not merges) `checks.freshness` entirely when the local file also sets it', async () => {
+    const cwd = mkTmp('cairn-extends-freshness-replace-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { freshness: { rules: [{ glob: 'docs/from-base/**', maxAgeDays: 365 }] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({
+        checks: { freshness: { rules: [{ glob: 'docs/from-local/**', maxAgeDays: 30 }] } },
+        extends: './base.cairnrc.json',
+      }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.freshness).toEqual({ rules: [{ glob: 'docs/from-local/**', maxAgeDays: 30 }] })
+  })
+
+  it('re-disables `checks.freshness` with `false` when a local config overrides an `extends` preset that enabled it', async () => {
+    const cwd = mkTmp('cairn-extends-freshness-disable-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { freshness: { rules: [{ glob: 'docs/**', maxAgeDays: 30 }] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { freshness: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.freshness).toBeNull()
+  })
+
+  it('resolves `checks.freshness: false` to null with no `extends` involved at all', async () => {
+    const cwd = mkTmp('cairn-freshness-disable-no-extends-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { freshness: false } }))
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.freshness).toBeNull()
+  })
+
+  it('inherits `checks.freshness` from an `extends` preset when the local file does not set it', async () => {
+    const cwd = mkTmp('cairn-extends-freshness-inherit-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { freshness: { rules: [{ glob: 'docs/**', maxAgeDays: 30 }] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { links: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.freshness).toEqual({ rules: [{ glob: 'docs/**', maxAgeDays: 30 }] })
   })
 
   it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', async () => {

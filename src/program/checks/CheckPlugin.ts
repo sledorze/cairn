@@ -86,13 +86,27 @@ export interface CheckPluginMeta {
   readonly name: string
 }
 
-export interface CheckPlugin<Result> extends CheckPluginMeta {
+// `Env` defaults to `DocsFs` — every plugin until now only ever needed it.
+// `freshness` (`../structure/CheckFreshness.ts`) is the first that also
+// needs live git data (`GitFs.lastCommitDate`), so it instantiates this
+// with `CheckPlugin<FreshnessResult, DocsFs | GitFs>` instead. A SECOND type
+// parameter, not just widening every plugin's `run` to `DocsFs | GitFs`
+// unconditionally — tried first, and reverted: with a single fixed `Env`,
+// every OTHER plugin's `run`, once annotated `: CheckPlugin<Result>`, is
+// typed via the INTERFACE's declared environment, not its own narrower
+// actual implementation — so every existing test that only provides
+// `DocsFs` (via `Effect.provide(makeTestDocsFs(...))`) would stop
+// satisfying `Effect.runPromise`'s `R = never` requirement, purely because
+// of a plugin they never touch needing `GitFs`. Confirmed for real:
+// `pnpm typecheck` broke in every sibling `*.plugin.unit.test.ts` file the
+// first time this was tried with a fixed `DocsFs | GitFs` environment.
+export interface CheckPlugin<Result, Env = DocsFs> extends CheckPluginMeta {
   readonly exitCode: (result: Result) => number
   readonly format: (result: Result, options: FormatOptions) => readonly string[]
-  readonly run: (args: CheckRunArgs) => Effect.Effect<Result, never, DocsFs>
+  readonly run: (args: CheckRunArgs) => Effect.Effect<Result, never, Env>
   /** Only `refs` has one today (`--refs --stamp`). Returns pre-formatted
    * report lines directly (not a separate `Result` + `format` pair) — with
    * exactly one real consumer, a parallel `StampResult`/`formatStamp` pair
    * would be speculative generality with nothing to generalize over yet. */
-  readonly stamp?: (args: CheckRunArgs) => Effect.Effect<readonly string[], never, DocsFs>
+  readonly stamp?: (args: CheckRunArgs) => Effect.Effect<readonly string[], never, Env>
 }

@@ -648,3 +648,66 @@ it.layer(GitFsTestLive)('GitFsLive().listWorktreeDirs()', (layerIt) => {
     }),
   )
 })
+
+// `checks.freshness` (`../program/structure/CheckFreshness.ts`) is built entirely on this
+// method's real committer-date answer — an in-memory double can't prove git's own `%cI`
+// format parses cleanly, or that a brand-new/untracked path really comes back `null`
+// rather than throwing.
+it.layer(GitFsTestLive)('GitFsLive().lastCommitDate()', (layerIt) => {
+  let freshRoot = ''
+
+  beforeAll(() => {
+    freshRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-lastcommitdate-'))
+    git(freshRoot, 'init', '-q')
+    git(freshRoot, 'config', 'user.email', 'test@example.com')
+    git(freshRoot, 'config', 'user.name', 'Test')
+
+    fs.mkdirSync(path.join(freshRoot, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(freshRoot, 'docs', 'committed.md'), '# Committed')
+    fs.writeFileSync(path.join(freshRoot, 'docs', 'untracked.md'), '# Never committed')
+    git(freshRoot, 'add', 'docs/committed.md')
+    git(freshRoot, 'commit', '-q', '-m', 'initial')
+  })
+
+  afterAll(() => {
+    if (freshRoot) {
+      fs.rmSync(freshRoot, { force: true, recursive: true })
+    }
+  })
+
+  layerIt.effect('returns the real committer date for a committed path', () =>
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(freshRoot, 'docs', 'committed.md'))
+      const before = Date.now()
+      const date = yield* gitFs.lastCommitDate(freshRoot, absPath)
+      expect(date).not.toBeNull()
+      // Real git's own `%cI` committer date for the commit made moments ago
+      // in `beforeAll` — parses cleanly into a valid, recent `Date`, proving
+      // the ISO-8601-strict `%cI` output round-trips through `new Date(...)`
+      // rather than asserting an exact value this fixture can't pin without
+      // also forcing `GIT_COMMITTER_DATE`.
+      expect(date?.getTime()).toBeGreaterThan(before - 60_000)
+      expect(date?.getTime()).toBeLessThanOrEqual(Date.now())
+    }),
+  )
+
+  layerIt.effect('returns null for a path that exists on disk but has no commit history yet', () =>
+    Effect.gen(function* () {
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(freshRoot, 'docs', 'untracked.md'))
+      const date = yield* gitFs.lastCommitDate(freshRoot, absPath)
+      expect(date).toBeNull()
+    }),
+  )
+
+  layerIt.effect('fails with a named GitUnavailableError when `base` is not a git repository', () =>
+    Effect.gen(function* () {
+      const nonRepo = yield* acquireTempDir('not-a-repo-lastcommitdate-')
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(nonRepo, 'docs', 'x.md'))
+      const error = yield* Effect.flip(gitFs.lastCommitDate(nonRepo, absPath))
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    }),
+  )
+})

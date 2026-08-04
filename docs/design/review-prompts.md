@@ -614,3 +614,88 @@ regression: `schema/cairn.schema.json`'s generated JSON Schema still has no way 
 `n ≥ 1` check propagates, via `minimum: 1`) — the exact same `Schema.check`-filters-don't-propagate
 limitation section 5 already disclosed for the array `to`'s own `minItems`, re-confirmed here for
 `atLeast`'s three struct-level checks rather than newly introduced by this task.
+
+## 7. Closing the dates/mtimes gap — `checks.freshness`, its falsestart origin, and real
+
+dogfood/falsification evidence
+
+Section 4 through 6 all closed gaps INSIDE `checks.coverage`'s own `to`/`scope` shapes.
+`CONVENTION.md`'s Claim 2 named a gap OUTSIDE that shape entirely: "nothing in the schema
+touches dates/mtimes at all, so a 'doc must be re-validated after N months' freshness rule is
+outside its vocabulary entirely, not just unconfigured." This section closes it, as its own
+separate `checks.freshness` check rather than a `CoverageRule` field — see `CONVENTION.md`'s
+own paragraph on why (a genuinely different TEMPORAL axis, not a RELATIONAL one).
+
+**Origin, not invented for this task.** GitHub issue #101 ("`--refs` whole-file granularity
+makes documentation drive code structure") is the real incident this closes: "found using
+cairn 0.6.0 in `sledorze/falsestart` over one long session," `docs/architecture.md` cited 14
+implementation files, and `--refs` failed on every edit to any of them even when the doc's own
+claims hadn't changed — "re-stamping became reflexive, which is the failure a freshness check
+exists to prevent: a gate you clear without reading." Issue #101's own "Suggested direction"
+section named two fixes for `--refs` itself (API-surface hashing, symbol-scoped references —
+tracked separately in `docs/design/101-refs-symbol-scoping/`) and, in passing, the freshness
+concept this section builds. `checks.freshness` deliberately does NOT touch `--refs`'s own
+citation-drift detection — it answers a narrower, orthogonal question ("has anyone looked at
+this doc's content in N days, per real git history") that a doc can fail independent of
+whether anything it cites moved at all.
+
+**The shape.** `checks.freshness.rules`: an ordered array of `{ glob, maxAgeDays }`. The FIRST
+rule (declared order) whose glob matches a doc's path applies; a doc matching none is skipped
+entirely — not reported, not counted. `maxAgeDays` is checked against `io/Git.ts`'s
+`lastCommitDate` (real git committer date, `git log -1 --format=%cI`) for that exact path, NOT
+filesystem mtime — a fresh `git clone`/CI checkout resets every file's mtime to checkout time
+regardless of its real history, which would make every doc look brand-new the moment CI runs.
+A doc with no commit history yet (a real, uncommitted new doc) is silently excluded from
+staleness reporting — there's nothing yet to measure an age from, matching this repo's own
+"never silently guess" discipline every sibling check already follows.
+
+**Real dogfood, against this repo's own docs, with the bundled CLI (`dist/cli.js`), not just
+unit tests.** A throwaway `checks.freshness` block (`{ "rules": [{ "glob": "docs/**",
+"maxAgeDays": 1 }] }`) was added to a scratch copy of this repo's own `.cairnrc.json` and run
+for real:
+
+```
+❌ 6 doc(s) stale (git history older than their configured maxAgeDays):
+  /workspaces/cairn/docs/adr/0001-optional-external-link-liveness-checks.md (7d > 1d)
+  /workspaces/cairn/docs/adr/0001-optional-external-link-liveness-checks.summary.md (7d > 1d)
+  /workspaces/cairn/docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md (2d > 1d)
+  /workspaces/cairn/docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.summary.md (2d > 1d)
+  /workspaces/cairn/docs/adr/0003-check-plugin-registry.md (6d > 1d)
+  /workspaces/cairn/docs/adr/0003-check-plugin-registry.summary.md (6d > 1d)
+```
+
+Confirmed both directions: every reported doc's real age (via `git log -1`) matched the
+printed `(Nd > 1d)`, and docs committed within the artificially tight 1-day window (this same
+change's own new/edited docs) stayed silent — not flagged. The scratch config was then
+reverted (never committed) rather than kept, per the dogfooding decision below.
+
+**Dogfooding decision: NOT enabled in this repo's own `.cairnrc.json`.** Every prior gap
+closure in this file (sections 4 through 6) dogfooded its capability INTO this repo's real,
+committed config, because the shape being tested (a new `scope`, a new `to` quantifier) had an
+immediate, concrete need already present in `docs/design/`'s own coverage rules.
+`checks.freshness` does not have that: this repo's docs are actively maintained by the same
+people who write the code, and picking a real `maxAgeDays` per glob (`docs/adr/**`?
+`docs/design/**`? a blanket `docs/**`?) without a genuine "this doc silently went stale and
+nobody noticed" incident here would be exactly the kind of arbitrary, ungrounded threshold this
+repo's own `AGENTS.md` guidance ("don't design for hypothetical future requirements") warns
+against — picking numbers to exercise the feature, not because this repo has the problem
+`checks.freshness` solves. The real incident motivating this check happened in a DIFFERENT
+repo (`sledorze/falsestart`); enabling it here would prove the CLI runs, which the dogfood run
+above already proved directly, without committing a permanent, unmotivated gate every future
+PR here would have to clear. Revisit if this repo itself produces a real "we didn't notice this
+doc rotted" incident — the same evidence bar every other noted-but-deferred item in this file
+is held to.
+
+**Test coverage, not just the CLI dogfood above.** `src/core/structure/Freshness.unit.test.ts`
+(pure `findStaleDocs`: the `maxAgeDays` boundary is strictly `>`, not `>=`; `null` last-commit
+dates are excluded; deterministic path-sorted output), `src/program/structure/
+CheckFreshness.unit.test.ts` (IO-level `checkFreshness`/`formatFreshnessReport`: first-matching-
+rule-wins ordering, a real `GitUnavailableError` treated the same as no-history rather than
+crashing, the `noHistory === checked` warning threshold), `src/program/structure/
+CheckFreshness.plugin.unit.test.ts` (the `CheckPlugin` wiring: `isEnabled`/`jsonUnsupportedMessage`/
+`name`/`format`/no-`stamp`, the named-defect-not-a-crash path when `run` is misused), and
+`src/io/Git.integration.test.ts`'s new `GitFsLive().lastCommitDate()` block (the REAL `git`
+binary: a committed path's real committer date parses cleanly, an uncommitted path returns
+`null`, a non-repository `base` fails with a named `GitUnavailableError` — none of which an
+in-memory double alone could prove, matching this file's own existing discipline for every
+other `GitFsLive` method).

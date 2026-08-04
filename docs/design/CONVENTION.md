@@ -215,9 +215,40 @@ deliberately left open (e.g. "at least 2 of these 3" — a single link is not en
 OR shape). "All of these" needed no separate variant: it's `n: of.length` over the same shape,
 not a fourth `to` case. See `review-prompts.md` section 5 for the OR-only increment's dogfood/
 falsification evidence and its independent adversarial pass, and section 6 for the `atLeast`
-increment's own; and nothing in the schema touches dates/mtimes at all, so a "doc must be
-re-validated after N months" freshness rule is outside its vocabulary entirely, not just
-unconfigured.
+increment's own.
+
+The dates/mtimes gap this paragraph originally named is now CLOSED, but NOT inside
+`checks.coverage` — as its own separate, minimal `checks.freshness` check
+(`core/structure/Freshness.ts`, `program/structure/CheckFreshness.ts`), opt-in via mere
+presence like `coverage`/`docCoverage`. **Why not a `CoverageRule` field**: freshness turned
+out to be a genuinely different AXIS from everything else this section discusses — TEMPORAL
+("how old is this doc, per its real git history") rather than RELATIONAL ("does this doc link
+to that doc"). Bolting a `maxAgeDays` onto `CoverageRule` would have repeated the exact
+"one bespoke variant per round" growth pattern the "Noted-but-deferred structural observation"
+paragraph below already flags as a design smell for `scope` — so it's wired independently
+instead, the same way `checks.docCoverage` itself is independent of `checks.coverage` rather
+than a field grafted onto it. See `review-prompts.md` section 7 for the real dogfood/
+falsification evidence, including the falsestart origin below.
+
+**The falsestart context.** This gap wasn't hypothetical — it's the SAME real incident
+`docs/design/101-refs-symbol-scoping/problem-space.md` documents (GitHub issue #101, "found
+using cairn 0.6.0 in `sledorze/falsestart` over one long session"): `docs/architecture.md`
+cited 14 implementation files under `--refs`, and every edit to ANY of them failed
+`cairn check` even when the doc's own claims hadn't changed — reflexive re-stamping, a gate
+cleared without reading. Issue #101 named two candidate fixes for THAT specific symptom
+(API-surface hashing, symbol-scoped references — both about narrowing WHAT `--refs` hashes)
+and explicitly named a third, adjacent concept in passing: "the failure a freshness check
+exists to prevent." `checks.freshness` is that third concept, built as its own thing rather
+than as a fix to `--refs` — it doesn't ask whether a doc's CITED content changed at all, only
+whether the doc itself has been touched recently per its own configured threshold. The two
+are complementary, not alternatives: `--refs` (once issue #101's own narrower-granularity work
+lands) catches "this doc's claims may now be wrong because what it cites changed";
+`checks.freshness` catches "nobody has looked at this doc in N days, regardless of whether
+anything it cites moved" — the falsestart session's own frustration was specifically with the
+FIRST kind of check misfiring on drift that carried no information, not with staleness having
+no detector at all; `checks.freshness` is deliberately narrow enough not to reintroduce that
+same reflexive-gate failure mode itself (a doc with no real edits and no expired threshold
+stays silent).
 
 A third, adjacent structural critique was raised alongside this round's `atLeast` work but
 DELIBERATELY NOT BUILT: unifying `scope: 'sibling'` and `scope: { under: '...' }` into one
@@ -313,10 +344,14 @@ not prose:**
   (unifying `scope`'s two variants into one general path-relation primitive) was raised in the
   SAME round `atLeast` closed and deliberately NOT built — see the dedicated "Noted-but-deferred
   structural observation" paragraph above; recorded as considered-and-declined, a third category
-  distinct from both "closed" and "open" in this tracking. The product-issue/vision layer remains
-  open. On a fixed cadence (e.g. every time this doc is next substantively edited), check whether
-  a remaining gap has a real filed GitHub issue; an item surviving multiple such checks with no
-  filed issue is a signal the "future work" framing has gone stale, not active.
+  distinct from both "closed" and "open" in this tracking. The dates/mtimes (freshness) gap
+  named in this same re-review is now ALSO closed — as its own separate `checks.freshness`
+  check, deliberately NOT a `CoverageRule` field, per the dedicated paragraph above; see
+  `review-prompts.md` section 7 for its real dogfood/falsification evidence. The
+  product-issue/vision layer remains open. On a fixed cadence (e.g. every time this doc is next
+  substantively edited), check whether a remaining gap has a real filed GitHub issue; an item
+  surviving multiple such checks with no filed issue is a signal the "future work" framing has
+  gone stale, not active.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release

@@ -1114,7 +1114,7 @@ describe('isUrlTarget()', () => {
 describe('the built-in defaults', () => {
   it('matches the documented defaults', () => {
     expect(DEFAULT_CONFIG).toEqual({
-      checks: { coverage: null, docCoverage: null, links: true, summaries: true },
+      checks: { coverage: null, docCoverage: null, freshness: null, links: true, summaries: true },
       ignore: ['**/node_modules/**'],
       locale: 'en',
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },
