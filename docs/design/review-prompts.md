@@ -5,6 +5,18 @@ documentation, not just software design packages. Both are business-agnostic: th
 domain and real source material as input, and neither assumes the reader already knows what
 `docs/design/` or "design package" means.
 
+**A single, static prompt text handed to one agent call that reads it once and responds
+once is NOT itself a multi-step reflective process** — reflection has to come from
+somewhere. It can be baked into the prompt's own instructions as an internal
+propose→critique→revise loop the agent is explicitly told to run before answering (what
+both prompts below now do), or it can be provided externally by re-invoking the same
+prompt across genuinely separate, context-free agent calls (what the worked example in
+section 3 does across its several rounds). Both are worth doing, and for different
+reasons: the internal loop makes any single call more rigorous even in isolation, while
+re-invoking externally catches blind spots the same agent's own self-critique is
+structurally unlikely to notice, since it's still the same reasoning that produced the
+first draft doing the critiquing.
+
 ## 1. Structure invitation — propose a `checks.coverage` structure from real content
 
 Use this prompt to get a first `kinds`/`rules` structure for a new documentation domain,
@@ -19,7 +31,27 @@ grounded in documents that actually exist rather than a generic template.
 > scoped to `sibling` or left corpus-wide) that would structurally enforce this domain's
 > documentation being complete and connected.
 >
-> Requirements:
+> Do this as an explicit three-step internal process — do not skip straight to a final
+> answer:
+>
+> 1. **Draft**: propose a first-pass `kinds`/`rules` structure grounded in the given
+>    material.
+> 2. **Self-critique**: before presenting that draft as your answer, adversarially
+>    interrogate your OWN draft — ask yourself concretely: what would make this
+>    structure fail to catch a real gap in this domain? Which rule could be satisfied
+>    by a hollow or gamed link (e.g. a document linking to another purely to pass the
+>    check, without the link meaning anything)? What real document or relationship in
+>    the given material does this draft fail to cover? Write this critique out; do not
+>    silently think it and move on.
+> 3. **Revise**: change the draft in direct response to what step 2 found — add, remove,
+>    rename, or rescope kinds/rules as needed — and present only the REVISED structure
+>    as your final answer, not the original draft.
+>
+> Report the draft, the self-critique, and the revision as three distinct, visible
+> sections — a final answer with no visible critique-and-revision step does not satisfy
+> this prompt, even if the final structure happens to be good.
+>
+> Requirements for the final (revised) structure:
 >
 > - Ground every kind and rule in the actual content you were given — quote or cite the
 >   specific document, section, or pattern that justifies each one. Do not propose a kind
@@ -86,7 +118,23 @@ already believes in the structure is poorly positioned to find its gaps.
 > by hand what the script already computes for real.
 >
 > For both (a) and (b): cite concrete, quoted evidence for every finding — no vibe-only
-> judgment. End your report with a fixed set of measurable, re-checkable criteria (not
+> judgment.
+>
+> Once you have a full first-pass verdict for (a) and (b), do not finalize it yet. Take a
+> second, explicit pass: for EACH finding you just stated (each judgment under (a), each
+> schema-fundamental-vs-configuration-gap tag under (b)), argue the opposite — steelman
+> the strongest case that your own finding is wrong. For a content-adequacy judgment,
+> argue for why the document you called substantive might actually be hollow, or vice
+> versa. For a schema-gap tag, argue for why a gap you called fundamental might actually
+> be closeable with existing schema variants (or the reverse). Write this second pass out
+> as its own visible section, one entry per finding, not a single blanket "on the other
+> hand" paragraph. Only after this second pass should you commit to a final verdict per
+> finding — where the second pass actually changes your mind, say so and update the
+> verdict; where it doesn't, say why the steelman failed to hold up, citing evidence
+> again rather than asserting it. A report with a first-pass verdict but no visible
+> attempt to overturn it does not satisfy this prompt.
+>
+> End your report with a fixed set of measurable, re-checkable criteria (not
 > prose alone) that a future reviewer — or an automated script — could re-run without
 > reading every document again, for example:
 >
