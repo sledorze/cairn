@@ -83,19 +83,34 @@ const CoverageRequirementInputSchema = Schema.Struct({
   identifier: 'CairnCoverageRequirement',
 })
 
-// `to` is either a declared kind id (a doc-kind target, the original shape)
-// OR `{ external: 'path' }` — issue #28's third v1 check, doc→code
-// reference resolution: the rule is satisfied by a link that resolves to a
-// REAL FILE on disk, not to another scanned/kind-classified doc. A single-
-// variant object today (matching `KindSelector`/`CoverageRequirement`'s own
-// `by`-discriminant reasoning), so a later external kind (a URL, an env var)
-// is a new `external` value, not a breaking change to `CoverageRule`'s shape.
+// `to` is either a declared kind id (a doc-kind target, the original shape),
+// `{ external: 'path' }` — issue #28's third v1 check, doc→code reference
+// resolution: the rule is satisfied by a link that resolves to a REAL FILE
+// on disk, not to another scanned/kind-classified doc — or `{ external:
+// 'url', pattern }`, added for a real, previously self-reported gap (docs/
+// design/CONVENTION.md, docs/adr/0005): nothing could require a link to an
+// EXTERNAL URL (e.g. a GitHub issue), only to a scanned doc or a real file.
+// Satisfied by a doc's outbound link whose raw href CONTAINS `pattern` —
+// deliberately a plain substring match, not a regex/glob DSL: the only
+// real-world use found so far (`https://github.com/OWNER/REPO/issues/`) is
+// fully expressed by "starts with" for a well-formed URL, and a substring
+// match subsumes that with no separate `startsWith` variant to maintain.
+// Each `external` value is a new union branch, not a breaking change to
+// `CoverageRule`'s shape — existing `{ external: 'path' }` configs decode
+// and behave identically.
 const CoverageTargetInputSchema = Schema.Union([
   Schema.String,
   Schema.Struct({ external: Schema.Literal('path') }),
+  Schema.Struct({
+    external: Schema.Literal('url'),
+    pattern: Schema.String.annotate({
+      description:
+        'A plain substring a satisfying link\'s raw href must contain, e.g. "https://github.com/OWNER/REPO/issues/". No regex/glob — a literal substring match.',
+    }),
+  }),
 ]).annotate({
   description:
-    'A declared kind id (a doc-kind target), or `{ external: "path" }` — a link must resolve to a real file on disk, not to a scanned doc.',
+    'A declared kind id (a doc-kind target), `{ external: "path" }` — a link must resolve to a real file on disk, not to a scanned doc — or `{ external: "url", pattern }` — a link\'s raw href must contain `pattern`.',
   identifier: 'CairnCoverageTarget',
 })
 
@@ -160,7 +175,7 @@ const CoverageRuleInputSchema = Schema.Struct({
   via: Schema.optionalKey(CoverageRequirementInputSchema),
 }).annotate({
   description:
-    'Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: "path" }`, to a real file on disk.',
+    'Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: "path" }`, to a real file on disk, or, when `to` is `{ external: "url", pattern }`, to a URL containing `pattern`.',
   identifier: 'CairnCoverageRule',
 })
 
@@ -393,12 +408,15 @@ export interface CoverageRequirement {
   readonly by: 'link'
 }
 
-/** A rule's `to` side: a declared kind id (a doc-kind target), or
+/** A rule's `to` side: a declared kind id (a doc-kind target),
  * `{ external: 'path' }` — the rule is satisfied by a link resolving to a
- * real file on disk, not to a scanned/kind-classified doc. See
+ * real file on disk, not to a scanned/kind-classified doc — or
+ * `{ external: 'url', pattern }` — satisfied by a link whose raw href
+ * contains `pattern` (plain substring match). See
  * `CoverageTargetInputSchema`'s own comment for why this is a discriminated
  * union rather than a bare string. */
-export type CoverageTarget = string | { readonly external: 'path' }
+export type CoverageTarget =
+  string | { readonly external: 'path' } | { readonly external: 'url'; readonly pattern: string }
 
 /** True when `target` is a declared kind id, not `{ external: 'path' }` —
  * the ONE discriminant every `CoverageTarget` consumer needs, centralized
@@ -409,6 +427,15 @@ export type CoverageTarget = string | { readonly external: 'path' }
  * one) needs this ONE function updated, not six independent re-derivations
  * found and fixed by hand. */
 export const isKindTarget = (target: CoverageTarget): target is string => typeof target === 'string'
+
+/** True when `target` is `{ external: 'url', pattern }`, not a kind id or
+ * `{ external: 'path' }` — the second `external` discriminant `isKindTarget`'s
+ * own comment anticipated, centralized the same way for the same reason: a
+ * future third `external` variant needs this ONE function (and
+ * `isKindTarget`) updated, not every call site re-deriving `.external`
+ * itself. */
+export const isUrlTarget = (target: CoverageTarget): target is { readonly external: 'url'; readonly pattern: string } =>
+  !isKindTarget(target) && target.external === 'url'
 
 export interface CoverageRule {
   /** Real, in-context guidance shown in the report when unmet — see

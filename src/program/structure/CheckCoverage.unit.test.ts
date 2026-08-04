@@ -331,13 +331,12 @@ describe('checkCoverage()', () => {
 
   // Adversarial-review tripwire for the dedup key's object-`to` case: two
   // rules sharing `from` but with STRUCTURALLY DIFFERENT object `to`
-  // values must dedupe to two distinct keys, not collapse into one. Only
-  // `{ external: 'path' }` is a legal object shape today, so a second
-  // shape is simulated via cast (same technique the `via` test above
-  // uses) — this pins the dedup key's `JSON.stringify` behavior on object
-  // `to` values BEFORE a second real variant exists, so the exact
-  // silent-collapse regression this key has already suffered twice (see
-  // this file's own dedup-key comment) can't recur a third time unnoticed.
+  // values must dedupe to two distinct keys, not collapse into one. Pins
+  // the dedup key's `JSON.stringify` behavior on object `to` values, so the
+  // exact silent-collapse regression this key has already suffered twice
+  // (see this file's own dedup-key comment) can't recur a third time
+  // unnoticed — now exercised with two REAL variants (`{ external: 'path'
+  // }` and `{ external: 'url', pattern }`), not a cast-simulated one.
   it('never collapses two same-`from` rules with structurally different object `to` values', async () => {
     const layer = makeTestDocsFs({
       '/r/specs/s1.md': { content: '# Spec, no links at all', mtimeMs: 1 },
@@ -345,7 +344,7 @@ describe('checkCoverage()', () => {
     const specKinds = [{ id: 'spec', select: { by: 'path' as const, glob: '/r/specs/**' } }]
     const differingOnlyByToShape: CoverageRule[] = [
       { from: 'spec', to: { external: 'path' } },
-      { from: 'spec', to: { external: 'url' } } as unknown as CoverageRule,
+      { from: 'spec', to: { external: 'url', pattern: 'https://example.com/' } },
     ]
     const result = await Effect.runPromise(
       checkCoverage({ base: '/r', kinds: specKinds, roots: ['/r'], rules: differingOnlyByToShape }).pipe(
@@ -645,6 +644,87 @@ describe('checkCoverage()', () => {
     })
   })
 
+  // The gap `{ external: 'url', pattern }` closes (docs/design/
+  // CONVENTION.md, docs/adr/0005): a rule can now require a link to an
+  // EXTERNAL URL (e.g. a GitHub issue), not just to a scanned doc or a real
+  // file. Purely content-based — no filesystem IO at all, unlike the
+  // `{ external: 'path' }` block above.
+  describe('to: { external: "url", pattern } — a link matching an external URL pattern', () => {
+    const SPEC_KINDS = [{ id: 'spec', select: { by: 'path' as const, glob: '/r/specs/**' } }]
+    const URL_RULES: CoverageRule[] = [
+      { from: 'spec', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } },
+    ]
+
+    it('reports nothing when a spec links to a URL matching the pattern', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\nSee [issue](https://github.com/example/repo/issues/101).', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: URL_RULES }).pipe(Effect.provide(layer)),
+      )
+      expect(result.missing).toEqual([])
+      expect(coverageExitCode(result)).toBe(0)
+    })
+
+    // FALSIFIED: ran once with the issue link present (green, above) and
+    // once with it removed entirely (this test, red without the fix) —
+    // confirms the rule actually discriminates rather than always passing.
+    it('reports missing coverage when a spec has no link matching the pattern', async () => {
+      const layer = makeTestDocsFs({ '/r/specs/s1.md': { content: '# Spec, no links at all', mtimeMs: 1 } })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: URL_RULES }).pipe(Effect.provide(layer)),
+      )
+      expect(result.missing).toEqual([
+        {
+          path: '/r/specs/s1.md',
+          rule: { from: 'spec', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } },
+        },
+      ])
+      expect(coverageExitCode(result)).toBe(1)
+    })
+
+    it('reports missing coverage when a spec links to a URL that does NOT match the pattern', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\nSee [other](https://github.com/other/repo/issues/1).', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: URL_RULES }).pipe(Effect.provide(layer)),
+      )
+      expect(result.missing).toHaveLength(1)
+    })
+
+    // `{ external: 'url', pattern }` names no kind at all — same as
+    // `{ external: 'path' }`, it must never make its rule's `from` kind
+    // eligible for orphan reporting.
+    it('never treats a url-pattern target as an orphan-candidate kind', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\nSee [issue](https://github.com/example/repo/issues/101).', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/r', kinds: SPEC_KINDS, roots: ['/r'], rules: URL_RULES }).pipe(Effect.provide(layer)),
+      )
+      expect(result.orphans).toEqual([])
+    })
+
+    // No filesystem call is even possible here — unlike `{ external: 'path'
+    // }`, `collectExternalRefTargets` never collects a candidate for a
+    // url-only rule (see ../../core/structure/Coverage.unit.test.ts), so
+    // there is nothing for `DocsFs.exists`/`realPath` to be asked about.
+    // This test only pins that a url-pattern rule is satisfied by CONTENT
+    // matching alone, with no dependency on `base`/`DocsFs` semantics.
+    it('is satisfied by content matching alone, independent of `base`', async () => {
+      const layer = makeTestDocsFs({
+        '/r/specs/s1.md': { content: '# Spec\n\nSee [issue](https://github.com/example/repo/issues/101).', mtimeMs: 1 },
+      })
+      const result = await Effect.runPromise(
+        checkCoverage({ base: '/does/not/exist', kinds: SPEC_KINDS, roots: ['/r'], rules: URL_RULES }).pipe(
+          Effect.provide(layer),
+        ),
+      )
+      expect(result.missing).toEqual([])
+    })
+  })
+
   it('never reports a kind that matched at least one doc as unmatched', async () => {
     const layer = makeTestDocsFs({
       '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },
@@ -828,6 +908,23 @@ describe('formatCoverageReport()', () => {
     expect(enLines).toContain('    ✗ no link to an existing file (required by kind "spec")')
     const frLines = formatCoverageReport({ checked: 1, missing, orphans: [], unmatchedKinds: [] }, { locale: 'fr' })
     expect(frLines).toContain('    ✗ aucun lien vers un fichier existant (requis pour le type « spec »)')
+  })
+
+  it('reports a `to: { external: "url", pattern } }` missing-coverage finding with its own wording, English and French', () => {
+    const missing = [
+      {
+        path: '/r/specs/s1.md',
+        rule: { from: 'spec', to: { external: 'url' as const, pattern: 'https://github.com/example/repo/issues/' } },
+      },
+    ]
+    const enLines = formatCoverageReport({ checked: 1, missing, orphans: [], unmatchedKinds: [] })
+    expect(enLines).toContain(
+      '    ✗ no link matching "https://github.com/example/repo/issues/" (required by kind "spec")',
+    )
+    const frLines = formatCoverageReport({ checked: 1, missing, orphans: [], unmatchedKinds: [] }, { locale: 'fr' })
+    expect(frLines).toContain(
+      '    ✗ aucun lien correspondant à « https://github.com/example/repo/issues/ » (requis pour le type « spec »)',
+    )
   })
 
   it('lists a missing-coverage finding with no orphan section at all when orphans is empty', () => {

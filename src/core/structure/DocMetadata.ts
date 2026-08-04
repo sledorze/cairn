@@ -67,6 +67,16 @@ export type StructureNode =
       readonly text: string
     }
   | { readonly anchor: string | null; readonly line: number; readonly tag: 'ref'; readonly target: string }
+  // A link whose target is NOT a checkable same-repo path (`isCheckableTarget`
+  // false — e.g. `https://…`, `mailto:…`): kept as its own tag, raw href
+  // preserved verbatim (no anchor/query splitting — a GitHub issue URL's own
+  // `#issuecomment-123` is part of what a reader clicks, not a same-page
+  // fragment the way a `ref` node's `#anchor` is), so a `ref`-only consumer
+  // (../structure/DocGraph.ts's inbound graph, any path-resolving code) never
+  // has to learn to skip it — it was never a `ref` node to begin with. Exists
+  // for `../structure/Coverage.ts`'s `{ external: 'url', pattern }` rule,
+  // which is the only consumer today.
+  | { readonly line: number; readonly tag: 'urlRef'; readonly target: string }
 
 export interface DocMetadata {
   readonly path: string
@@ -218,6 +228,12 @@ export const extractDocMetadata = ({ content, kinds, path }: ExtractDocMetadataA
   ]
   for (const link of candidates) {
     if (!isCheckableTarget(link.target)) {
+      // Not a same-repo path — captured as its own `urlRef` node (raw href,
+      // unsplit) rather than silently dropped, so `checks.coverage`'s
+      // `{ external: 'url', pattern }` rule (../structure/Coverage.ts) has
+      // something to match against. See `StructureNode`'s own comment above
+      // for why this is a distinct tag, not folded into `ref`.
+      refNodes.push({ line: offsetToLine(starts, link.index), tag: 'urlRef', target: link.target })
       continue
     }
     const { anchor, path: target } = parseTarget(link.target)

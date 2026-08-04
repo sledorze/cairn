@@ -44,11 +44,11 @@ a validated spike) and `sourced_from` (content restated from a spike). The corre
 and a broader reference vocabulary now live in `docs/design/CONVENTION.md`.
 
 **Amendment: dev-issue linking, and an unmodeled product-issue layer.** Plain-text "issue
-#101" mentions were replaced with one real link per doc. This stays unenforced —
-`checks.coverage`'s `CoverageTarget` has no URL variant, only path/`{external: 'path'}`. A
-related "product issue" layer (interview/user-feedback signal upstream of a dev issue) was
-raised and deliberately left unmodeled: this repo has no real product-feedback content to
-ground it in.
+#101" mentions were replaced with one real link per doc. At the time this stayed
+unenforced — `checks.coverage`'s `CoverageTarget` had no URL variant, only path/
+`{external: 'path'}`. A related "product issue" layer (interview/user-feedback signal
+upstream of a dev issue) was raised and deliberately left unmodeled: this repo has no real
+product-feedback content to ground it in — still open.
 
 **Amendment: shipped as a skill, and judged by adversarial review.** `cairn init --agent
 claude` now scaffolds `.claude/skills/cairn-design-package/SKILL.md` teaching this whole
@@ -58,3 +58,15 @@ but is refuted for a product reader; schema expressiveness (`KindSelector`/`Cove
 `CoverageRequirement`/`CoverageRule.scope`) is refuted outright. Findings, a judge-prompt,
 and measurable checks are in `docs/design/CONVENTION.md`; reusable, domain-agnostic versions
 of the review prompts are in `docs/design/review-prompts.md`.
+
+**Amendment: the URL-pattern gap closed.** `CoverageTarget` gained a third, purely additive
+variant, `{ external: 'url', pattern }` — satisfied by a link whose raw href contains
+`pattern` (plain substring, not regex/glob). Needed one structural change beyond the schema:
+`DocMetadata.ts` previously dropped a non-checkable (URL) link entirely; it's now captured
+as its own `urlRef` node so a url-pattern rule has data to match. Dogfooded for real: this
+repo's `.cairnrc.json` now requires `problem-space` to link something matching
+`https://github.com/sledorze/cairn/issues/` (`traces_to`), verified green against the real
+`101-refs-symbol-scoping` package and falsified (link removed → real failure, restored →
+green again). The match stays a plain substring, not a real URL grammar — a too-loose
+pattern can still silently accept the wrong repo. The product-issue/vision layer remains
+open.

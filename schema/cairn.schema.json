@@ -45,9 +45,21 @@
           "properties": { "external": { "type": "string", "enum": ["path"] } },
           "required": ["external"],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "external": { "type": "string", "enum": ["url"] },
+            "pattern": {
+              "type": "string",
+              "description": "A plain substring a satisfying link's raw href must contain, e.g. \"https://github.com/OWNER/REPO/issues/\". No regex/glob — a literal substring match."
+            }
+          },
+          "required": ["external", "pattern"],
+          "additionalProperties": false
         }
       ],
-      "description": "A declared kind id (a doc-kind target), or `{ external: \"path\" }` — a link must resolve to a real file on disk, not to a scanned doc."
+      "description": "A declared kind id (a doc-kind target), `{ external: \"path\" }` — a link must resolve to a real file on disk, not to a scanned doc — or `{ external: \"url\", pattern }` — a link's raw href must contain `pattern`."
     },
     "CairnCoverageRequirement": {
       "type": "object",
@@ -78,7 +90,7 @@
       },
       "required": ["from", "to"],
       "additionalProperties": false,
-      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk."
+      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk, or, when `to` is `{ external: \"url\", pattern }`, to a URL containing `pattern`."
     },
     "CairnDocCoverageGroup": {
       "type": "object",

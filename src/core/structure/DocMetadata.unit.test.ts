@@ -71,9 +71,25 @@ describe('extractDocMetadata()', () => {
     expect(meta.nodes).toEqual([{ anchor: 'sec', line: 3, tag: 'ref', target: './a.md' }])
   })
 
-  it('excludes external (non-checkable) targets from ref nodes, same scope as extractReferences()', () => {
+  // A non-checkable target (e.g. `https://…`) is never a `ref` node — same
+  // scope as `extractReferences()` — but it's not silently dropped either:
+  // it becomes its own `urlRef` node (raw href, unresolved), the data
+  // `checks.coverage`'s `{ external: 'url', pattern }` rule
+  // (../structure/Coverage.ts) matches against.
+  it('captures an external (non-checkable) target as a distinct urlRef node, not a ref node', () => {
     const meta = extractDocMetadata({ content: 'see [x](https://example.com)', kinds: [], path: 'docs/x.md' })
-    expect(meta.nodes).toEqual([])
+    expect(meta.nodes).toEqual([{ line: 1, tag: 'urlRef', target: 'https://example.com' }])
+  })
+
+  it('preserves a urlRef target verbatim, including any `#fragment` — not split into path/anchor like a ref node', () => {
+    const meta = extractDocMetadata({
+      content: 'see [issue](https://github.com/example/repo/issues/1#issuecomment-2)',
+      kinds: [],
+      path: 'docs/x.md',
+    })
+    expect(meta.nodes).toEqual([
+      { line: 1, tag: 'urlRef', target: 'https://github.com/example/repo/issues/1#issuecomment-2' },
+    ])
   })
 
   it('excludes a bare same-page anchor link — a position within THIS doc, not a reference to another one', () => {

@@ -1,7 +1,7 @@
 import { Result } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget } from './Config.ts'
+import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget, isUrlTarget } from './Config.ts'
 
 // `decodeConfig` is total and pure over its actual domain — any value JSON.parse can
 // produce — and never throws for it: `effect/Schema` already hands back a `Result`, so
@@ -428,6 +428,61 @@ describe('decodeConfig()', () => {
     expect(Result.isSuccess(result)).toBeTruthy()
   })
 
+  // The gap this closes: `checks.coverage` could require a link to a
+  // scanned doc or a real file on disk, but never to an external URL (e.g. a
+  // GitHub issue) — previously self-reported in docs/design/CONVENTION.md
+  // and docs/adr/0005. `{ external: 'url', pattern }` is satisfied by a
+  // link whose raw href CONTAINS `pattern` (plain substring, no regex/glob).
+  it('decodes a rule’s `to: { external: "url", pattern }` — a link matching an external URL pattern', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          rules: [{ from: 'spec', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // FALSIFIED: without `pattern`, `{ external: 'url' }` alone must still be
+  // rejected — `pattern` is mandatory for this variant, not optional. Ran
+  // this assertion against a version of `CoverageTargetInputSchema` with
+  // `pattern` still required (current code) — passes; temporarily changing
+  // `pattern` to `Schema.optionalKey` locally and re-running turns this red,
+  // confirming the test actually exercises the requiredness rather than
+  // trivially passing for an unrelated reason.
+  it('returns a Failure when a rule’s `to: { external: "url" }` omits the mandatory `pattern`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              ],
+              rules: [{ from: 'spec', to: { external: 'url' } }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // `{ external: 'path' }` must decode and behave identically after adding
+  // the `url` variant — this schema change is purely additive.
+  it('still decodes `to: { external: "path" }` unchanged after adding the `url` variant', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          rules: [{ from: 'spec', to: { external: 'path' } }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
   it('returns a Failure when a rule’s `to` object names an unrecognised external kind', () => {
     expect(
       Result.isFailure(
@@ -630,6 +685,27 @@ describe('isKindTarget()', () => {
 
   it('is false for an external-path target', () => {
     expect(isKindTarget({ external: 'path' })).toBeFalsy()
+  })
+
+  it('is false for an external-url target', () => {
+    expect(isKindTarget({ external: 'url', pattern: 'https://example.com/' })).toBeFalsy()
+  })
+})
+
+// Mirrors `isKindTarget()`'s own centralization rationale for the second
+// `external` discriminant this file's own `CoverageTarget` comment
+// anticipated.
+describe('isUrlTarget()', () => {
+  it('is true for an external-url target', () => {
+    expect(isUrlTarget({ external: 'url', pattern: 'https://example.com/' })).toBeTruthy()
+  })
+
+  it('is false for a plain kind-id string', () => {
+    expect(isUrlTarget('decision')).toBeFalsy()
+  })
+
+  it('is false for an external-path target', () => {
+    expect(isUrlTarget({ external: 'path' })).toBeFalsy()
   })
 })
 

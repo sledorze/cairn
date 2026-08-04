@@ -95,11 +95,20 @@ Each design package links its originating GitHub issue from the first substantiv
 in the package (one authoritative link is enough to establish the relationship — see the
 `grounded_by`-style discipline in the rule-naming vocabulary below).
 
-This link is real but currently unenforced: `checks.coverage`'s `CoverageTarget` classifies
-real files by path glob, or `{ external: 'path' }` against a file on disk — it has no
-variant for an external URL, so "every design package must link a real GitHub issue" isn't
-expressible as a `checks.coverage` rule today. Enforcing it would need a new
-`CoverageTarget` variant (e.g. `{ external: 'url', pattern: '...' }`).
+This link is enforced: `checks.coverage`'s `CoverageTarget` has a third variant,
+`{ external: 'url', pattern: '...' }`, satisfied by a doc's outbound link whose raw href
+CONTAINS `pattern` (a plain substring match, not a regex/glob). This repo's own
+`.cairnrc.json` uses it — `problem-space` must link something matching
+`https://github.com/sledorze/cairn/issues/`:
+
+```json
+{
+  "description": "The originating GitHub issue must be linked from problem-space.md — the evidence basis this design package rests on.",
+  "from": "problem-space",
+  "name": "traces_to",
+  "to": { "external": "url", "pattern": "https://github.com/sledorze/cairn/issues/" }
+}
+```
 
 A related, larger idea — linking design packages to a "product issue" layer (interview or
 user-experience feedback that shapes vision, upstream of any specific dev issue) — is not
@@ -177,9 +186,12 @@ product-shaped versus a restated bug report wearing a product-sounding filename.
 necessary, not just this repo's fixed 7-doc shape."** Does not hold, per
 `core/Config.ts`/`core/structure/Coverage.ts`: `KindSelector` has exactly one variant
 (`by: 'path'`, glob-only — no way to target one specific instance, only a path-shaped
-class); `CoverageTarget` has exactly two variants (a kind id, or `{ external: 'path' }`
-resolved against a real file on disk — no URL/pattern variant, so a GitHub issue link can
-never be enforced, only asserted in prose); `scope` is a single literal (`'sibling'` or
+class); `CoverageTarget` has three variants (a kind id, `{ external: 'path' }` resolved
+against a real file on disk, or `{ external: 'url', pattern }` resolved against a
+substring match on a link's raw href — a GitHub issue link is now enforceable, but only via
+a plain substring, not a real URL grammar: no scheme/host/path-segment structure, no
+wildcard, so a pattern that's too loose (e.g. just `github.com`) silently accepts a link to
+the wrong repo); `scope` is a single literal (`'sibling'` or
 absent/corpus-wide — no granularity in between, e.g. "anywhere under this sub-tree" or "any
 doc in a named group"); `CoverageRequirement.by` is a single variant (`'link'`, meaning "at
 least one" — no `minCount`/N-of-M/alternation construct, so two rules on the same `from` are
@@ -215,7 +227,7 @@ not prose:**
   ```
   Schema variant census (src/core/Config.ts):
     KindSelector.by:          2
-    CoverageTarget:           2
+    CoverageTarget:           3
     CoverageRequirement.by:   1
     CoverageRule.scope:       1
   ```
@@ -224,11 +236,12 @@ not prose:**
   rising unmet-request count against a static variant count is Claim 2's gap growing,
   numerically, not just narratively.
 
-- **Self-reported-gap closure tracking**: this doc names two open gaps (URL-pattern target,
-  product-issue/vision layer). On a fixed cadence (e.g. every time this doc is next
-  substantively edited), check whether either has a real filed GitHub issue; an item
-  surviving multiple such checks with no filed issue is a signal the "future work" framing
-  has gone stale, not active.
+- **Self-reported-gap closure tracking**: this doc originally named two open gaps
+  (URL-pattern target, product-issue/vision layer). The first is now closed (`CoverageTarget`'s
+  third variant, above); the product-issue/vision layer remains open. On a fixed cadence
+  (e.g. every time this doc is next substantively edited), check whether the remaining gap
+  has a real filed GitHub issue; an item surviving multiple such checks with no filed issue
+  is a signal the "future work" framing has gone stale, not active.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
   self-admitted gap already found by review; whether this count shrinks or grows release

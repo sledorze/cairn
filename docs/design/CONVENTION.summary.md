@@ -15,9 +15,12 @@ present and future with zero per-package config. The mandatory single `*` (not `
 between `docs/design/` and the filename avoids matching the parent `_SUMMARY.md` itself.
 
 **Dev-issue linking**: each package links its GitHub issue from its first substantive
-mention; real but unenforced, since `checks.coverage`'s `CoverageTarget` has no URL variant.
-A "product issue" layer (interview/user-feedback signal upstream of a dev issue) is
-explicitly not modeled — no real product-feedback content in this repo to ground it in.
+mention; now enforced — `CoverageTarget`'s third variant, `{ external: 'url', pattern }`,
+is satisfied by a link whose raw href contains `pattern` (plain substring, not regex/glob).
+This repo's own `.cairnrc.json` requires `problem-space` to link something matching
+`https://github.com/sledorze/cairn/issues/`. A "product issue" layer (interview/user-feedback
+signal upstream of a dev issue) is explicitly not modeled — no real product-feedback content
+in this repo to ground it in.
 
 **Rule-naming vocabulary**: `rule.name` disambiguates same-kind-pair rules; pairing it with
 a `description` (mandatory whenever `name` is set) gives in-context guidance instead of a
@@ -30,17 +33,19 @@ process terms) is provided for naming new rules precisely, illustrated by this r
 holds for a developer reader (a captured report line is specific and actionable) but does
 NOT hold for a product reader (this repo's own `problem-space.md`/`story-map.md`/
 `roadmap.md` are dev-shaped content wearing product-sounding filenames; `checks.coverage`
-enforces link existence only, never content). Schema expressiveness does NOT hold either:
-`KindSelector`/`CoverageTarget`/`CoverageRequirement.by`/`scope` are each single- or
-dual-variant unions, unable to express a URL target, a sub-tree scope, N-of-M alternation,
-or a freshness rule. Six measurable checks (product-term lexicon ratio, persona audit,
-evidence-source classifier, schema variant census, self-reported-gap closure tracking,
-hedge-language census) track both gaps as numbers over time; the schema variant census and
-hedge-language census are now computed for real by `scripts/coverage-metrics.ts` (`pnpm run
-coverage-metrics`) rather than hand-counted — current real output (KindSelector.by: 2,
-CoverageTarget: 2, CoverageRequirement.by: 1, CoverageRule.scope: 1; hedge phrases total 15)
-is quoted in full in this doc. Reusable, business-agnostic prompts for running this kind of
-review on any `checks.coverage` structure are in [`review-prompts.md`](./review-prompts.md).
+enforces link existence only, never content). Schema expressiveness does NOT fully hold
+either: `KindSelector`/`CoverageRequirement.by`/`scope` are each single- or dual-variant
+unions, unable to express a sub-tree scope, N-of-M alternation, or a freshness rule;
+`CoverageTarget` now has three variants (a URL target closed one real gap), but only via a
+plain substring match, not a real URL grammar. Six measurable checks (product-term lexicon
+ratio, persona audit, evidence-source classifier, schema variant census, self-reported-gap
+closure tracking, hedge-language census) track both gaps as numbers over time; the schema
+variant census and hedge-language census are now computed for real by
+`scripts/coverage-metrics.ts` (`pnpm run coverage-metrics`) rather than hand-counted —
+current real output (KindSelector.by: 2, CoverageTarget: 3, CoverageRequirement.by: 1,
+CoverageRule.scope: 1; hedge phrases total 15) is quoted in full in this doc. Reusable,
+business-agnostic prompts for running this kind of review on any `checks.coverage` structure
+are in [`review-prompts.md`](./review-prompts.md).
 
 Full historical narrative (what was tried, what failed, what was found) is in
 `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s amendments.

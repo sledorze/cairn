@@ -165,6 +165,15 @@
           "name": "derived_from",
           "scope": "sibling",
           "to": "story-map"
+        },
+        {
+          "description": "The originating GitHub issue must be linked from problem-space.md — the evidence basis this design package rests on. See docs/design/CONVENTION.md's \"Linking to a dev issue\" section.",
+          "from": "problem-space",
+          "name": "traces_to",
+          "to": {
+            "external": "url",
+            "pattern": "https://github.com/sledorze/cairn/issues/"
+          }
         }
       ]
     },

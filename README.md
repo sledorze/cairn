@@ -328,6 +328,20 @@ link back to it. A `spec` doc with zero outbound links still reports missing cov
 though plain dead-link checking has nothing to flag (there's no link to check in the first
 place) — this is the check that catches "cited nothing," not just "cited something broken."
 
+A rule's `to` can also be `{ "external": "url", "pattern": "..." }` — satisfied by a link
+whose raw href CONTAINS `pattern` (a plain substring match, not a regex/glob), for requiring
+a link to something outside the repo entirely (e.g. a GitHub issue):
+
+```json
+"rules": [
+  { "from": "problem-space", "to": { "external": "url", "pattern": "https://github.com/OWNER/REPO/issues/" }, "name": "traces_to" }
+]
+```
+
+Same orphan-exemption as `{ "external": "path" }` above (names no kind, never orphan-
+checkable) — but no filesystem IO at all: the match is purely against the link text already
+extracted from the doc.
+
 **A different real use of the same mechanism**: `checks.coverage`'s `kinds`/`rules` aren't
 only for doc→doc traceability — they can enforce that a directory of related docs has a
 required SHAPE (e.g. "every design package must have a problem-space doc, a solution-space

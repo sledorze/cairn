@@ -32,7 +32,7 @@
 import { Effect } from 'effect'
 
 import type { CoverageRule, KindDef } from '../../core/Config.ts'
-import { isKindTarget } from '../../core/Config.ts'
+import { isKindTarget, isUrlTarget } from '../../core/Config.ts'
 import { matchesAny } from '../../core/glob.ts'
 import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
@@ -269,15 +269,25 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
       const named = rule.name === undefined ? '' : ` ("${rule.name}")`
       lines.push(
         `  ${p}`,
+        // Three `to` shapes, three report lines: a declared kind id, a
+        // real-file `{ external: 'path' }`, or a `{ external: 'url',
+        // pattern }` — the pattern itself is shown so a reader isn't left
+        // guessing which external URL is required (`description`, below,
+        // still carries the WHY).
         isKindTarget(rule.to)
           ? pick(locale, {
               en: `    ✗ no link${named} to a "${rule.to}"-kind doc (required by kind "${rule.from}")`,
               fr: `    ✗ aucun lien${named} vers un document de type « ${rule.to} » (requis pour le type « ${rule.from} »)`,
             })
-          : pick(locale, {
-              en: `    ✗ no link${named} to an existing file (required by kind "${rule.from}")`,
-              fr: `    ✗ aucun lien${named} vers un fichier existant (requis pour le type « ${rule.from} »)`,
-            }),
+          : isUrlTarget(rule.to)
+            ? pick(locale, {
+                en: `    ✗ no link${named} matching "${rule.to.pattern}" (required by kind "${rule.from}")`,
+                fr: `    ✗ aucun lien${named} correspondant à « ${rule.to.pattern} » (requis pour le type « ${rule.from} »)`,
+              })
+            : pick(locale, {
+                en: `    ✗ no link${named} to an existing file (required by kind "${rule.from}")`,
+                fr: `    ✗ aucun lien${named} vers un fichier existant (requis pour le type « ${rule.from} »)`,
+              }),
       )
       // Real, in-context guidance — see CoverageRuleInputSchema's own comment
       // for why this exists alongside `name`: a bare rule name/label doesn't

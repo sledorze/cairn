@@ -169,3 +169,39 @@ findings, a repeatable judge-prompt, and six measurable checks to re-run over ti
 recorded in `docs/design/CONVENTION.md`'s "Judging this convention" section; two
 business-agnostic prompts for running the same kind of review against any
 `checks.coverage` structure are in `docs/design/review-prompts.md`.
+
+## Amendment: the URL-pattern `CoverageTarget` gap closed
+
+The previous amendment's self-reported gap — no way to enforce a link to an external URL —
+is closed. `CoverageTarget` (`src/core/Config.ts`) gained a third variant, `{ external:
+'url', pattern: string }`, purely additive: existing `{ external: 'path' }` and plain-kind-id
+configs decode and behave identically. A rule with this `to` shape is satisfied by a doc's
+outbound link whose raw href CONTAINS `pattern` — a deliberate plain substring match, not a
+regex/glob DSL, matching the minimalism `CoverageRequirement.by`'s own single `'link'`
+variant already established.
+
+Resolving it needed one real structural change beyond the schema/resolution code itself:
+`checks.coverage` had never looked at a URL-shaped link at all —
+`core/structure/DocMetadata.ts`'s `extractDocMetadata` used `isCheckableTarget` to filter
+`http(s)://…`/`mailto:…` targets OUT of `ref` nodes entirely (they're not a same-repo path
+to resolve), so there was no data for a URL rule to match against even in principle. Fixed
+by capturing a non-checkable target as its own `urlRef` node (raw href, unsplit — a GitHub
+issue URL's own `#issuecomment-123` is part of the link, not a same-page anchor) rather than
+folding it into `ref` — every existing `ref`-only consumer (`core/structure/DocGraph.ts`'s
+inbound graph, `resolveRuleEdges`'s kind/path branches) needed zero changes, since a
+`urlRef` node was simply never a `ref` node to begin with.
+
+Dogfooded for real: `.cairnrc.json` now requires `problem-space` to link something matching
+`https://github.com/sledorze/cairn/issues/` (named `traces_to`, with a `description` per
+this repo's own mandatory-when-named rule). Verified against the real
+`docs/design/101-refs-symbol-scoping/` package (already linking `issues/101`, per the
+previous amendment) — `cairn check` passes. Falsified for real too: temporarily removing the
+issue link from `problem-space.md` and re-running produced the expected `✗ no link
+("traces_to") matching "https://github.com/sledorze/cairn/issues/"` failure line with its
+`description` guidance; restoring the link returned to green.
+
+The `{ external: 'url', pattern }` match is still just a substring, not a real URL grammar
+(no scheme/host/path-segment structure) — CONVENTION.md's Claim 2 section flags this as the
+remaining sharp edge (a too-loose pattern like `github.com` would silently accept a link to
+any repo, not just this one). The product-issue/vision layer from the previous amendment
+remains open and unmodeled.

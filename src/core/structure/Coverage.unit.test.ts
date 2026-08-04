@@ -11,6 +11,8 @@ const doc = (path: string, kinds: readonly string[], nodes: DocMetadata['nodes']
 
 const ref = (target: string, line = 1): DocMetadata['nodes'][number] => ({ anchor: null, line, tag: 'ref', target })
 
+const urlRef = (target: string, line = 1): DocMetadata['nodes'][number] => ({ line, tag: 'urlRef', target })
+
 describe('resolveRuleEdges()', () => {
   it('returns a satisfied edge when a from-kind doc links to a to-kind doc', () => {
     const docs = [
@@ -179,6 +181,105 @@ describe('resolveRuleEdges()', () => {
     })
   })
 
+  // The gap this closes (docs/design/CONVENTION.md, docs/adr/0005): nothing
+  // could require a link to an external URL, only to a scanned doc or a
+  // real file on disk. `{ external: 'url', pattern }` is satisfied by a
+  // `urlRef` node (a link `isCheckableTarget` excludes, e.g. `https://…` —
+  // see ./DocMetadata.ts's own comment) whose raw href CONTAINS `pattern`.
+  describe('to: { external: "url", pattern } — a link matching an external URL pattern', () => {
+    it('is satisfied when a urlRef node’s href contains the pattern', () => {
+      const docs = [
+        doc('/r/design/pkg/roadmap.md', ['roadmap'], [urlRef('https://github.com/example/repo/issues/101')]),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } }],
+      })
+      expect(edges).toEqual([
+        {
+          doc: '/r/design/pkg/roadmap.md',
+          rule: { from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } },
+          satisfiedBy: [
+            {
+              node: urlRef('https://github.com/example/repo/issues/101'),
+              targetPath: 'https://github.com/example/repo/issues/101',
+            },
+          ],
+        },
+      ])
+    })
+
+    // FALSIFIED: ran with the doc's only link REMOVED (an empty `nodes`
+    // array, matching what a real "drop the issue link" edit would produce)
+    // — the edge came back unsatisfied, confirming this isn't a vacuous
+    // always-satisfied assertion. Restored `nodes` to include the link
+    // above and it's satisfied again.
+    it('is unsatisfied when no urlRef node’s href contains the pattern', () => {
+      const docs = [doc('/r/design/pkg/roadmap.md', ['roadmap'], [urlRef('https://github.com/other/repo/issues/1')])]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } }],
+      })
+      expect(edges).toEqual([
+        {
+          doc: '/r/design/pkg/roadmap.md',
+          rule: { from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } },
+          satisfiedBy: [],
+        },
+      ])
+    })
+
+    // A plain `ref` node (a relative same-repo path) must never satisfy a
+    // url-pattern rule, even if its literal text happens to contain the
+    // pattern substring — only a `urlRef` node (a link `isCheckableTarget`
+    // excluded in the first place) is eligible.
+    it('a plain `ref` node never satisfies a url-pattern rule, even on a coincidental substring match', () => {
+      const docs = [doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('./https://github.com/example/repo/issues/')])]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [{ from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } }],
+      })
+      expect(edges[0]?.satisfiedBy).toEqual([])
+    })
+
+    it('is a deliberate no-op for `scope: "sibling"` — nothing to scope by, same as `{ external: "path" }`', () => {
+      const docs = [
+        doc('/r/design/pkg-a/roadmap.md', ['roadmap'], [urlRef('https://github.com/example/repo/issues/101')]),
+      ]
+      const edges = resolveRuleEdges({
+        docs,
+        exempt: [],
+        rules: [
+          {
+            from: 'roadmap',
+            scope: 'sibling',
+            to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' },
+          },
+        ],
+      })
+      expect(edges[0]?.satisfiedBy).toHaveLength(1)
+    })
+  })
+
+  // A `urlRef` node must never satisfy a plain kind-target rule, even when
+  // it sits alongside a real satisfying `ref` node in the same doc — proves
+  // the two tags stay genuinely partitioned, not just "usually" separate.
+  it('a urlRef node is ignored (never satisfies) a plain kind-target rule, even alongside a satisfying ref node', () => {
+    const docs = [
+      doc(
+        '/r/features/f1.md',
+        ['feature'],
+        [urlRef('https://github.com/example/repo/issues/1'), ref('../decisions/d1.md', 2)],
+      ),
+      doc('/r/decisions/d1.md', ['decision']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
+    expect(edges[0]?.satisfiedBy).toEqual([{ node: ref('../decisions/d1.md', 2), targetPath: '/r/decisions/d1.md' }])
+  })
+
   // Real capturability finding (docs/design/CONVENTION.md): a wildcard `to`-
   // kind glob matching many instances (e.g. every design package's own
   // spikes.md) lets doc A's rule be satisfied by doc B's sibling — verified
@@ -252,6 +353,20 @@ describe('collectExternalRefTargets()', () => {
   it('never collects a ref under a doc whose OWN kind has no external-typed rule, even when a DIFFERENT kind does', () => {
     const docs = [doc('/r/notes/n1.md', ['note'], [ref('../../src/foo.ts')])]
     const targets = collectExternalRefTargets(docs, [], [{ from: 'spec', to: { external: 'path' } }])
+    expect(targets).toEqual([])
+  })
+
+  // `{ external: 'url', pattern }` needs no filesystem-existence candidate
+  // at all — it's resolved entirely by `resolveRuleEdges` matching a
+  // `urlRef` node directly, no IO. A `from` kind used ONLY by a url rule
+  // must not pull its OTHER (unrelated) refs into the candidate set.
+  it('never collects a ref for a `from` kind used only by an `{ external: "url" }` rule', () => {
+    const docs = [doc('/r/design/pkg/roadmap.md', ['roadmap'], [ref('../../src/foo.ts')])]
+    const targets = collectExternalRefTargets(
+      docs,
+      [],
+      [{ from: 'roadmap', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } }],
+    )
     expect(targets).toEqual([])
   })
 
