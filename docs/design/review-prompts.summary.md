@@ -18,3 +18,12 @@ express 3+ concrete domain needs as valid `checks.coverage` config against the r
 `KindSelector`/`CoverageTarget`/`CoverageRequirement`/`CoverageRule.scope` types, and report
 each failure as schema-fundamental versus merely unconfigured. Both prompts require quoted
 evidence and end with measurable, re-checkable criteria rather than a prose-only verdict.
+
+**3. Worked example**: both prompts applied for real to `docs/adr/` (a corpus different from
+`docs/design/`) — proposed a `by: "frontmatter"` kind (classifying by each ADR's real
+`status: proposed`/`accepted` field, since path alone can't distinguish them) plus a rule
+requiring every accepted ADR be linked from `docs/architecture.md`; the adversarial pass
+found this classification-by-frontmatter gap was schema-fundamental (closed in this same
+task — `KindSelector` gains a `by: "frontmatter"` variant) and re-confirmed two gaps
+`CONVENTION.md` already knew about (no date/freshness rule, no URL-pattern target). Verdict:
+validates that the prompts generalize to a genuinely different domain.

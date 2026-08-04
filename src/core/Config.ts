@@ -23,17 +23,29 @@ import type { KindDef } from './structure/DocMetadata.ts'
 import type { Naming } from './summaries/DocSummaries.ts'
 import { DEFAULT_NAMING, DEFAULT_THRESHOLD_LINES } from './summaries/DocSummaries.ts'
 
-// `by: Schema.Literal('path')` — a single-variant discriminated union today,
-// deliberately: `KindSelector` (../structure/DocMetadata.ts) already has room
-// for `by: 'frontmatter'`/`by: 'any'` variants, but this schema only VALIDATES
-// the one this increment implements. Adding a variant later is a new
-// `Schema.Literal` branch, not a breaking change to configs already written
-// with `by: 'path'`.
-const KindSelectorInputSchema = Schema.Struct({
-  by: Schema.Literal('path'),
-  glob: Schema.String,
-}).annotate({
-  description: 'How a doc is classified into a kind. Only `by: "path"` today.',
+// `by: 'path'` (glob-only) or `by: 'frontmatter'` (a flat YAML frontmatter
+// field/value match) — see `KindSelector`'s own comment in
+// `../structure/DocMetadata.ts` for why `by: 'frontmatter'` was added: this
+// repo's own ADRs (`docs/adr/*.md`) all share one path glob but carry a real
+// structural distinction (`status: proposed` vs `status: accepted`) that
+// path alone can't express. Adding a further variant later (`by: 'any'`) is
+// a new `Schema.Struct` branch in this `Schema.Union`, not a breaking change
+// to configs already written with `by: 'path'` or `by: 'frontmatter'`.
+const KindSelectorInputSchema = Schema.Union([
+  Schema.Struct({
+    by: Schema.Literal('path'),
+    glob: Schema.String,
+  }).annotate({ identifier: 'CairnKindSelectorByPath' }),
+  Schema.Struct({
+    by: Schema.Literal('frontmatter'),
+    equals: Schema.String.annotate({
+      description: 'The exact string value `field` must equal for this selector to match.',
+    }),
+    field: Schema.String.annotate({ description: 'The frontmatter key to read, e.g. "status".' }),
+  }).annotate({ identifier: 'CairnKindSelectorByFrontmatter' }),
+]).annotate({
+  description:
+    'How a doc is classified into a kind: `by: "path"` (glob) or `by: "frontmatter"` (a flat YAML frontmatter field must equal a value).',
   identifier: 'CairnKindSelector',
 })
 

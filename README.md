@@ -236,6 +236,14 @@ link somewhere to a doc of another:
 }
 ```
 
+A kind's `select` can also classify by frontmatter instead of path: `{ "by": "frontmatter",
+"field": "status", "equals": "accepted" }` matches a doc whose leading YAML frontmatter has
+`status: accepted` — useful when a real structural distinction (e.g. an ADR's `proposed` vs
+`accepted` status) can't be expressed by path glob alone, because every instance lives under
+the same directory. Reads only a flat, top-level `key: value` frontmatter block (no nested
+YAML); a doc with no frontmatter, or missing the field, simply doesn't match — never a
+decode error. A doc can match kinds from both selector variants at once.
+
 A kind's glob only classifies docs cairn already scans — it does **not** implicitly extend
 `roots` (default `["docs"]`). If your feature docs live under `product/` and `roots` doesn't
 include it, `checks.coverage` checks zero of them. Make sure every kind's glob falls inside a

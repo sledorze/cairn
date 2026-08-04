@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractDocMetadata, lineStarts, offsetToLine } from './DocMetadata.ts'
+import { extractDocMetadata, lineStarts, offsetToLine, parseFrontmatter } from './DocMetadata.ts'
 
 describe('lineStarts() / offsetToLine()', () => {
   it('maps offset 0 to line 1 for single-line content', () => {
@@ -139,5 +139,85 @@ describe('extractDocMetadata()', () => {
     const content = 'see [x][ref]\n\n[ref]: #section'
     const meta = extractDocMetadata({ content, kinds: [], path: 'docs/x.md' })
     expect(meta.nodes).toEqual([])
+  })
+
+  // `by: 'frontmatter'` — a real gap this repo's own ADRs exposed: every
+  // ADR shares one path glob (docs/adr/*.md) but carries a real structural
+  // distinction (`status: proposed` vs `status: accepted`) that path alone
+  // can't express.
+  describe('kind classification by frontmatter (`by: "frontmatter"`)', () => {
+    const statusKinds = [
+      { id: 'accepted-adr', select: { by: 'frontmatter' as const, equals: 'accepted', field: 'status' } },
+      { id: 'proposed-adr', select: { by: 'frontmatter' as const, equals: 'proposed', field: 'status' } },
+    ]
+
+    it('classifies a doc by a frontmatter field/value match', () => {
+      const content = '---\nstatus: accepted\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: statusKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual(['accepted-adr'])
+    })
+
+    it('does not classify a doc whose frontmatter field has a different value', () => {
+      const content = '---\nstatus: proposed\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: statusKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual(['proposed-adr'])
+    })
+
+    it('returns no kind, not an error, for a doc with no frontmatter block at all', () => {
+      const meta = extractDocMetadata({
+        content: '# Decision, no frontmatter',
+        kinds: statusKinds,
+        path: 'docs/adr/0001-x.md',
+      })
+      expect(meta.kinds).toEqual([])
+    })
+
+    it('returns no kind for a frontmatter block missing the selector field', () => {
+      const content = '---\ntitle: Something\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: statusKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual([])
+    })
+
+    it('combines with a `by: "path"` kind on the same doc — one doc, two independent selectors, both can match', () => {
+      const mixedKinds = [...statusKinds, { id: 'adr', select: { by: 'path' as const, glob: 'docs/adr/**' } }]
+      const content = '---\nstatus: accepted\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: mixedKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual(['accepted-adr', 'adr'])
+    })
+  })
+})
+
+describe('parseFrontmatter()', () => {
+  it('parses flat key: value pairs from a leading frontmatter block', () => {
+    const content = '---\nstatus: accepted\ntitle: Some Title\n---\n\nBody text'
+    expect(parseFrontmatter(content)).toEqual(
+      new Map([
+        ['status', 'accepted'],
+        ['title', 'Some Title'],
+      ]),
+    )
+  })
+
+  it("strips a quoted value's surrounding quotes", () => {
+    const content = "---\nstatus: 'accepted'\n---\n"
+    expect(parseFrontmatter(content).get('status')).toBe('accepted')
+  })
+
+  it('returns an empty map for content with no frontmatter block', () => {
+    expect(parseFrontmatter('# Just a heading\n\nprose')).toEqual(new Map())
+  })
+
+  it('returns an empty map when the frontmatter delimiter is not at the very start of the content', () => {
+    expect(parseFrontmatter('\n---\nstatus: accepted\n---\n')).toEqual(new Map())
+  })
+
+  it('skips a non-`key: value` line inside the frontmatter block (e.g. a blank line) without erroring', () => {
+    const content = '---\nstatus: accepted\n\ntitle: Some Title\n---\n'
+    expect(parseFrontmatter(content)).toEqual(
+      new Map([
+        ['status', 'accepted'],
+        ['title', 'Some Title'],
+      ]),
+    )
   })
 })

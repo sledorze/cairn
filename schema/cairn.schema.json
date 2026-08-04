@@ -1,11 +1,27 @@
 {
   "$defs": {
-    "CairnKindSelector": {
+    "CairnKindSelectorByPath": {
       "type": "object",
       "properties": { "by": { "type": "string", "enum": ["path"] }, "glob": { "type": "string" } },
       "required": ["by", "glob"],
-      "additionalProperties": false,
-      "description": "How a doc is classified into a kind. Only `by: \"path\"` today."
+      "additionalProperties": false
+    },
+    "CairnKindSelectorByFrontmatter": {
+      "type": "object",
+      "properties": {
+        "by": { "type": "string", "enum": ["frontmatter"] },
+        "equals": {
+          "type": "string",
+          "description": "The exact string value `field` must equal for this selector to match."
+        },
+        "field": { "type": "string", "description": "The frontmatter key to read, e.g. \"status\"." }
+      },
+      "required": ["by", "equals", "field"],
+      "additionalProperties": false
+    },
+    "CairnKindSelector": {
+      "anyOf": [{ "$ref": "#/$defs/CairnKindSelectorByPath" }, { "$ref": "#/$defs/CairnKindSelectorByFrontmatter" }],
+      "description": "How a doc is classified into a kind: `by: \"path\"` (glob) or `by: \"frontmatter\"` (a flat YAML frontmatter field must equal a value)."
     },
     "CairnKindDef": {
       "type": "object",

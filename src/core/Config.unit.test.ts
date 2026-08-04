@@ -276,7 +276,24 @@ describe('decodeConfig()', () => {
     ).toBeTruthy()
   })
 
-  it('returns a Failure when `checks.coverage.select.by` is not the recognised `"path"` literal', () => {
+  it('returns a Failure when `checks.coverage.select.by` is not a recognised literal', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A placeholder kind for this test.', id: 'x', select: { by: 'nonsense', glob: '*' } },
+              ],
+              rules: [],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('returns a Failure for `by: "frontmatter"` missing its required `field`/`equals`, e.g. the `"path"` shape\'s `glob` alone', () => {
     expect(
       Result.isFailure(
         decodeConfig({
@@ -284,6 +301,27 @@ describe('decodeConfig()', () => {
             coverage: {
               kinds: [
                 { description: 'A placeholder kind for this test.', id: 'x', select: { by: 'frontmatter', glob: '*' } },
+              ],
+              rules: [],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('accepts a `by: "frontmatter"` kind selector with `field`/`equals`', () => {
+    expect(
+      Result.isSuccess(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                {
+                  description: 'An accepted ADR.',
+                  id: 'accepted-adr',
+                  select: { by: 'frontmatter', equals: 'accepted', field: 'status' },
+                },
               ],
               rules: [],
             },

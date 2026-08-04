@@ -21,15 +21,28 @@ import {
 import { matchesAny } from '../glob.ts'
 
 /**
- * How a doc is classified into a kind. A discriminated union, not just the
- * `'path'` variant this increment implements, so declaring a new selector
- * shape later (once cairn parses frontmatter) is a new union member, not a
- * breaking change to `KindDef`/`DocMetadata`'s own shape — reuses the shape
- * GitHub issue #28 already designed for this exact purpose.
+ * How a doc is classified into a kind. A discriminated union: `by: 'path'`
+ * (glob-only, the original variant) or `by: 'frontmatter'` — added for a
+ * real, concretely-scoped gap this repo's own ADRs (`docs/adr/*.md`) expose:
+ * every ADR shares ONE path glob, but a real structural distinction between
+ * them (`status: proposed` vs `status: accepted` in each file's YAML
+ * frontmatter) can't be expressed by path alone. Matches a frontmatter
+ * `field`'s value against `equals` — case-sensitive, exact string match,
+ * the smallest useful shape; no nested/typed YAML values, no operators
+ * beyond equality. A doc with no frontmatter block, or missing `field`,
+ * simply doesn't match — never a decode error. Adding a further selector
+ * shape later (`by: 'any'`) is a new union member, not a breaking change to
+ * `KindDef`/`DocMetadata`'s own shape — reuses the shape GitHub issue #28
+ * already designed for this exact purpose.
  */
-export interface KindSelector {
-  readonly by: 'path'
-  readonly glob: string
+export type KindSelector = { readonly by: 'path'; readonly glob: string } | FrontmatterKindSelector
+
+export interface FrontmatterKindSelector {
+  readonly by: 'frontmatter'
+  /** The frontmatter key to read, e.g. `status`. */
+  readonly field: string
+  /** The exact string value `field` must equal for this selector to match. */
+  readonly equals: string
 }
 
 export interface KindDef {
@@ -116,17 +129,62 @@ export const offsetToLine = (starts: readonly number[], offset: number): number 
   return lo + 1
 }
 
-const matchesSelector = (path: string, select: KindSelector): boolean => matchesGlob(path, select)
+const matchesSelector = (path: string, frontmatter: ReadonlyMap<string, string>, select: KindSelector): boolean => {
+  switch (select.by) {
+    case 'path':
+      return matchesGlob(path, select)
+    case 'frontmatter':
+      return frontmatter.get(select.field) === select.equals
+  }
+}
 
-// Kept as its own tiny function (rather than inlining `matchesAny`) so a
-// future second `KindSelector` variant (`by: 'frontmatter'`, `by: 'any'`)
-// only needs a switch added HERE — `extractDocMetadata`'s own loop over
-// `kinds` stays unchanged.
-const matchesGlob = (path: string, select: KindSelector): boolean => matchesAny(path, [select.glob])
+const matchesGlob = (path: string, select: { readonly glob: string }): boolean => matchesAny(path, [select.glob])
 
-/** Every declared kind id whose selector matches `path`. */
-const classify = (path: string, kinds: readonly KindDef[]): readonly string[] =>
-  kinds.filter((k) => matchesSelector(path, k.select)).map((k) => k.id)
+/** Every declared kind id whose selector matches `path` (for `by: 'path'`
+ * kinds) or `frontmatter` (for `by: 'frontmatter'` kinds). */
+const classify = (
+  path: string,
+  frontmatter: ReadonlyMap<string, string>,
+  kinds: readonly KindDef[],
+): readonly string[] => kinds.filter((k) => matchesSelector(path, frontmatter, k.select)).map((k) => k.id)
+
+// A minimal, intentionally narrow YAML-frontmatter reader — not a general
+// YAML parser. Reads only a leading `---\n...\n---` block's flat `key:
+// value` lines (no nesting, no lists, no multi-line scalars); anything more
+// exotic than that is simply not extracted (never a parse error — a
+// `KindSelector` field that doesn't match just doesn't classify, same as an
+// unmatched glob). Good enough for the real shape this repo's own ADRs use
+// (`status: proposed`) without pulling in a YAML dependency for one field.
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
+const FRONTMATTER_LINE_RE = /^([A-Za-z0-9_-]+):\s*(.*)$/
+
+/** Parse a leading frontmatter block's flat `key: value` pairs. Returns an
+ * empty map when there is no frontmatter block at all. */
+export const parseFrontmatter = (content: string): ReadonlyMap<string, string> => {
+  const match = FRONTMATTER_RE.exec(content)
+  if (!match) {
+    return new Map()
+  }
+  // `match[1]` is always a string once `match` itself is non-null — the
+  // capturing group is mandatory (not `?`), so there's no realistic
+  // `undefined` case here to guard against.
+  const body = match[1] as string
+  const map = new Map<string, string>()
+  for (const line of body.split(/\r?\n/)) {
+    const lineMatch = FRONTMATTER_LINE_RE.exec(line)
+    if (!lineMatch) {
+      continue
+    }
+    // Both capture groups are non-optional in `FRONTMATTER_LINE_RE`
+    // (`([A-Za-z0-9_-]+)` requires at least one char, `(.*)` always matches,
+    // even the empty string) — a successful `lineMatch` always has both, so
+    // there's no realistic `undefined` case here to guard against, unlike
+    // `DocMetadata.ts`'s own `offsetToLine` comment on a similar pattern.
+    const [, key, rawValue] = lineMatch as unknown as [string, string, string]
+    map.set(key, rawValue.trim().replace(/^['"](.*)['"]$/, '$1'))
+  }
+  return map
+}
 
 /** Extract one doc's positioned, kind-classified metadata. Pure — no IO,
  * `path` is used only for kind classification and to label ref/heading
@@ -174,6 +232,7 @@ export const extractDocMetadata = ({ content, kinds, path }: ExtractDocMetadataA
   // sort — ties keep their relative extraction order) combines them into
   // ONE correctly-ordered sequence without re-scanning the document.
   const nodes = [...headingNodes, ...refNodes].toSorted((a, b) => a.line - b.line)
+  const frontmatter = parseFrontmatter(content)
 
-  return { kinds: classify(path, kinds), nodes, path }
+  return { kinds: classify(path, frontmatter, kinds), nodes, path }
 }
