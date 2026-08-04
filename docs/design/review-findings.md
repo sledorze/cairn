@@ -1036,3 +1036,87 @@ along the way. Both corpora's fit for the ALREADY-shipped, lower-bar `--prose-re
 dogfooded for real, both directions (clean pass, then a constructed failure, then reverted) rather
 than merely asserted — the steelman pass found no reason to overturn either negative result, only
 to sharpen why each one holds.
+
+## 9. Round-10 re-entry with a fresh, context-free reviewer — a genuine fixed point, no change
+
+A tenth pass through the same loop (clean up → structure-invitation prompt → adversarial judge →
+build the minimal), run by a reviewer with zero prior context on the nine rounds above — reading
+`docs/design/CONVENTION.md`, `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`,
+`docs/design/review-prompts.md`, and this file cold, the way the "clean up" step requires.
+
+**Step 1 — clean up.** Found nothing to fix. Both "current real output" blocks `CONVENTION.md`
+cites (the schema variant census and the hedge-language census) were re-run for real
+(`pnpm run coverage-metrics`) rather than trusted from the prose: both matched the committed text
+exactly (`KindSelector.by: 2`, `CoverageTarget: 3`, `CoverageRequirement.by: 1`,
+`CoverageRule.scope: 2`, `CoverageRule.to: 4`; hedge-phrase total `15`) — no drift. Every
+`review-findings.md section N` cross-reference in `CONVENTION.md` and the ADR was checked against
+this file's real section numbers (2 through 8) and resolves correctly; section 8 (two negative
+results, no gap closed) is correctly un-cited by `CONVENTION.md`'s tracked-gap list, since it
+never claimed to close one. `npx tsx src/cli.ts check` and `--prose-refs` both ran clean against
+the real, current repo before any of this round's reading began, confirming the baseline this
+round is judging is actually the one in effect, not a stale assumption.
+
+**Step 2 — structure invitation, applied reflexively to `.cairnrc.json`'s own real
+`checks.coverage` block.** Draft: given every shape now available (`scope: 'sibling'` /
+`{ under }`, `to` as a single target / array / `{ any }` / `{ atLeast }`, and the separate
+`checks.freshness` check), does this repo's own committed config still use the right ones?
+Self-critique, argued concretely rather than assumed: the seven `design-package → <role>`
+"requires" rules are all single-target, `scope: 'sibling'` — structurally, "a package needs ALL
+seven role docs" could be collapsed into one rule with `to: { atLeast: { n: 7, of: [...] } }` (per
+`CONVENTION.md`'s own "all of these is `n: of.length`, no fourth variant needed" note), which
+would look like fewer lines of config. Revise: rejected, for a real, concrete reason — collapsing
+loses exactly what the per-kind split buys: seven independently named, independently worded
+`description` fields (e.g. "skipping it means no one recorded WHY this work matters" for
+`problem-space`, a different sentence for each of the other six), each surfaced verbatim in the
+failure report for the specific missing doc. A single `atLeast` rule reports one generic "at least
+7 of 7" line with one shared description, actively worse for the reader
+`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s own "Third
+amendment" fixed this exact granularity for. The five `<from> → spikes` rules
+(`grounded_by` ×3, `builds_on`, `sourced_from`) are each a distinct, already-differentiated
+relationship (`docs/design/CONVENTION.md`'s own "vocabulary for rule names" section exists
+specifically because an earlier round found a single catch-all name here was already wrong) —
+nothing about `{ any }`/`{ atLeast }` would improve five rules that are each already a single,
+correct, non-alternative target. `roadmap`'s two obligations (`grounded_by` → `spikes`,
+`derived_from` → `story-map`) are a real AND, not an OR or a minimum-count, so neither newer `to`
+shape applies; `problem-space`'s `traces_to` rule is the one place an external, non-corpus target
+is needed, and `{ external: 'url', pattern }` (not a newer `to`-cardinality shape) is exactly the
+variant built for it. No rule in the file would benefit from `scope: { under }` either: every rule
+here is genuinely sibling-scoped by the convention's own design (`docs/design/CONVENTION.md`'s
+"the config that enforces it"), and no rule needs the broader "anywhere under a named sub-tree"
+reach `{ under }` exists for. `checks.freshness` staying absent from this repo's own config is not
+an oversight either — it's the explicit, reasoned decision `review-findings.md` section 5 already
+recorded (no real "doc silently went stale" incident in _this_ repo to justify a threshold), and
+that reasoning has not been invalidated by anything in this file since. **Verdict: no mismatch.**
+Cairn's own `.cairnrc.json` already uses the minimal, correct shape for its own real needs — every
+newer capability was deliberately, individually considered and correctly left unused here, not
+overlooked.
+
+**Step 3 — adversarial judge, applied to steps 1 and 2's own findings, with the steelman pass.**
+Steelmanning Step 1's "nothing to clean up": could the census/cross-reference checks have missed
+something because they only check numbers and link targets, not prose quality? Partially true —
+this round did not attempt a fresh line-by-line noise audit of the ~1,000 lines across all four
+docs the way round 1 (implied by this file's own existence) originally did; it instead targeted
+the two categories of drift a NINTH round is actually likely to introduce (stale computed numbers,
+broken internal section references) rather than re-litigating prose style choices nine prior
+rounds already made and re-made. The steelman does not overturn the finding: a full re-read for
+tone was still performed (per the task's own Step 1 instructions) and found the repeated
+verification vocabulary ("confirmed directly," "not assumed," "falsified for real") to be doing
+real, load-bearing work — every one of the >20 instances checked pairs with an actual falsifiable
+claim two sentences later, not empty throat-clearing — so flagging it as noise here would be
+manufacturing work the task's own instructions warn against. Steelmanning Step 2's "no mismatch"
+verdict: could the `atLeast` collapse for the seven "requires" rules be worth it anyway, trading
+per-kind messages for fewer lines? Argued against directly above (report-quality loss is concrete
+and real, not hypothetical) and the steelman does not hold — brevity is not this convention's own
+stated goal; `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s
+"Third amendment" already paid the cost of naming and describing every rule individually for
+exactly this reason, so undoing it now would be reversing a decision already made and justified,
+not a fresh improvement.
+
+**Step 4.** Steps 1 through 3 surfaced nothing concretely scoped to build — this round re-entered
+the full cycle with a fresh, context-free reviewer, found the tracked evidence (both censuses,
+every internal section cross-reference) still accurate against the real, current repo, confirmed
+`.cairnrc.json`'s own coverage config already uses the correct, minimal shape for every rule it
+declares (with each newer capability individually and correctly left unused, not overlooked), and
+did not need to change anything as a result. This paragraph is the round's own deliverable, per the
+task's own instruction that a genuine "checked again, still converged" is a real finding, not a
+non-event.

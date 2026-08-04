@@ -2,7 +2,7 @@
 
 Real, dated evidence from applying `review-prompts.md`'s two prompts (structure invitation,
 adversarial judge) to this repo's own `checks.coverage` schema and configuration, across
-eight rounds so far. Split out of `review-prompts.md` once this evidence grew past a lean
+nine rounds so far. Split out of `review-prompts.md` once this evidence grew past a lean
 reference — an append-only historical record, mirrored by [`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`](../adr/0005-design-packages-structurally-enforced-by-existing-coverage.md)'s own
 Amendment log for the same rounds.
 
@@ -163,3 +163,24 @@ adversarial steelman pass on both conclusions found no reason to overturn either
 result, only sharpened why each holds (three independent blockers for `scripts/`, not just one;
 an open question about generalizing beyond this repo's own two corpora, honestly left unsettled
 rather than overclaimed).
+
+**9. Round-10 re-entry with a fresh, context-free reviewer — a genuine fixed point**: a tenth
+pass through the full loop, run by a reviewer with no memory of rounds 1-8, re-reads `CONVENTION.md`,
+ADR-0005, `review-prompts.md`, and this file cold. Step 1 (clean up): both "current real output"
+censuses in `CONVENTION.md` re-run for real and matched exactly (no drift); every
+`review-findings.md section N` cross-reference resolves; `cairn check`/`--prose-refs` both ran
+clean before this round's reading began — nothing to fix. Step 2 (structure invitation, applied
+reflexively to `.cairnrc.json`'s own real coverage block, not another corpus): considered
+collapsing the seven `design-package → <role>` "requires" rules into one `{ atLeast: { n: 7,
+of: [...] } }` rule now that the shape exists, and rejected it — it would lose the seven
+individually-worded per-kind `description` fields ADR-0005's own "Third amendment" deliberately
+added; no other rule in the file benefits from `{ any }`, `{ atLeast }`, or `scope: { under }`
+either, and `checks.freshness` staying disabled here remains the same reasoned choice section 5
+already recorded. Verdict: cairn's own config already uses the minimal, correct shape for its own
+needs — every newer capability was individually and correctly left unused, not overlooked. Step 3
+(adversarial judge with steelman): steelmanned both "nothing to clean up" and "no config mismatch"
+directly; neither steelman held up against concrete evidence (the verification vocabulary's
+repetition pairs with real falsifiable claims each time it appears; the `atLeast` collapse would be
+a real report-quality regression, not a free simplification). Step 4: nothing concretely scoped to
+build — this paragraph, recording a genuine "checked again, still converged," is the round's own
+deliverable.
