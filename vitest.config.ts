@@ -28,7 +28,32 @@ export default defineConfig({
       // never on a static, easily-stale percentage.
       thresholds: {
         autoUpdate: true,
-        branches: 91.54,
+        // branches: 92.5 (down from 92.51), functions: 98.91 (down from
+        // 98.92) — `core/Config.ts`'s `checkAtLeastSane` dropped its own
+        // `JSON.stringify`-based duplicate-target branch (a `Set`/`.map()`
+        // lambda in the denominator) once `docs/design/review-findings.md`
+        // section 7 discovered, by construction, that the new
+        // `atLeastOfUniqueFilter` (`Schema.isUnique()`, added for
+        // `uniqueItems: true` JSON-Schema discoverability) already runs
+        // FIRST and structurally subsumes it — a pure ratio shift from
+        // removing now-dead code, the same "denominator shrinks along with
+        // the numerator, no real coverage lost" shape as this file's own
+        // `readDirsSafe` precedent below.
+        // branches: 92.44 (down from 92.5) — `CheckDocCoverage.ts`'s own
+        // `matchesConfiguredGlob` and `CheckFreshness.ts`'s own
+        // `matchesRuleGlob` were two independently re-derived, verbatim
+        // (but for a single-glob-vs-array-of-globs argument shape) copies
+        // of the exact same "match both absolute and base-relative" `||`
+        // check, each fully covered by its own file's tests. Consolidated
+        // into one shared `matchesGlobNearBase` (`core/paths.ts`), itself
+        // fully covered by its own new direct unit tests. Removing two
+        // fully-covered `||` branches from the denominator (dedup, not a
+        // coverage loss) drops the GLOBAL ratio below the mean the same
+        // "denominator shrinks along with the numerator" way this file's
+        // own `checkAtLeastSane` precedent above already explains — the
+        // math looks like a regression only because the removed branches
+        // were covered at 100%, above the overall average.
+        branches: 92.49,
         // functions/statements: manually recalibrated (config.ts's move to
         // Effect's FileSystem service), not auto-raised.
         // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery
@@ -48,9 +73,9 @@ export default defineConfig({
         // ratio shift with no coverage lost: every real branch this
         // rewrite touches (the mixed file/directory glob-segment case
         // included) has its own real-filesystem test.
-        functions: 98.77,
-        lines: 99.38,
-        statements: 99.2,
+        functions: 98.92,
+        lines: 99.44,
+        statements: 99.27,
       },
     },
     // scripts/**/*.test.ts: a genuine exception to "tests live under src/" —

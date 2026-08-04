@@ -1,18 +1,61 @@
 {
   "$defs": {
-    "CairnKindSelector": {
+    "CairnKindSelectorByPath": {
       "type": "object",
       "properties": { "by": { "type": "string", "enum": ["path"] }, "glob": { "type": "string" } },
       "required": ["by", "glob"],
-      "additionalProperties": false,
-      "description": "How a doc is classified into a kind. Only `by: \"path\"` today."
+      "additionalProperties": false
+    },
+    "CairnKindSelectorByFrontmatter": {
+      "type": "object",
+      "properties": {
+        "by": { "type": "string", "enum": ["frontmatter"] },
+        "equals": {
+          "type": "string",
+          "description": "The exact string value `field` must equal for this selector to match."
+        },
+        "field": { "type": "string", "description": "The frontmatter key to read, e.g. \"status\"." }
+      },
+      "required": ["by", "equals", "field"],
+      "additionalProperties": false
+    },
+    "CairnKindSelector": {
+      "anyOf": [{ "$ref": "#/$defs/CairnKindSelectorByPath" }, { "$ref": "#/$defs/CairnKindSelectorByFrontmatter" }],
+      "description": "How a doc is classified into a kind: `by: \"path\"` (glob) or `by: \"frontmatter\"` (a flat YAML frontmatter field must equal a value)."
     },
     "CairnKindDef": {
       "type": "object",
-      "properties": { "id": { "type": "string" }, "select": { "$ref": "#/$defs/CairnKindSelector" } },
-      "required": ["id", "select"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What this kind actually means — shown alongside its id wherever it appears in a report."
+        },
+        "id": { "type": "string" },
+        "select": { "$ref": "#/$defs/CairnKindSelector" }
+      },
+      "required": ["description", "id", "select"],
       "additionalProperties": false,
       "description": "One named document kind."
+    },
+    "CairnCoverageRuleScopeUnder": {
+      "type": "object",
+      "properties": {
+        "under": {
+          "type": "string",
+          "description": "A non-empty project-relative directory path (no globs) — a rule so scoped is satisfied only by a `to`-kind doc whose resolved path is nested anywhere below this directory.",
+          "allOf": [
+            {
+              "description": "`under` must not be empty, or only slashes, once leading/trailing slashes are trimmed — an empty scope would silently match every doc in the corpus."
+            }
+          ]
+        }
+      },
+      "required": ["under"],
+      "additionalProperties": false
+    },
+    "CairnCoverageRuleScope": {
+      "anyOf": [{ "type": "string", "enum": ["sibling"] }, { "$ref": "#/$defs/CairnCoverageRuleScopeUnder" }],
+      "description": "`\"sibling\"` restricts rule satisfaction to a `to`-kind doc in the SAME parent directory as the `from` doc. `{ under: \"some/dir\" }` restricts it to a `to`-kind doc nested anywhere below that project-relative directory — narrower than the unscoped corpus-wide default, broader than `\"sibling\"`. Omit for the default: satisfied by a `to`-kind doc anywhere in the scanned corpus."
     },
     "CairnCoverageTarget": {
       "anyOf": [
@@ -22,9 +65,89 @@
           "properties": { "external": { "type": "string", "enum": ["path"] } },
           "required": ["external"],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "external": { "type": "string", "enum": ["url"] },
+            "pattern": {
+              "type": "string",
+              "description": "A plain substring a satisfying link's raw href must contain, e.g. \"https://github.com/OWNER/REPO/issues/\". No regex/glob — a literal substring match."
+            }
+          },
+          "required": ["external", "pattern"],
+          "additionalProperties": false
         }
       ],
-      "description": "A declared kind id (a doc-kind target), or `{ external: \"path\" }` — a link must resolve to a real file on disk, not to a scanned doc."
+      "description": "A declared kind id (a doc-kind target), `{ external: \"path\" }` — a link must resolve to a real file on disk, not to a scanned doc — or `{ external: \"url\", pattern }` — a link's raw href must contain `pattern`."
+    },
+    "CairnCoverageTargetAny": {
+      "type": "object",
+      "properties": {
+        "any": {
+          "type": "array",
+          "allOf": [
+            {
+              "description": "An array `to` must be non-empty — a rule with zero alternatives can never be satisfied. Enforced at decode time; not visible here as a structural `minItems`, see `jsonSchemaHint`'s own comment for why."
+            }
+          ],
+          "items": { "$ref": "#/$defs/CairnCoverageTarget" }
+        }
+      },
+      "required": ["any"],
+      "additionalProperties": false,
+      "description": "The explicit, named form of a bare-array `to` — satisfied by a link matching ANY ONE of `any`'s targets (alternation/OR). Equivalent to `to: [...]`, not a replacement for it."
+    },
+    "CairnCoverageTargetAtLeast": {
+      "type": "object",
+      "properties": {
+        "atLeast": {
+          "type": "object",
+          "properties": {
+            "n": {
+              "type": "integer",
+              "allOf": [
+                {
+                  "minimum": 1,
+                  "description": "The minimum number of `atLeast.of` targets that must each independently have at least one satisfying link. A positive integer — `n: 0` would make the rule vacuously satisfied by nothing, defeating the point of requiring a minimum."
+                }
+              ]
+            },
+            "of": {
+              "type": "array",
+              "allOf": [{ "uniqueItems": true }],
+              "items": { "$ref": "#/$defs/CairnCoverageTarget" }
+            }
+          },
+          "required": ["n", "of"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "description": "`atLeast.of` must be non-empty, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here. (`atLeast.of`'s own no-duplicate-target requirement is enforced separately, on `of` itself — see that field's own `atLeastOfUniqueFilter`.)"
+            }
+          ]
+        }
+      },
+      "required": ["atLeast"],
+      "additionalProperties": false,
+      "description": "Satisfied when at least `n` of `of`'s targets EACH have their own satisfying link — general N-of-M cardinality, e.g. `{ atLeast: { n: 2, of: [\"spikes\", \"external-evidence\", \"prior-art\"] } }` requires links to at least 2 of the 3 listed kinds. \"All of these\" is `n: of.length`; there is no separate `all` variant."
+    },
+    "CairnCoverageTargetOrAlternatives": {
+      "anyOf": [
+        { "$ref": "#/$defs/CairnCoverageTarget" },
+        {
+          "type": "array",
+          "allOf": [
+            {
+              "description": "An array `to` must be non-empty — a rule with zero alternatives can never be satisfied. Enforced at decode time; not visible here as a structural `minItems`, see `jsonSchemaHint`'s own comment for why."
+            }
+          ],
+          "items": { "$ref": "#/$defs/CairnCoverageTarget" }
+        },
+        { "$ref": "#/$defs/CairnCoverageTargetAny" },
+        { "$ref": "#/$defs/CairnCoverageTargetAtLeast" }
+      ],
+      "description": "A single coverage target (satisfied by any one matching link); an ARRAY of targets, or the equivalent `{ any: [...] }`, satisfied by a link matching ANY ONE of them (alternation/OR, e.g. `to: [\"spikes\", \"external-evidence\"]`); or `{ atLeast: { n, of } }`, satisfied when at least `n` of `of`'s targets EACH have a satisfying link (general N-of-M). Every array form is non-empty — see each element's own `CairnCoverageTarget` shape."
     },
     "CairnCoverageRequirement": {
       "type": "object",
@@ -36,17 +159,22 @@
     "CairnCoverageRule": {
       "type": "object",
       "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable guidance shown in the report when this rule is unmet — what the relationship means and how to satisfy it, not just its name. Mandatory whenever `name` is set."
+        },
         "from": { "type": "string" },
         "name": {
           "type": "string",
           "description": "Distinguishes this rule from another sharing the same from/to pair (e.g. \"implements\" vs \"verified_by\"). Two rules on the same pair with no name, or the same name, are treated as one."
         },
-        "to": { "$ref": "#/$defs/CairnCoverageTarget" },
+        "scope": { "$ref": "#/$defs/CairnCoverageRuleScope" },
+        "to": { "$ref": "#/$defs/CairnCoverageTargetOrAlternatives" },
         "via": { "$ref": "#/$defs/CairnCoverageRequirement" }
       },
       "required": ["from", "to"],
       "additionalProperties": false,
-      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk."
+      "description": "Every doc of kind `from` must link somewhere to a doc of kind `to` — or, when `to` is `{ external: \"path\" }`, to a real file on disk, or, when `to` is `{ external: \"url\", pattern }`, to a URL containing `pattern`. `to` may also be an ARRAY of targets, satisfied by a link matching ANY ONE of them (alternation/OR)."
     },
     "CairnDocCoverageGroup": {
       "type": "object",
@@ -70,6 +198,34 @@
       "additionalProperties": false,
       "description": "Opt-in check that every source file matching `sources` is linked to by at least one doc matching one of the `coveredBy` groups. Absent by default — presence enables it. Direct links only (a citation chain through an intermediate doc does not count), matching `checks.coverage`'s own non-transitive rules."
     },
+    "CairnFreshnessRule": {
+      "type": "object",
+      "properties": {
+        "glob": {
+          "type": "string",
+          "description": "Which docs this rule applies to. The FIRST rule (in declared order) whose glob matches a doc wins."
+        },
+        "maxAgeDays": {
+          "type": "integer",
+          "allOf": [
+            {
+              "exclusiveMinimum": 0,
+              "description": "A doc last touched (per its git history — real content changes, not filesystem mtime) more than this many days ago is reported stale. A positive integer."
+            }
+          ]
+        }
+      },
+      "required": ["glob", "maxAgeDays"],
+      "additionalProperties": false,
+      "description": "One glob and its own staleness threshold. Matched against a doc's path the same two-step way every other check in this file does (absolute, then project-relative)."
+    },
+    "CairnFreshnessConfig": {
+      "type": "object",
+      "properties": { "rules": { "type": "array", "items": { "$ref": "#/$defs/CairnFreshnessRule" } } },
+      "required": ["rules"],
+      "additionalProperties": false,
+      "description": "Opt-in check that a doc's real git history is no older than its own matching rule's `maxAgeDays`. A doc with no commit history yet is silently excluded (nothing to measure an age from), never reported stale or fresh. Absent by default — presence enables it."
+    },
     "CairnChecksConfig": {
       "type": "object",
       "properties": {
@@ -88,7 +244,12 @@
               },
               "required": ["kinds", "rules"],
               "additionalProperties": false,
-              "description": "Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it."
+              "description": "Opt-in structural coverage/orphan check over a declared doc-kind graph. Absent by default — presence enables it.",
+              "allOf": [
+                {
+                  "description": "Cross-field constraints, checked at decode time and NOT visible as JSON Schema structure: every rule's `from`/`to` must reference a declared `kinds[].id`, and a named rule (`name` set) must also carry a `description`."
+                }
+              ]
             },
             { "type": "boolean", "enum": [false] }
           ]
@@ -96,6 +257,7 @@
         "docCoverage": {
           "anyOf": [{ "$ref": "#/$defs/CairnDocCoverageConfig" }, { "type": "boolean", "enum": [false] }]
         },
+        "freshness": { "anyOf": [{ "$ref": "#/$defs/CairnFreshnessConfig" }, { "type": "boolean", "enum": [false] }] },
         "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
         "summaries": {
           "type": "boolean",

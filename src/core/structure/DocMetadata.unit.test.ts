@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractDocMetadata, lineStarts, offsetToLine } from './DocMetadata.ts'
+import { extractDocMetadata, lineStarts, offsetToLine, parseFrontmatter } from './DocMetadata.ts'
 
 describe('lineStarts() / offsetToLine()', () => {
   it('maps offset 0 to line 1 for single-line content', () => {
@@ -71,9 +71,25 @@ describe('extractDocMetadata()', () => {
     expect(meta.nodes).toEqual([{ anchor: 'sec', line: 3, tag: 'ref', target: './a.md' }])
   })
 
-  it('excludes external (non-checkable) targets from ref nodes, same scope as extractReferences()', () => {
+  // A non-checkable target (e.g. `https://…`) is never a `ref` node — same
+  // scope as `extractReferences()` — but it's not silently dropped either:
+  // it becomes its own `urlRef` node (raw href, unresolved), the data
+  // `checks.coverage`'s `{ external: 'url', pattern }` rule
+  // (../structure/Coverage.ts) matches against.
+  it('captures an external (non-checkable) target as a distinct urlRef node, not a ref node', () => {
     const meta = extractDocMetadata({ content: 'see [x](https://example.com)', kinds: [], path: 'docs/x.md' })
-    expect(meta.nodes).toEqual([])
+    expect(meta.nodes).toEqual([{ line: 1, tag: 'urlRef', target: 'https://example.com' }])
+  })
+
+  it('preserves a urlRef target verbatim, including any `#fragment` — not split into path/anchor like a ref node', () => {
+    const meta = extractDocMetadata({
+      content: 'see [issue](https://github.com/example/repo/issues/1#issuecomment-2)',
+      kinds: [],
+      path: 'docs/x.md',
+    })
+    expect(meta.nodes).toEqual([
+      { line: 1, tag: 'urlRef', target: 'https://github.com/example/repo/issues/1#issuecomment-2' },
+    ])
   })
 
   it('excludes a bare same-page anchor link — a position within THIS doc, not a reference to another one', () => {
@@ -139,5 +155,85 @@ describe('extractDocMetadata()', () => {
     const content = 'see [x][ref]\n\n[ref]: #section'
     const meta = extractDocMetadata({ content, kinds: [], path: 'docs/x.md' })
     expect(meta.nodes).toEqual([])
+  })
+
+  // `by: 'frontmatter'` — a real gap this repo's own ADRs exposed: every
+  // ADR shares one path glob (docs/adr/*.md) but carries a real structural
+  // distinction (`status: proposed` vs `status: accepted`) that path alone
+  // can't express.
+  describe('kind classification by frontmatter (`by: "frontmatter"`)', () => {
+    const statusKinds = [
+      { id: 'accepted-adr', select: { by: 'frontmatter' as const, equals: 'accepted', field: 'status' } },
+      { id: 'proposed-adr', select: { by: 'frontmatter' as const, equals: 'proposed', field: 'status' } },
+    ]
+
+    it('classifies a doc by a frontmatter field/value match', () => {
+      const content = '---\nstatus: accepted\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: statusKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual(['accepted-adr'])
+    })
+
+    it('does not classify a doc whose frontmatter field has a different value', () => {
+      const content = '---\nstatus: proposed\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: statusKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual(['proposed-adr'])
+    })
+
+    it('returns no kind, not an error, for a doc with no frontmatter block at all', () => {
+      const meta = extractDocMetadata({
+        content: '# Decision, no frontmatter',
+        kinds: statusKinds,
+        path: 'docs/adr/0001-x.md',
+      })
+      expect(meta.kinds).toEqual([])
+    })
+
+    it('returns no kind for a frontmatter block missing the selector field', () => {
+      const content = '---\ntitle: Something\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: statusKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual([])
+    })
+
+    it('combines with a `by: "path"` kind on the same doc — one doc, two independent selectors, both can match', () => {
+      const mixedKinds = [...statusKinds, { id: 'adr', select: { by: 'path' as const, glob: 'docs/adr/**' } }]
+      const content = '---\nstatus: accepted\n---\n\n# Decision'
+      const meta = extractDocMetadata({ content, kinds: mixedKinds, path: 'docs/adr/0001-x.md' })
+      expect(meta.kinds).toEqual(['accepted-adr', 'adr'])
+    })
+  })
+})
+
+describe('parseFrontmatter()', () => {
+  it('parses flat key: value pairs from a leading frontmatter block', () => {
+    const content = '---\nstatus: accepted\ntitle: Some Title\n---\n\nBody text'
+    expect(parseFrontmatter(content)).toEqual(
+      new Map([
+        ['status', 'accepted'],
+        ['title', 'Some Title'],
+      ]),
+    )
+  })
+
+  it("strips a quoted value's surrounding quotes", () => {
+    const content = "---\nstatus: 'accepted'\n---\n"
+    expect(parseFrontmatter(content).get('status')).toBe('accepted')
+  })
+
+  it('returns an empty map for content with no frontmatter block', () => {
+    expect(parseFrontmatter('# Just a heading\n\nprose')).toEqual(new Map())
+  })
+
+  it('returns an empty map when the frontmatter delimiter is not at the very start of the content', () => {
+    expect(parseFrontmatter('\n---\nstatus: accepted\n---\n')).toEqual(new Map())
+  })
+
+  it('skips a non-`key: value` line inside the frontmatter block (e.g. a blank line) without erroring', () => {
+    const content = '---\nstatus: accepted\n\ntitle: Some Title\n---\n'
+    expect(parseFrontmatter(content)).toEqual(
+      new Map([
+        ['status', 'accepted'],
+        ['title', 'Some Title'],
+      ]),
+    )
   })
 })

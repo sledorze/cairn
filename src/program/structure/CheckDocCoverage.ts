@@ -31,9 +31,8 @@ import * as nodePath from 'node:path'
 import { Effect } from 'effect'
 
 import type { DocCoverageGroup } from '../../core/Config.ts'
-import { matchesAny } from '../../core/glob.ts'
 import { extractReferences } from '../../core/links/MarkdownLinks.ts'
-import { isIgnored, relativeToBase, toPosix } from '../../core/paths.ts'
+import { isIgnored, matchesGlobNearBase, toPosix } from '../../core/paths.ts'
 import { findUncoveredSources, findUnmatchedKinds } from '../../core/structure/DocCoverage.ts'
 import { DocsFs } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
@@ -64,15 +63,6 @@ export interface DocCoverageResult {
  * `checks.coverage`'s own, and never affects this. */
 export const docCoverageExitCode = (result: DocCoverageResult): number => (result.missing.length > 0 ? 1 : 0)
 
-// Matched against BOTH the absolute path and the path relative to `base` —
-// same two-step convention `isIgnored` (../../core/paths.ts) already
-// established for exactly this reason: a glob written the way anyone
-// actually writes one (`src/*/index.ts`, no leading `**/`) is authored
-// relative to the project root, and a bare `matchesAny` against an absolute
-// path alone would never match it (issue #102).
-const matchesConfiguredGlob = (absPath: string, base: string, globs: readonly string[]): boolean =>
-  matchesAny(toPosix(absPath), globs) || matchesAny(relativeToBase(absPath, base), globs)
-
 export const checkDocCoverage = ({
   base,
   coveredBy,
@@ -89,9 +79,9 @@ export const checkDocCoverage = ({
     const sourcePaths = allFiles.filter(
       (f) =>
         inTracked(f) &&
-        matchesConfiguredGlob(f, base, sources) &&
+        matchesGlobNearBase(f, base, sources) &&
         !isIgnored(f, ignore, [base]) &&
-        !matchesConfiguredGlob(f, base, exempt),
+        !matchesGlobNearBase(f, base, exempt),
     )
     const sourcePathSet = new Set(sourcePaths)
 
@@ -103,7 +93,7 @@ export const checkDocCoverage = ({
         (f) =>
           f.endsWith('.md') &&
           inTracked(f) &&
-          matchesConfiguredGlob(f, base, [group.glob]) &&
+          matchesGlobNearBase(f, base, [group.glob]) &&
           !isIgnored(f, ignore, [base]),
       )
       matchedCounts.set(group.kind, (matchedCounts.get(group.kind) ?? 0) + docFiles.length)

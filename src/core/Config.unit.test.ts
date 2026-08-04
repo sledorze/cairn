@@ -1,7 +1,7 @@
 import { Result } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget } from './Config.ts'
+import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget, isUrlTarget } from './Config.ts'
 
 // `decodeConfig` is total and pure over its actual domain — any value JSON.parse can
 // produce — and never throws for it: `effect/Schema` already hands back a `Result`, so
@@ -53,14 +53,39 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [{ from: 'feature', to: 'decision' }],
         },
       },
     }
     expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // A kind id (`design-package`, `spikes`) isn't self-explanatory to a
+  // reader unfamiliar with a repo's own convention, unlike a rule's
+  // auto-generated report line — no fallback exists for a kind the way an
+  // unnamed rule's message already explains itself, so `description` is
+  // unconditionally required here (unlike `CoverageRule.description`,
+  // mandatory only when `name` is set).
+  it('returns a Failure when a kind has no `description`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+              rules: [],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
   })
 
   it('decodes `checks.coverage.exempt` when present', () => {
@@ -84,10 +109,58 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
-          rules: [{ from: 'spec', name: 'implements', to: 'decision' }],
+          rules: [
+            {
+              description: 'A spec must cite the decision it implements.',
+              from: 'spec',
+              name: 'implements',
+              to: 'decision',
+            },
+          ],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // A named rule with no `description` doesn't just look incomplete — it
+  // silently reintroduces the exact "bare label, no guidance" gap
+  // `description` was added to close. Caught at decode time, not left to
+  // authorial discipline.
+  it('returns a Failure when a rule has `name` but no `description`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'spec', name: 'implements', to: 'decision' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // The refuted alternative: `description` is NOT mandatory for every rule,
+  // only named ones — an unnamed rule's report line is already
+  // self-explanatory ("no link to a 'decision'-kind doc"); forcing a
+  // description there would just be restated filler.
+  it('does NOT require `description` on an unnamed rule', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+          ],
+          rules: [{ from: 'spec', to: 'decision' }],
         },
       },
     }
@@ -99,8 +172,12 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [{ from: 'feature', to: 'decision', via: { by: 'link' } }],
         },
@@ -116,10 +193,143 @@ describe('decodeConfig()', () => {
           checks: {
             coverage: {
               kinds: [
-                { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-                { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
               ],
               rules: [{ from: 'feature', to: 'decision', via: { by: 'backlink' } }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // Closes a real, verified capturability gap: a wildcard `to`-kind glob
+  // matching many instances (e.g. every design package's own spikes.md) lets
+  // one instance's rule be satisfied by a DIFFERENT instance's sibling doc.
+  // See docs/design/CONVENTION.md's own "Is any of this actually
+  // capturable?" finding.
+  it('decodes a rule’s optional `scope: "sibling"`', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            {
+              description: 'A roadmap doc.',
+              id: 'roadmap',
+              select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+            },
+            {
+              description: 'A feasibility-spike doc.',
+              id: 'spikes',
+              select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+            },
+          ],
+          rules: [{ from: 'roadmap', scope: 'sibling', to: 'spikes' }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // Closes the granularity gap sitting between `'sibling'` (exact same
+  // directory) and unscoped (anywhere in the corpus) — see
+  // docs/design/CONVENTION.md's "Judging this convention" Claim 2.
+  it('decodes a rule’s optional `scope: { under: "..." }`', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [
+            {
+              description: 'A roadmap doc.',
+              id: 'roadmap',
+              select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+            },
+            {
+              description: 'A feasibility-spike doc.',
+              id: 'spikes',
+              select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+            },
+          ],
+          rules: [{ from: 'roadmap', scope: { under: 'docs/design/team-b' }, to: 'spikes' }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  it('returns a Failure when a rule’s `scope` is not the recognised `"sibling"` literal', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'feature', scope: 'directory', to: 'decision' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // Adversarial-review finding, before this shipped: `Coverage.ts`'s own
+  // `scopeSatisfied` trims leading/trailing slashes off `under` before
+  // building a `**/${under}/**` glob — an `under` that trims to empty
+  // (`""`, `"/"`, `"///"`) would silently match every doc in the corpus, the
+  // opposite of what `scope` exists to restrict. Rejected at decode time.
+  it.each(['', '/', '///'])('returns a Failure when `scope.under` is empty or only slashes (%j)', (under) => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                {
+                  description: 'A roadmap doc.',
+                  id: 'roadmap',
+                  select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+                },
+                {
+                  description: 'A feasibility-spike doc.',
+                  id: 'spikes',
+                  select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+                },
+              ],
+              rules: [{ from: 'roadmap', scope: { under }, to: 'spikes' }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('returns a Failure when `scope: { under }` is missing its `under` field', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
+              rules: [{ from: 'feature', scope: {}, to: 'decision' }],
             },
           },
         }),
@@ -131,16 +341,70 @@ describe('decodeConfig()', () => {
     expect(Result.isFailure(decodeConfig({ checks: { coverage: { kinds: [], rulez: [] } } }))).toBeTruthy()
     expect(
       Result.isFailure(
-        decodeConfig({ checks: { coverage: { kinds: [{ id: 'x', select: { by: 'path', globb: '*' } }], rules: [] } } }),
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A placeholder kind for this test.', id: 'x', select: { by: 'path', globb: '*' } },
+              ],
+              rules: [],
+            },
+          },
+        }),
       ),
     ).toBeTruthy()
   })
 
-  it('returns a Failure when `checks.coverage.select.by` is not the recognised `"path"` literal', () => {
+  it('returns a Failure when `checks.coverage.select.by` is not a recognised literal', () => {
     expect(
       Result.isFailure(
         decodeConfig({
-          checks: { coverage: { kinds: [{ id: 'x', select: { by: 'frontmatter', glob: '*' } }], rules: [] } },
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A placeholder kind for this test.', id: 'x', select: { by: 'nonsense', glob: '*' } },
+              ],
+              rules: [],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('returns a Failure for `by: "frontmatter"` missing its required `field`/`equals`, e.g. the `"path"` shape\'s `glob` alone', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A placeholder kind for this test.', id: 'x', select: { by: 'frontmatter', glob: '*' } },
+              ],
+              rules: [],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('accepts a `by: "frontmatter"` kind selector with `field`/`equals`', () => {
+    expect(
+      Result.isSuccess(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                {
+                  description: 'An accepted ADR.',
+                  id: 'accepted-adr',
+                  select: { by: 'frontmatter', equals: 'accepted', field: 'status' },
+                },
+              ],
+              rules: [],
+            },
+          },
         }),
       ),
     ).toBeTruthy()
@@ -156,7 +420,13 @@ describe('decodeConfig()', () => {
         decodeConfig({
           checks: {
             coverage: {
-              kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+              kinds: [
+                {
+                  description: 'A product feature doc.',
+                  id: 'feature',
+                  select: { by: 'path', glob: 'product/features/**' },
+                },
+              ],
               rules: [{ from: 'feature', to: 'decisionn' }],
             },
           },
@@ -168,7 +438,9 @@ describe('decodeConfig()', () => {
         decodeConfig({
           checks: {
             coverage: {
-              kinds: [{ id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } }],
+              kinds: [
+                { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+              ],
               rules: [{ from: 'featur', to: 'decision' }],
             },
           },
@@ -185,7 +457,13 @@ describe('decodeConfig()', () => {
     const result = decodeConfig({
       checks: {
         coverage: {
-          kinds: [{ id: 'feature', select: { by: 'path', glob: 'product/features/**' } }],
+          kinds: [
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+          ],
           rules: [{ from: 'feature', to: 'decisionn' }],
         },
       },
@@ -206,7 +484,7 @@ describe('decodeConfig()', () => {
     const raw = {
       checks: {
         coverage: {
-          kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
           rules: [{ from: 'spec', to: { external: 'path' } }],
         },
       },
@@ -221,12 +499,67 @@ describe('decodeConfig()', () => {
     const result = decodeConfig({
       checks: {
         coverage: {
-          kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
           rules: [{ from: 'spec', to: { external: 'path' } }],
         },
       },
     })
     expect(Result.isSuccess(result)).toBeTruthy()
+  })
+
+  // The gap this closes: `checks.coverage` could require a link to a
+  // scanned doc or a real file on disk, but never to an external URL (e.g. a
+  // GitHub issue) — previously self-reported in docs/design/CONVENTION.md
+  // and docs/adr/0005. `{ external: 'url', pattern }` is satisfied by a
+  // link whose raw href CONTAINS `pattern` (plain substring, no regex/glob).
+  it('decodes a rule’s `to: { external: "url", pattern }` — a link matching an external URL pattern', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          rules: [{ from: 'spec', to: { external: 'url', pattern: 'https://github.com/example/repo/issues/' } }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+  })
+
+  // FALSIFIED: without `pattern`, `{ external: 'url' }` alone must still be
+  // rejected — `pattern` is mandatory for this variant, not optional. Ran
+  // this assertion against a version of `CoverageTargetInputSchema` with
+  // `pattern` still required (current code) — passes; temporarily changing
+  // `pattern` to `Schema.optionalKey` locally and re-running turns this red,
+  // confirming the test actually exercises the requiredness rather than
+  // trivially passing for an unrelated reason.
+  it('returns a Failure when a rule’s `to: { external: "url" }` omits the mandatory `pattern`', () => {
+    expect(
+      Result.isFailure(
+        decodeConfig({
+          checks: {
+            coverage: {
+              kinds: [
+                { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              ],
+              rules: [{ from: 'spec', to: { external: 'url' } }],
+            },
+          },
+        }),
+      ),
+    ).toBeTruthy()
+  })
+
+  // `{ external: 'path' }` must decode and behave identically after adding
+  // the `url` variant — this schema change is purely additive.
+  it('still decodes `to: { external: "path" }` unchanged after adding the `url` variant', () => {
+    const raw = {
+      checks: {
+        coverage: {
+          kinds: [{ description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+          rules: [{ from: 'spec', to: { external: 'path' } }],
+        },
+      },
+    }
+    expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
   })
 
   it('returns a Failure when a rule’s `to` object names an unrecognised external kind', () => {
@@ -235,7 +568,9 @@ describe('decodeConfig()', () => {
         decodeConfig({
           checks: {
             coverage: {
-              kinds: [{ id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+              kinds: [
+                { description: 'A specification doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              ],
               rules: [{ from: 'spec', to: { external: 'url' } }],
             },
           },
@@ -249,14 +584,341 @@ describe('decodeConfig()', () => {
       checks: {
         coverage: {
           kinds: [
-            { id: 'feature', select: { by: 'path', glob: 'product/features/**' } },
-            { id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            {
+              description: 'A product feature doc.',
+              id: 'feature',
+              select: { by: 'path', glob: 'product/features/**' },
+            },
+            { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
           ],
           rules: [{ from: 'feature', to: 'decision' }],
         },
       },
     }
     expect(Result.isSuccess(decodeConfig(raw))).toBeTruthy()
+  })
+
+  // The gap this closes: `CoverageRequirement.by` had no N-of-M/alternation
+  // construct — a rule could only require a link to ONE specific kind (or
+  // one external target), never "either A or B" (see docs/design/
+  // CONVENTION.md's "Judging this convention" Claim 2). `to` accepting an
+  // ARRAY of targets is the minimal, additive fix: satisfied by a link
+  // matching ANY ONE of the array's elements.
+  describe('`to` accepting an array of targets — alternation/OR', () => {
+    it('decodes a rule’s `to` as an array of two kind ids', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              {
+                description: 'A roadmap doc.',
+                id: 'roadmap',
+                select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+              },
+              {
+                description: 'A feasibility-spike doc.',
+                id: 'spikes',
+                select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+              },
+              {
+                description: 'An external-evidence doc.',
+                id: 'external-evidence',
+                select: { by: 'path', glob: '**/docs/design/*/external-evidence.md' },
+              },
+            ],
+            rules: [{ from: 'roadmap', to: ['spikes', 'external-evidence'] }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('decodes an array `to` mixing a kind id and an `{ external: "url", pattern }` alternative', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [
+              {
+                from: 'spec',
+                to: ['decision', { external: 'url', pattern: 'https://github.com/example/repo/issues/' }],
+              },
+            ],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('returns a Failure when `to` is an empty array — a rule with zero alternatives can never be satisfied', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [{ from: 'spec', to: [] }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when an array `to` names an undeclared kind id, pinned to its own array index', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [{ from: 'spec', to: ['decision', 'nonexistent'] }],
+          },
+        },
+      })
+      if (!Result.isFailure(result)) {
+        throw new Error('expected a Failure')
+      }
+      expect(result.failure.message).toContain('references undeclared kind "nonexistent"')
+    })
+
+    // Purely additive: a plain (non-array) `to` — every existing config —
+    // must keep decoding and behaving exactly as it did before this variant
+    // existed.
+    it('still decodes a plain (non-array) `to` unchanged after adding array alternation', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } },
+              { description: 'A decision record doc.', id: 'decision', select: { by: 'path', glob: 'docs/adr/**' } },
+            ],
+            rules: [{ from: 'spec', to: 'decision' }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+  })
+
+  // The still-open half of the N-of-M/alternation gap `to: [...]` (above)
+  // only ever closed the OR/"any one" reading of (docs/design/
+  // CONVENTION.md's "Judging this convention" Claim 2,
+  // docs/design/review-findings.md section 3): `{ atLeast: { n, of } }` requires at
+  // least `n` DISTINCT `of`-targets to each have their own satisfying
+  // link, and `{ any: [...] }` is the explicit, named spelling of the
+  // bare-array form.
+  describe('`to` as `{ any: [...] }` or `{ atLeast: { n, of } }`', () => {
+    it('decodes `{ any: [...] }` — the explicit spelling of alternation/OR, equivalent to a bare array', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              {
+                description: 'A roadmap doc.',
+                id: 'roadmap',
+                select: { by: 'path', glob: '**/docs/design/*/roadmap.md' },
+              },
+              {
+                description: 'A feasibility-spike doc.',
+                id: 'spikes',
+                select: { by: 'path', glob: '**/docs/design/*/spikes.md' },
+              },
+            ],
+            rules: [{ from: 'roadmap', to: { any: ['spikes'] } }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    it('returns a Failure when `{ any: [] }` is an empty array — same trap as a bare empty `to` array', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A spec doc.', id: 'spec', select: { by: 'path', glob: 'docs/spec/**' } }],
+            rules: [{ from: 'spec', to: { any: [] } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('decodes a valid `{ atLeast: { n, of } }` requiring 2 of 3 targets', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+              { description: 'An evidence doc.', id: 'evidence', select: { by: 'path', glob: 'docs/evidence/**' } },
+              {
+                description: 'A prior-art doc.',
+                id: 'prior-art',
+                select: { by: 'path', glob: 'docs/prior-art/**' },
+              },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence', 'prior-art'] } } }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    // The vacuity-prone shape this repo's own review found across THREE
+    // separate rounds this session (`**` matching zero segments, an empty
+    // `scope.under`, and now this): `n: 0` would make the rule vacuously
+    // satisfied by nothing, the same "silently matches everything" failure
+    // class as an empty `under`, just satisfied-by-default instead of
+    // scoped-to-everything.
+    it('returns a Failure when `atLeast.n` is 0 — would be vacuously satisfied by nothing', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 0, of: ['spikes'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.n` is negative', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: -1, of: ['spikes'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.of` is an empty array', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 1, of: [] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    // A rule requiring more targets than are listed can never be satisfied
+    // — the same permanently-unsatisfiable trap a typo'd/out-of-scope
+    // `under` and an empty `to` array already fall into, closed at decode
+    // time here too rather than left to silently report every `from`-kind
+    // doc as missing coverage forever.
+    it('returns a Failure when `atLeast.n` exceeds `atLeast.of.length`', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+              { description: 'An evidence doc.', id: 'evidence', select: { by: 'path', glob: 'docs/evidence/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 3, of: ['spikes', 'evidence'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('accepts `atLeast.n` equal to `atLeast.of.length` — "all of these" needs no separate variant', () => {
+      const raw = {
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+              { description: 'An evidence doc.', id: 'evidence', select: { by: 'path', glob: 'docs/evidence/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'evidence'] } } }],
+          },
+        },
+      }
+      expect(Result.getOrThrow(decodeConfig(raw))).toEqual(raw)
+    })
+
+    // Found via adversarial self-review (this task's own Part D), not
+    // assumed: a duplicate target in `of` lets ONE real satisfying link
+    // count toward `n` TWICE (`../structure/Coverage.ts`'s
+    // `countSatisfiedTargets` checks each `of` index independently) —
+    // confirmed with `resolveRuleEdges` directly before this check existed:
+    // a single link to a `spikes`-kind doc reported `satisfied: true` for
+    // `atLeast: { n: 2, of: ['spikes', 'spikes'] }`, the exact "requires
+    // fewer distinct things than `n` implies" vacuity this whole feature
+    // exists to prevent.
+    it('returns a Failure when `atLeast.of` contains a duplicate target — one link must not count twice toward `n`', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } },
+              { description: 'A spike doc.', id: 'spikes', select: { by: 'path', glob: 'docs/spikes/**' } },
+            ],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: ['spikes', 'spikes'] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.of` contains a duplicate `{ external: "path" }` target, not just a duplicate kind id', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 2, of: [{ external: 'path' }, { external: 'path' }] } } }],
+          },
+        },
+      })
+      expect(Result.isFailure(result)).toBeTruthy()
+    })
+
+    it('returns a Failure when `atLeast.of` names an undeclared kind id, pinned to its own array index', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { atLeast: { n: 1, of: ['nonexistent'] } } }],
+          },
+        },
+      })
+      if (!Result.isFailure(result)) {
+        throw new Error('expected a Failure')
+      }
+      expect(result.failure.message).toContain('references undeclared kind "nonexistent"')
+    })
+
+    it('returns a Failure when `{ any: [...] }` names an undeclared kind id, pinned to its own array index', () => {
+      const result = decodeConfig({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A roadmap doc.', id: 'roadmap', select: { by: 'path', glob: 'docs/design/**' } }],
+            rules: [{ from: 'roadmap', to: { any: ['nonexistent'] } }],
+          },
+        },
+      })
+      if (!Result.isFailure(result)) {
+        throw new Error('expected a Failure')
+      }
+      expect(result.failure.message).toContain('references undeclared kind "nonexistent"')
+    })
   })
 
   it('returns a Failure on a wrong-typed field instead of silently reverting to the default', () => {
@@ -426,12 +1088,33 @@ describe('isKindTarget()', () => {
   it('is false for an external-path target', () => {
     expect(isKindTarget({ external: 'path' })).toBeFalsy()
   })
+
+  it('is false for an external-url target', () => {
+    expect(isKindTarget({ external: 'url', pattern: 'https://example.com/' })).toBeFalsy()
+  })
+})
+
+// Mirrors `isKindTarget()`'s own centralization rationale for the second
+// `external` discriminant this file's own `CoverageTarget` comment
+// anticipated.
+describe('isUrlTarget()', () => {
+  it('is true for an external-url target', () => {
+    expect(isUrlTarget({ external: 'url', pattern: 'https://example.com/' })).toBeTruthy()
+  })
+
+  it('is false for a plain kind-id string', () => {
+    expect(isUrlTarget('decision')).toBeFalsy()
+  })
+
+  it('is false for an external-path target', () => {
+    expect(isUrlTarget({ external: 'path' })).toBeFalsy()
+  })
 })
 
 describe('the built-in defaults', () => {
   it('matches the documented defaults', () => {
     expect(DEFAULT_CONFIG).toEqual({
-      checks: { coverage: null, docCoverage: null, links: true, summaries: true },
+      checks: { coverage: null, docCoverage: null, freshness: null, links: true, summaries: true },
       ignore: ['**/node_modules/**'],
       locale: 'en',
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },

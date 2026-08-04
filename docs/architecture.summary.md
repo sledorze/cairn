@@ -28,7 +28,10 @@ Separation of concerns: pure decisions, IO at the edges.
     `Coverage` (`resolveRuleEdges` — pure rule-satisfaction resolution, extracted out of
     `CheckCoverage.ts` so a future check can reuse it directly), `DocCoverage` (issue #108
     — the reverse direction: source-tree coverage, given an already-resolved
-    `coverageByPath` map, never Markdown content itself).
+    `coverageByPath` map, never Markdown content itself), `Freshness` (issue #101 — pure
+    `findStaleDocs`: given a doc's `maxAgeDays` and real last-commit date, is it stale;
+    deliberately NOT built on `Coverage` above, since it's a per-doc temporal question with
+    no relational/kind-graph logic).
   - **Shared by both** (top-level `core/`): `sidecar.ts` (the `.cairn/**` path mapping +
     lenient-JSON-codec mechanics `StampStore`/`RefStore` both build on), `hashing.ts`
     (`hashContent` — moved out of `DocSummaries` once it was found to be the one thing
@@ -39,10 +42,12 @@ Separation of concerns: pure decisions, IO at the edges.
 - **`io/`**: `DocsFs` (Effect service — `DocsFsLive` (Node) + `makeTestDocsFs` in-memory) and
   `Git` (`onlyGitTracked`'s real `git ls-files` capability, gitignore/worktree pruning,
   plus issue #106's `listDeletedSince`/`readFileAtRef` (`git diff --diff-filter=D`/
-  `show <ref>:<path>`) — `GitFsLive` + `makeTestGitFs`, `GitUnavailableError` its one named
-  failure mode; shells out via `effect`'s own `ChildProcess`/`ChildProcessSpawner`,
-  requiring the Node platform layer like `DocsFsLive` does, never baked in; every call
-  scrubs repository-pinning env vars and sets `GIT_CEILING_DIRECTORIES`, `gitEnv.ts`).
+  `show <ref>:<path>`), plus issue #101's `lastCommitDate` (`git log -1 --format=%cI`,
+  committer date not mtime, `null` when no history yet) — `GitFsLive` + `makeTestGitFs`,
+  `GitUnavailableError` its one named failure mode; shells out via `effect`'s own
+  `ChildProcess`/`ChildProcessSpawner`, requiring the Node platform layer like `DocsFsLive`
+  does, never baked in; every call scrubs repository-pinning env vars and sets
+  `GIT_CEILING_DIRECTORIES`, `gitEnv.ts`).
 - **`program/`**, same two-subdomain split, plus a `checks/` abstraction (docs/adr/0003):
   - **`checks/`**: the `CheckPlugin` interface (`isEnabled`/`run`/`format`/`exitCode`,
     optional `jsonUnsupportedMessage`/`stamp`) and its generic runner
@@ -65,6 +70,11 @@ Separation of concerns: pure decisions, IO at the edges.
     `CheckDocCoverage` (issue #108) — opt-in (`checks.docCoverage`'s mere presence):
     scans the whole `base` tree for `sources`/`coveredBy` files, extracts each covering
     doc's own direct links, hands the result to `DocCoverage`'s pure functions.
+    `CheckFreshness` (issue #101) — opt-in (`checks.freshness`'s mere presence): matches
+    each doc against the FIRST rule glob (declared order), asks `Git.lastCommitDate` for
+    its real committer date, hands the result to `Freshness`'s pure `findStaleDocs`; a doc
+    with no history (or a real `GitUnavailableError`) is silently excluded, surfaced only
+    as a warning when EVERY checked doc has no git data at all.
   - **Shared by more than one check**: `JsonReport` (`--json`'s combined shape — only
     links/summaries participate; refs/proseRefs/coverage/docCoverage reject `--json`
     outright), `locale` (re-exports `Locale`; en default, fr mirror).

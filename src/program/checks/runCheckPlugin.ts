@@ -32,10 +32,10 @@ export type CheckPluginRunOutcome<Result> =
       readonly result: Result
     }
 
-export const runCheckPlugin = <Result>(
-  plugin: CheckPlugin<Result>,
+export const runCheckPlugin = <Result, Env = DocsFs>(
+  plugin: CheckPlugin<Result, Env>,
   args: CheckRunArgs,
-): Effect.Effect<CheckPluginRunOutcome<Result>, never, DocsFs> =>
+): Effect.Effect<CheckPluginRunOutcome<Result>, never, Env> =>
   Effect.gen(function* () {
     if (!plugin.isEnabled(args.resolved, args.cli)) {
       return { ran: false }

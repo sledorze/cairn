@@ -63,6 +63,22 @@ export const isInScope = (p: string, roots: readonly string[]): boolean =>
   roots.some((r) => p === r || p.startsWith(`${r}/`))
 
 /**
+ * True when `absPath` matches any of `patterns`, tried both as its absolute
+ * POSIX path and, additionally, relative to `base` -- the same two-step
+ * convention `isIgnored` (below) established for `ignore` globs, generalised
+ * here for the same reason: a glob written the way anyone actually writes
+ * one is authored relative to the project root, and a bare `matchesAny`
+ * against an absolute path alone would never match it (issue #102).
+ * Extracted after this exact check turned up independently re-derived,
+ * verbatim but for the single-glob-vs-array-of-globs argument shape, in
+ * both `CheckDocCoverage.ts`'s own `matchesConfiguredGlob` and
+ * `CheckFreshness.ts`'s own `matchesRuleGlob` -- the same risk `isInScope`'s
+ * own comment already flags this repo as having hit before (issue #93).
+ */
+export const matchesGlobNearBase = (absPath: string, base: string, patterns: readonly string[]): boolean =>
+  matchesAny(toPosix(absPath), patterns) || matchesAny(relativeToBase(absPath, base), patterns)
+
+/**
  * True when `candidate` (absolute) matches any of `ignore`'s glob patterns —
  * tested both as its absolute POSIX path (the pre-existing contract: a
  * pattern that IS the absolute path, or is `**`-prefixed so it can absorb

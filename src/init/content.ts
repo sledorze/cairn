@@ -179,3 +179,108 @@ How-to guides for everyday tasks, in reading order.
 
 Keep summaries short, keep links complete, stamp last, verify green.
 `
+
+export const DESIGN_PACKAGE_SKILL_BODY = `# Building a design package with \`checks.coverage\`
+
+Use this when a problem is big enough to need a real design before code: a full
+problem-space → solution-space → spikes → story-map → roadmap → implementation-details →
+knowledge package, structurally enforced by \`checks.coverage\` — not just prose that happens
+to have the right headings.
+
+## The seven required documents
+
+A design package is a directory (e.g. \`docs/design/<slug>/\`) containing:
+
+- \`_SUMMARY.md\` — the package's own index, linking every doc below.
+- \`problem-space.md\` — what you're actually trying to address: the real need, market, or
+  context this work responds to, not just its technical symptom (a bug report is EVIDENCE the
+  problem exists, not the problem itself). Also carries root cause, constraints on any fix,
+  and an HONEST evidence basis (how many real reports this rests on — one anecdote, or
+  corroborated?).
+- \`solution-space.md\` — candidate directions, evaluated and ranked; REJECTED options
+  recorded with real reasoning, not silently dropped.
+- \`spikes.md\` — feasibility evidence actually RUN, not assumed. If a spike's first attempt
+  fails, keep the failure and the correction in the doc — that's real evidence too.
+- \`story-map.md\` — the real user workflow, mapped to stories and a walking-skeleton slice.
+- \`roadmap.md\` — shippable increments, with migration notes.
+- \`implementation-details.md\` — concrete enough to start from.
+- \`knowledge.md\` — the reusable technique, for whoever extends this later.
+
+## Wire it into \`checks.coverage\` — ONE generic block, safe by construction
+
+A shared wildcard kind (\`"glob": "**/docs/design/*/spikes.md"\`) alone is **capturable**: a
+different, hollow package can satisfy every rule by cross-linking a real sibling's docs
+without writing a word of its own — verified concretely, not theoretically. The fix isn't
+per-package hand-scoping (tried, found its own cost: a package nobody wires in becomes
+invisible, and config grows without bound as packages accumulate) — it's \`scope: "sibling"\`
+on the rule: satisfied only by a \`to\`-kind doc in the SAME directory as the \`from\` doc. One
+small, GENERIC block below now works for every package, present and future, no per-package
+edits ever:
+
+\`\`\`json
+"checks": {
+  "coverage": {
+    "kinds": [
+      { "id": "design-package", "description": "The package's own index — links to every other required document and marks a directory as a design package.", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
+      { "id": "problem-space", "description": "The real need, market, or context this work responds to — not just its technical symptom.", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
+      { "id": "solution-space", "description": "Candidate directions, evaluated and ranked, with rejected options recorded.", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
+      { "id": "spikes", "description": "Feasibility evidence actually run, not assumed.", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
+      { "id": "story-map", "description": "The real user workflow, mapped to stories and a walking-skeleton release.", "select": { "by": "path", "glob": "**/docs/design/*/story-map.md" } },
+      { "id": "roadmap", "description": "Shippable increments, with migration notes.", "select": { "by": "path", "glob": "**/docs/design/*/roadmap.md" } },
+      { "id": "implementation-details", "description": "Concrete enough to start implementation from directly.", "select": { "by": "path", "glob": "**/docs/design/*/implementation-details.md" } },
+      { "id": "knowledge", "description": "The reusable technique and lessons, for whoever extends this work later.", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
+    ],
+    "rules": [
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own problem-space.md — skipping it means no one recorded WHY this work matters.", "scope": "sibling", "to": "problem-space" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own solution-space.md — skipping it means alternatives were never actually weighed.", "scope": "sibling", "to": "solution-space" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own spikes.md — skipping it means claims rest on assumption, not evidence.", "scope": "sibling", "to": "spikes" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own story-map.md — skipping it means there's no real user workflow behind the plan.", "scope": "sibling", "to": "story-map" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own roadmap.md — skipping it means there's no sequencing or migration plan.", "scope": "sibling", "to": "roadmap" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own implementation-details.md — skipping it means the design isn't concrete enough to start from.", "scope": "sibling", "to": "implementation-details" },
+      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own knowledge.md — skipping it means lessons learned won't reach whoever extends this next.", "scope": "sibling", "to": "knowledge" }
+    ]
+  }
+}
+\`\`\`
+
+Every \`kind\` above carries a real \`description\` — unlike a rule's report line (which at
+least has an auto-generated sentence around it), a bare kind id has NO surrounding sentence
+at all, so \`description\` is unconditionally required there, not conditional on anything.
+
+Use a single \`*\` (not \`**\`) between \`docs/design/\` and the filename — \`**\` can match ZERO
+segments, which would also match \`docs/design/_SUMMARY.md\` itself (a parent index, not a
+package). A real bug found only by running this against real content, not by reading the
+glob and assuming it was right.
+
+## Name relationships precisely, and let the reader understand WHY
+
+If a doc cites another for a REASON beyond membership (a claim justified by a spike, a
+roadmap realizing a story-map concept), add a real \`{from, to, name}\` rule, not just prose.
+Pick the \`name\` by re-reading the actual sentence making the claim — \`grounded_by\` (an
+argument supported by evidence), \`builds_on\` (an implementation using a validated approach
+as its foundation), \`derived_from\` (one doc's structure literally comes from another's),
+\`sourced_from\` (content copied/restated from elsewhere) are NOT interchangeable. A generic
+name picked for how it sounds, not checked against the content, is worse than no name at all
+— it looks rigorous without being rigorous.
+
+Add a real \`description\` too — \`name\` alone is only a disambiguating label (its own purpose
+is telling two same-pair rules apart, nothing more); it explains nothing to a reader who
+hits \`no link ("grounded_by") to a "spikes"-kind doc\` with no prior context. \`description\`
+renders as a real guidance line right under that message — write the ACTUAL fix ("cite the
+spike that backs this claim"), not a restatement of the rule name. **Mandatory whenever
+\`name\` is set** — a named rule with no description fails config decode entirely, so this
+can't silently regress the next time someone adds one. NOT mandatory on an unnamed rule
+(its report line is already self-explanatory) — but treat that as a narrow escape hatch, not
+a default to reach for: this repo's own 7 "design-package requires X" rules were first left
+unnamed on exactly that theory, and it didn't survive contact with the real question "why
+DOES a design package need its own spikes.md." All 13 rules in this repo's own config ended
+up named with real descriptions once re-examined honestly — naming and describing even a
+seemingly self-evident rule is usually worth it.
+
+## Stress-test your own package before trusting it
+
+Before calling a design package done: try to make a fake, hollow version of it pass. Create
+a throwaway sibling directory whose \`_SUMMARY.md\` cross-links your real package's docs with
+none of its own — if \`cairn check\` stays green, your kinds aren't scoped tightly enough.
+Delete the throwaway directory either way; it's a test, not a keeper.
+`

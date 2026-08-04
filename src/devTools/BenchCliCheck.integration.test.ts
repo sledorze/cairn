@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import * as nodeFs from 'node:fs'
 import * as path from 'node:path'
 
@@ -15,6 +16,15 @@ import {
   FEATURE_COUNT,
   runCliCheckOnce,
 } from './BenchCliCheck.ts'
+
+// Not `node dist/cli.js` (the built artifact this bench harness normally times):
+// `pnpm verify`'s order is `test` before `build`, so `dist/cli.js` isn't
+// guaranteed to exist when this file runs — same reasoning as
+// `src/cli.integration.test.ts`'s own header comment. Runs the real
+// `src/cli.ts` via `tsx` instead, close enough to the real thing for a
+// pass/fail regression check (this is not the timed benchmark path itself).
+const TSX = path.join(import.meta.dirname, '..', '..', 'node_modules', '.bin', 'tsx')
+const CLI_TS = path.join(import.meta.dirname, '..', 'cli.ts')
 
 // Exercises the REAL `node` binary (via effect's own ChildProcessSpawner, wired
 // through @effect/platform-node's NodeServices.layer) — the exact bug this
@@ -59,7 +69,7 @@ it.layer(NodeServices.layer)('the bench-check fixture', (layerIt) => {
       const config = JSON.parse(yield* fs.readFileString(path.join(root, '.cairnrc.json'))) as {
         checks: {
           coverage: {
-            kinds: { id: string; select: { by: string; glob: string } }[]
+            kinds: { description: string; id: string; select: { by: string; glob: string } }[]
             rules: { from: string; to: string }[]
           }
         }
@@ -67,12 +77,39 @@ it.layer(NodeServices.layer)('the bench-check fixture', (layerIt) => {
         roots: string[]
       }
       expect(config.checks.coverage.kinds).toEqual([
-        { id: 'feature', select: { by: 'path', glob: '**/product/features/**' } },
-        { id: 'decision', select: { by: 'path', glob: '**/docs/adr/**' } },
+        {
+          description: 'A product feature doc, for benchmarking.',
+          id: 'feature',
+          select: { by: 'path', glob: '**/product/features/**' },
+        },
+        {
+          description: 'A decision record doc, for benchmarking.',
+          id: 'decision',
+          select: { by: 'path', glob: '**/docs/adr/**' },
+        },
       ])
       expect(config.checks.coverage.rules).toEqual([{ from: 'feature', to: 'decision' }])
       expect(config.requireDirSummaries).toBeFalsy()
       expect(config.roots).toEqual(['docs', 'product'])
+    }),
+  )
+
+  // Real end-to-end regression check, not just the fixture's own internal
+  // self-consistency (above): actually runs `cairn check` against the built
+  // fixture. Exactly the scenario `scripts/bench-cli-check.ts` (run by
+  // `bench-guard` in `pre-push`) exercises for real — and exactly what caught
+  // a real bug: this fixture's `.cairnrc.json` kinds had no `description`
+  // field, which `KindDef` made unconditionally mandatory in a later schema
+  // change, so `cairn check` started failing against it while every OTHER
+  // test here (which only inspects the fixture's own JSON, never decodes it
+  // through the real schema) stayed green.
+  layerIt.effect('the fixture actually passes a real `cairn check` run', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* Effect.acquireRelease(buildCheckFixture(), (r) =>
+        fs.remove(r, { recursive: true }).pipe(Effect.orDie),
+      )
+      expect(() => execFileSync(TSX, [CLI_TS, 'check'], { cwd: root, stdio: 'pipe' })).not.toThrow()
     }),
   )
 })

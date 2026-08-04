@@ -236,6 +236,14 @@ link somewhere to a doc of another:
 }
 ```
 
+A kind's `select` can also classify by frontmatter instead of path: `{ "by": "frontmatter",
+"field": "status", "equals": "accepted" }` matches a doc whose leading YAML frontmatter has
+`status: accepted` — useful when a real structural distinction (e.g. an ADR's `proposed` vs
+`accepted` status) can't be expressed by path glob alone, because every instance lives under
+the same directory. Reads only a flat, top-level `key: value` frontmatter block (no nested
+YAML); a doc with no frontmatter, or missing the field, simply doesn't match — never a
+decode error. A doc can match kinds from both selector variants at once.
+
 A kind's glob only classifies docs cairn already scans — it does **not** implicitly extend
 `roots` (default `["docs"]`). If your feature docs live under `product/` and `roots` doesn't
 include it, `checks.coverage` checks zero of them. Make sure every kind's glob falls inside a
@@ -320,6 +328,27 @@ link back to it. A `spec` doc with zero outbound links still reports missing cov
 though plain dead-link checking has nothing to flag (there's no link to check in the first
 place) — this is the check that catches "cited nothing," not just "cited something broken."
 
+A rule's `to` can also be `{ "external": "url", "pattern": "..." }` — satisfied by a link
+whose raw href CONTAINS `pattern` (a plain substring match, not a regex/glob), for requiring
+a link to something outside the repo entirely (e.g. a GitHub issue):
+
+```json
+"rules": [
+  { "from": "problem-space", "to": { "external": "url", "pattern": "https://github.com/OWNER/REPO/issues/" }, "name": "traces_to" }
+]
+```
+
+Same orphan-exemption as `{ "external": "path" }` above (names no kind, never orphan-
+checkable) — but no filesystem IO at all: the match is purely against the link text already
+extracted from the doc.
+
+**A different real use of the same mechanism**: `checks.coverage`'s `kinds`/`rules` aren't
+only for doc→doc traceability — they can enforce that a directory of related docs has a
+required SHAPE (e.g. "every design package must have a problem-space doc, a solution-space
+doc, ..."). This repo dogfoods exactly that for its own `docs/design/` packages — see
+`docs/design/CONVENTION.md` (in the source repo) for the worked example, a real
+falsification, and an honestly-documented limitation, with a copy-pasteable config block.
+
 ### Source-tree documentation coverage: `checks.docCoverage`
 
 `checks.coverage` (above) only ever asks doc→doc questions — "does a doc of kind X link
@@ -363,6 +392,43 @@ own non-transitive rule (a doc in `coveredBy` must link to the source file itsel
 another doc that happens to link to it). A `coveredBy` group whose glob matches zero real
 doc files is reported as a non-fatal ⚠️ warning (likely a typo), the same
 `unmatchedKinds` safety net `checks.coverage` already has.
+
+### Doc staleness: `checks.freshness`
+
+`checks.coverage`/`checks.docCoverage` (above) both ask **relational** questions — does a
+doc link to the right other doc or source file. Neither asks a **temporal** one: is this
+doc's content actually still current, regardless of what it links to? A doc can pass every
+relational check above and still describe a system that moved on months ago.
+
+`checks.freshness` closes that gap using git's own history — **not filesystem mtime**,
+which resets to checkout time on every fresh clone/CI run and would make every doc look
+brand-new the moment CI runs:
+
+```json
+"checks": {
+  "freshness": {
+    "rules": [
+      { "glob": "docs/adr/**", "maxAgeDays": 365 },
+      { "glob": "docs/**", "maxAgeDays": 90 }
+    ]
+  }
+}
+```
+
+- **`rules`** — an ordered list of `{ glob, maxAgeDays }` pairs. The **first** rule (in
+  declared order) whose glob matches a doc's path wins; a doc matching no rule is skipped
+  entirely.
+- **`maxAgeDays`** — a doc whose most recent git commit touching it is older than this many
+  days is reported stale. A doc with no commit history yet (nothing committed, or git
+  itself unavailable) is silently excluded — never reported stale or fresh, since there's
+  nothing yet to measure an age from.
+
+Like `checks.coverage`/`checks.docCoverage`, this is opt-in via mere presence in config (no
+CLI flag — its `rules` have no CLI equivalent to express them with), and
+`checks.freshness: false` is the explicit way to re-disable it when inherited from an
+`extends` preset. It's deliberately its own minimal check rather than a `checks.coverage`
+rule field — freshness is a per-doc, temporal question ("how old is this"), not the
+relational, doc-to-doc question every `checks.coverage` rule asks.
 
 ### Upgrading from an older cairn
 
@@ -452,6 +518,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `checks.links`             | Enable Markdown link checking                                                                                                                                                                                                                                                                                                                                                        |
 | `checks.coverage`          | Opt-in structural coverage/orphan check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                                       |
 | `checks.docCoverage`       | Opt-in source-tree documentation coverage check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                               |
+| `checks.freshness`         | Opt-in git-history-based doc staleness check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                                  |
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                                                                                                                                                                                                                                                                                                                  |
 | `ignore`                   | Globs to exclude from scanning, matched against both the absolute path and the path relative to its containing root (issue #102) — a directory-shaped match is pruned before it's ever walked, not just filtered out afterward (issue #63). `.gitignore` is also consulted automatically for the same directory-level pruning, with no config needed, regardless of `onlyGitTracked` |
 | `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`                                                                                                                                                                                                                                                                                                |

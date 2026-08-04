@@ -109,7 +109,10 @@
         "src/devTools/BenchCliCheck.integration.test.ts",
         "src/program/summaries/CheckDeletions.unit.test.ts",
         "src/program/summaries/CheckDeletions.integration.test.ts",
-        "src/program/summaries/CheckSummaries.unit.test.ts"
+        "src/program/summaries/CheckSummaries.unit.test.ts",
+        "src/program/structure/CheckFreshness.unit.test.ts",
+        "src/program/structure/CheckFreshness.plugin.unit.test.ts",
+        "src/program/structure/CheckCoverage.unit.test.ts"
       ],
       "rules": {
         "vitest/no-duplicate-hooks": "off",

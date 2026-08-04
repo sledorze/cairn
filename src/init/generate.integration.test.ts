@@ -73,6 +73,18 @@ describe('runInit(--agent claude)', () => {
     expect(rule).toContain("'docs/**'")
     expect(rule).not.toContain('docs//**')
   })
+
+  // Separate skill from the summary-writing one — different trigger ("this needs a
+  // real design"), different content, own file, per generate.ts's own header comment.
+  it('writes a separate cairn-design-package skill file, distinct from the summary skill', async () => {
+    await run(runInit({ agent: 'claude', cwd, roots: ['docs'] }))
+    const designSkill = fs.readFileSync(path.join(cwd, '.claude/skills/cairn-design-package/SKILL.md'), 'utf8')
+    expect(designSkill).toContain('name: cairn-design-package')
+    expect(designSkill).toContain('checks.coverage')
+    expect(designSkill).toContain('capturable')
+    const summarySkill = fs.readFileSync(path.join(cwd, '.claude/skills/cairn/SKILL.md'), 'utf8')
+    expect(summarySkill).not.toContain('cairn-design-package')
+  })
 })
 
 // OpenCode reads AGENTS.md natively (falling back from CLAUDE.md), so `--agent opencode`
@@ -95,10 +107,11 @@ describe('runInit(--agent opencode)', () => {
     expect(agentsMd).toContain('<!-- cairn:start -->')
   })
 
-  it('does not write CLAUDE.md, Claude rules, or Copilot instructions', async () => {
+  it('does not write CLAUDE.md, Claude rules, Claude skills, or Copilot instructions', async () => {
     await run(runInit({ agent: 'opencode', cwd, roots: ['docs'] }))
     expect(fs.existsSync(path.join(cwd, 'CLAUDE.md'))).toBeFalsy()
     expect(fs.existsSync(path.join(cwd, '.claude/rules/docs-summaries.md'))).toBeFalsy()
+    expect(fs.existsSync(path.join(cwd, '.claude/skills/cairn-design-package/SKILL.md'))).toBeFalsy()
     expect(fs.existsSync(path.join(cwd, '.github/instructions/docs-summaries.instructions.md'))).toBeFalsy()
   })
 

@@ -110,6 +110,23 @@ export interface GitFsService {
    * git object, confirmed by reproducing the latter directly).
    */
   readonly readFileAtRef: (base: string, ref: string, absPath: string) => Effect.Effect<string, GitUnavailableError>
+  /**
+   * The committer date (`git log -1 --format=%cI -- <path>`, ISO 8601 strict)
+   * of the most recent commit that touched `absPath` (absolute, resolved
+   * relative to `base`) — issue tracked in `docs/design/CONVENTION.md`'s
+   * "freshness/staleness rules" gap: `checks.freshness`'s own "how old is
+   * this doc, really" question. Deliberately git's own committer date, NOT
+   * filesystem mtime: a fresh `git clone`/CI checkout resets every file's
+   * mtime to checkout time regardless of the doc's real history, which
+   * would make every doc look brand-new the moment CI runs — exactly the
+   * silent-wrong-answer failure mode this whole method exists to avoid.
+   * Returns `null` when `path` has no commit history at all yet (`git log`
+   * exits 0 with empty output for a real, existing-but-uncommitted path) —
+   * a legitimately different case from `GitUnavailableError` (git itself
+   * failing), not conflated with it: a brand-new doc has nothing to measure
+   * an age from, which isn't the same as git being broken.
+   */
+  readonly lastCommitDate: (base: string, absPath: string) => Effect.Effect<Date | null, GitUnavailableError>
 }
 
 export class GitFs extends Context.Service<GitFs, GitFsService>()('GitFs') {}
@@ -186,6 +203,19 @@ export const GitFsLive = Layer.effect(
     const realpathOrSelf = (p: string): Effect.Effect<string> =>
       fs.realPath(p).pipe(Effect.catch(() => Effect.succeed(p)))
     return GitFs.of({
+      lastCommitDate: (base, absPath) => {
+        const rel = toPosix(nodePath.relative(base, absPath))
+        return Effect.provideService(
+          runGit(base, ['log', '-1', '--format=%cI', '--', rel]),
+          ChildProcessSpawner.ChildProcessSpawner,
+          spawner,
+        ).pipe(
+          Effect.map((stdout) => {
+            const trimmed = stdout.trim()
+            return trimmed.length === 0 ? null : new Date(trimmed)
+          }),
+        )
+      },
       listDeletedSince: (base, ref) =>
         Effect.provideService(
           // `--` disambiguates `ref` from a pathspec — without it, a `ref`
@@ -310,8 +340,18 @@ export const makeTestGitFs = (
   worktreeDirs: readonly string[] | GitUnavailableError = [],
   atRef: ReadonlyMap<string, string> = new Map(),
   deletedSince: readonly string[] | GitUnavailableError = [],
+  // `lastCommitDate`'s own double: unlike `atRef` (missing entry = hard
+  // fail, since a real caller only ever asks for a path it already knows
+  // existed at that ref), a path absent from `lastCommitDates` legitimately
+  // means "no commit history yet" — the real implementation's own `null`
+  // case, not a test-double gap — so it defaults to `null`, not a failure.
+  lastCommitDates: ReadonlyMap<string, Date> | GitUnavailableError = new Map(),
 ): Layer.Layer<GitFs> =>
   Layer.succeed(GitFs, {
+    lastCommitDate: (_base, absPath) =>
+      lastCommitDates instanceof GitUnavailableError
+        ? Effect.fail(lastCommitDates)
+        : Effect.succeed(lastCommitDates.get(absPath) ?? null),
     listDeletedSince: () =>
       deletedSince instanceof GitUnavailableError ? Effect.fail(deletedSince) : Effect.succeed(deletedSince),
     listIgnoredDirs: () =>
