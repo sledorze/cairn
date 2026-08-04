@@ -65,8 +65,16 @@ export const buildCheckFixture = (): Effect.Effect<string, PlatformError.Platfor
         checks: {
           coverage: {
             kinds: [
-              { id: 'feature', select: { by: 'path', glob: '**/product/features/**' } },
-              { id: 'decision', select: { by: 'path', glob: '**/docs/adr/**' } },
+              {
+                description: 'A product feature doc, for benchmarking.',
+                id: 'feature',
+                select: { by: 'path', glob: '**/product/features/**' },
+              },
+              {
+                description: 'A decision record doc, for benchmarking.',
+                id: 'decision',
+                select: { by: 'path', glob: '**/docs/adr/**' },
+              },
             ],
             rules: [{ from: 'feature', to: 'decision' }],
           },
