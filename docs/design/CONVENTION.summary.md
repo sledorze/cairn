@@ -4,58 +4,40 @@ Design packages (`docs/design/<slug>/`) stay hand-authored prose — no generate
 but their required shape (`_SUMMARY.md`, `problem-space.md`, `solution-space.md`,
 `spikes.md`, `story-map.md`, `roadmap.md`, `implementation-details.md`, `knowledge.md`) is
 structurally enforced by `checks.coverage`. `problem-space.md` means the real need/market/
-context this work responds to, not just its technical symptom.
+context this work responds to, not just its technical symptom. `cairn init --agent claude`
+scaffolds a skill teaching this shape to any consumer.
 
-**Capturability, stress-tested three times, each finding something real:**
+**Enforcement**: one generic `checks.coverage` config block (given in full) declares each
+required document as a wildcard-glob `kind` and a `{from: design-package, to: <kind>,
+scope: "sibling"}` rule per required piece — `scope: "sibling"` restricts a rule to a
+`to`-kind doc in the SAME directory as the `from` doc, so the block works for every package
+present and future with zero per-package config. The mandatory single `*` (not `**`)
+between `docs/design/` and the filename avoids matching the parent `_SUMMARY.md` itself.
 
-1. A shared wildcard kind is capturable — a hollow package cross-linking a real sibling's
-   docs passed cleanly, zero warnings.
-2. Per-package hand-scoping closes that but reopens the ORIGINAL gap — an unconfigured new
-   package goes silently uncaught, and config grows without bound per package.
-3. **The real fix:** `scope: "sibling"`, a genuinely new `CoverageRule` field
-   (`core/Config.ts`, `core/structure/Coverage.ts`) — satisfied only by a `to`-kind doc in
-   the SAME directory as the `from` doc. One small, generic, wildcard-glob config block now
-   closes BOTH gaps at once, for every package present and future, with zero per-package
-   config ever again — verified by re-running both attacks against the final config.
+**Dev-issue linking**: each package links its GitHub issue from its first substantive
+mention; real but unenforced, since `checks.coverage`'s `CoverageTarget` has no URL variant.
+A "product issue" layer (interview/user-feedback signal upstream of a dev issue) is
+explicitly not modeled — no real product-feedback content in this repo to ground it in.
 
-The earlier onboarding-guard script became provably dead code once the wildcard kind made
-its own check structurally unfailable — removed rather than left as confusing cruft.
+**Rule-naming vocabulary**: `rule.name` disambiguates same-kind-pair rules; pairing it with
+a `description` (mandatory whenever `name` is set) gives in-context guidance instead of a
+bare label. `description` is unconditionally required on every `KindDef`. A reference
+vocabulary (requirements-traceability, Toulmin argumentation, evidence/epistemic, lineage/
+process terms) is provided for naming new rules precisely, illustrated by this repo's own
+`grounded_by`/`builds_on`/`sourced_from` split.
 
-**Real guidance, not just labels:** `rule.name` (e.g. `grounded_by`) only ever fed a bare
-disambiguating label into the report — a reader had no way to know what it meant. A new
-`description` field renders actual fix guidance under the missing-coverage message, and is
-now MANDATORY whenever `name` is set (decode-time check) — refuted the "mandatory
-everywhere" version first: an unnamed rule's report line is already self-explanatory, so
-forcing one there would be filler. Adding `scope`/`description` also caught the rule-dedup
-key's own recurring omission bug (4th occurrence) on first write, via its own standing
-warning comment.
-
-**Re-examined and corrected:** the 7 "design-package requires X" rules were first left
-unnamed on the "self-explanatory" theory — didn't survive contact with "why DOES a design
-package need its own spikes.md." All 13 of this repo's own rules ended up named with real
-descriptions; the unnamed escape hatch remains available but isn't the default to reach for.
-Same principle extended to `KindDef`: a bare kind id has no auto-generated sentence around
-it at all (unlike a rule's report line), so `description` there is unconditionally required,
-not conditional on `name` — every one of this repo's 8 kinds now carries one.
-
-**Materialized as a real, shipped skill**: `cairn init --agent claude` scaffolds
-`.claude/skills/cairn-design-package/SKILL.md`, teaching this whole discipline to every
-future cairn consumer — dogfooded and locked in with a real integration test.
-
-**Dev-issue linking:** real, but un-enforced (`checks.coverage` can't classify an external
-URL as a kind today — would need a new `CoverageTarget` variant). **Product-issue/vision
-layer:** raised, not modeled — no real interview/customer-feedback content exists in this
-repo to ground it in honestly.
-
-**Two adversarial refutation rounds, run for real by context-free reviewers, both found real
-gaps:** (1) purpose-clarity holds for developers (a captured real report line is specific and
-actionable) but is REFUTED for product — this repo's own `problem-space.md`/`story-map.md`/
+**Judging this convention** — two claims checked against real content: purpose-clarity
+holds for a developer reader (a captured report line is specific and actionable) but does
+NOT hold for a product reader (this repo's own `problem-space.md`/`story-map.md`/
 `roadmap.md` are dev-shaped content wearing product-sounding filenames; `checks.coverage`
-enforces link existence only, never content. (2) "the schema can express whatever structure
-is necessary" is REFUTED — `KindSelector`/`CoverageTarget`/`CoverageRequirement.by`/`scope`
-are each single- or dual-variant unions today, unable to express a URL target, a
-sub-tree-scoped rule, N-of-M alternation, or a freshness/staleness rule. A repeatable
-judge-prompt plus six measurable checks (product-term lexicon ratio, persona audit,
+enforces link existence only, never content). Schema expressiveness does NOT hold either:
+`KindSelector`/`CoverageTarget`/`CoverageRequirement.by`/`scope` are each single- or
+dual-variant unions, unable to express a URL target, a sub-tree scope, N-of-M alternation,
+or a freshness rule. Six measurable checks (product-term lexicon ratio, persona audit,
 evidence-source classifier, schema variant census, self-reported-gap closure tracking,
-hedge-language census) are recorded in the "Judging this convention" section — neither gap
-is closed, both are tracked honestly as open.
+hedge-language census) track both gaps as numbers over time. Reusable, business-agnostic
+prompts for running this kind of review on any `checks.coverage` structure are in
+[`review-prompts.md`](./review-prompts.md).
+
+Full historical narrative (what was tried, what failed, what was found) is in
+`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s amendments.

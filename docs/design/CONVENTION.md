@@ -7,14 +7,14 @@ generated artifact — the reasoning, evidence, and tradeoffs it records need a 
 agent) to actually think and write, not fill in a template mechanically. But prose alone
 has no way to guarantee a package is actually COMPLETE: nothing stops an author from
 skipping the spikes, or writing a roadmap with no evidence behind it, and nothing would
-notice. The fix isn't a new file-generation mechanism — it's making the EXISTING
-`checks.coverage` feature (kinds/rules — see the README, `docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`) enforce the
-package's required shape, the same way it already enforces any other doc→doc obligation.
+notice.
 
-**This is dogfooding a real question from this repo's own usage of cairn**: "are these
-design-doc files just informal convention, or something cairn's own config can hold to a
-required shape?" The answer, materialized here rather than left as an aspiration: **the
-existing `kinds`/`rules` mechanism already does this — no new config primitive was needed.**
+The existing `checks.coverage` feature (kinds/rules — see the README,
+`docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`) already expresses
+doc→doc obligations generically, so it also enforces a design package's required shape —
+no new config primitive was needed (see
+`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md` for the
+decision and its history).
 
 ## The convention
 
@@ -36,25 +36,17 @@ A design package is a directory `docs/design/<slug>/` containing:
 - `implementation-details.md` — concrete enough to start from.
 - `knowledge.md` — the reusable technique, for whoever extends this later.
 
+`cairn init --agent claude` scaffolds a skill file
+(`.claude/skills/cairn-design-package/SKILL.md`, sourced from `DESIGN_PACKAGE_SKILL_BODY`
+in `src/init/content.ts`) that teaches this shape — the seven documents, sibling-scoped
+kinds, and rule-naming vocabulary below — to any cairn consumer.
+
 Any consumer of `cairn` can adopt this exact shape for their own design work by copying the
 `checks.coverage` block below into their own `.cairnrc.json` — nothing here is specific to
 cairn's own repo beyond the `docs/design/` path, which is itself just a convention, not a
 hardcoded assumption.
 
-## The config that enforces it — ONE generic block, safe by construction
-
-**This section has been rewritten twice already, each time after a real, run — not
-assumed — finding.** First it recommended a shared wildcard glob (capturable — a hollow
-package could pass by cross-linking a sibling). Then it recommended per-package hand-scoped
-kind ids (closed capturability, but reopened the ORIGINAL "forgot a piece" gap for any new
-package nobody remembered to configure, and meant `.cairnrc.json` growing without bound as
-packages accumulate — a real, separately-confirmed cost). Both replaced by a real core
-feature, `scope: "sibling"` on a `CoverageRule` (`core/Config.ts`/`core/structure/
-Coverage.ts`): restricts rule satisfaction to a `to`-kind doc in the SAME parent directory
-as the `from` doc. One small, GENERIC, wildcard-based block now works correctly for every
-design package at once — present and future, at any nesting depth (`docs/design/<slug>/`,
-or `docs/design/<time-bucket>/<slug>/` if you organize by sprint/cycle/quarter later) — with
-**zero additional config, ever, per package**:
+## The config that enforces it
 
 ```json
 "checks": {
@@ -82,141 +74,52 @@ or `docs/design/<time-bucket>/<slug>/` if you organize by sprint/cycle/quarter l
 }
 ```
 
-The mandatory single `*` (not `**`) between `docs/design/` and the filename matters: an
-earlier attempt used `**`, which — being able to match ZERO segments — accidentally matched
-`docs/design/_SUMMARY.md` itself (the PARENT index, not a package) as a "design-package". A
-real bug, caught only by running this against the actual repo, not by reading the glob and
-assuming it was right.
+A rule marked `scope: "sibling"` is satisfied only by a `to`-kind doc in the SAME parent
+directory as the `from` doc. Combined with wildcard `kinds` globs, one generic block covers
+every design package at once — present and future, at any nesting depth
+(`docs/design/<slug>/`, or `docs/design/<time-bucket>/<slug>/` if organized by
+sprint/cycle/quarter later) — with zero additional config per package.
 
-**Still kind-based, not filename-based**: a rule is satisfied by ANY doc matching the `to`
-kind's glob IN THE SAME DIRECTORY, so an author is free to name their own files however they
-like (this repo's own `problem-space.md`/`solution-space.md`/... naming is one convention,
-not a requirement `checks.coverage` itself imposes).
+The single `*` (not `**`) between `docs/design/` and the filename matters: `**` can match
+zero segments, which would make `docs/design/_SUMMARY.md` itself (the parent index, not a
+package) match the `design-package` kind.
 
-## Materialized and falsified for real, not just designed on paper
+Rule and kind matching is kind-based, not filename-based: a rule is satisfied by any doc
+matching the `to` kind's glob in the same directory, so an author is free to name their own
+files however they like — this repo's `problem-space.md`/`solution-space.md`/... naming is
+one convention, not something `checks.coverage` itself requires.
 
-Enabled in this repo's own `.cairnrc.json` (dogfooding), then verified against the real
-`docs/design/101-refs-symbol-scoping/` package: `cairn check` passes cleanly today (every
-required kind present and linked). Falsified by removing the `spikes.md` link from that
-package's `_SUMMARY.md` — `cairn check` immediately reported it three independent ways at
-once: `checks.coverage`'s own `missing coverage` (`no link to a "spikes"-kind doc`),
-`checks.coverage`'s `orphan` detection (`spikes.md` now has zero inbound references), AND
-the pre-existing summary link-completeness check (`missing child links`). Restoring the
-link returned to green. All three signals converging on the same real gap is a genuinely
-strong result — not one narrow check, but the intersection of three already-independently-
-useful ones.
+## Linking to a dev issue, and the product-issue idea
 
-## A real, honest limitation — found by adversarial stress-testing, not glossed over
+Each design package links its originating GitHub issue from the first substantive mention
+in the package (one authoritative link is enough to establish the relationship — see the
+`grounded_by`-style discipline in the rule-naming vocabulary below).
 
-**Superseded by "Is any of this actually capturable?" below — kept here, corrected, rather
-than silently deleted, since the ORIGINAL wildcard-kinds design (this section's original
-subject) really did have this gap.** `checks.coverage`'s rules aren't scoped per-directory
-by default: a rule `{from: design-package, to: spikes}` under a SHARED, wildcard kind is
-satisfied by a link to ANY doc of kind `spikes` ANYWHERE in the corpus, not specifically one
-package's own `spikes.md`. Verified concretely (see below): a throwaway second package
-whose `_SUMMARY.md` linked entirely to a real sibling's docs — none of its own — passed
-`checks.coverage` cleanly. The scoped-kinds fix (this doc's actual current recommendation,
-"The config that enforces it" above) closes this specific gap by construction, at the cost
-described in "Is any of this actually capturable?"'s own onboarding-guard section.
+This link is real but currently unenforced: `checks.coverage`'s `CoverageTarget` classifies
+real files by path glob, or `{ external: 'path' }` against a file on disk — it has no
+variant for an external URL, so "every design package must link a real GitHub issue" isn't
+expressible as a `checks.coverage` rule today. Enforcing it would need a new
+`CoverageTarget` variant (e.g. `{ external: 'url', pattern: '...' }`).
 
-## Linking to the real dev issue (real, done) — and product issues/vision (proposed, not built)
+A related, larger idea — linking design packages to a "product issue" layer (interview or
+user-experience feedback that shapes vision, upstream of any specific dev issue) — is not
+modeled by this convention. This repo has no real product/customer-feedback content to
+ground such a model in; see
+`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md` for the
+reasoning behind leaving it unmodeled.
 
-Every doc in this package used to say "issue #101" as plain, unlinked text — real content,
-but not a real reference anyone (or any tool) could follow or verify. Fixed by adding one
-authoritative `[issue #101](https://github.com/sledorze/cairn/issues/101)` link per doc
-(the first substantive mention, not every occurrence — matching the same "one real link is
-enough to establish the relationship" discipline the `grounded_by` rules above use).
+## A vocabulary for rule names
 
-**Honest limit on how far this generalizes today**: `checks.coverage`'s `kinds` classify
-real FILES cairn scans by path glob — it has no concept of an external URL as a kind, so
-"every design package must link to a real GitHub issue" can't be a `checks.coverage` rule
-the way "must link to a `spikes`-kind doc" is. The link above is real and useful, but
-un-enforced; nothing fails `cairn check` if it's missing or wrong. Closing that gap for
-real would need a genuinely new capability — e.g. a `CoverageTarget` variant like the
-already-existing `{ external: 'path' }` (a rule satisfied by a link to a real file on disk),
-extended with something like `{ external: 'url', pattern: '...' }` (a rule satisfied by a
-link matching a URL pattern) — not designed here, since it needs its own problem-space/
-solution-space treatment the way issue #101 itself got, not a bolt-on paragraph.
+A `CoverageRule`'s `name` (e.g. `grounded_by`) disambiguates two rules that share the same
+kind pair. On its own, in a report line (`no link ("grounded_by") to a "spikes"-kind doc`),
+a `name` is a label, not an explanation — pairing it with a `description` (`core/Config.ts`)
+gives the reader in-context guidance instead of a term to look up elsewhere.
+`description` is required whenever `name` is set (enforced by a decode-time check); an
+unnamed rule's default report line can stand on its own, so `description` isn't required
+there. `description` is unconditionally required on every `KindDef`, since a kind id has no
+generated sentence around it the way a rule's report line does.
 
-**A separate, larger idea raised alongside this — deliberately NOT modeled here**: linking
-design packages not just to a dev issue (GitHub, this repo) but to a "product issue" layer
-capturing feedback from interviews or real user experience that shapes vision, upstream of
-any specific GitHub issue. This repo has **no real content to ground that in** — every issue
-here is dev-flavored (dogfooded by the tool's own maintainer), not sourced from a separate
-product/customer-feedback process. Modeling it here would mean inventing fictional
-interview data to hang a schema on, which breaks this whole convention's own founding
-discipline (every claim in this package was run or grepped, never assumed). Worth pursuing
-as its own scoped design package — filed as a real GitHub issue first, the same way #101 and
-#108 were — once there's real product-issue content (this repo's own, or a consumer's) to
-verify the model against, not before.
-
-## Is any of this actually capturable? — a real finding, closed by a real core feature
-
-Stress-tested directly, three times, each round finding something real:
-
-1. **A shared wildcard kind is capturable.** A throwaway second package containing NOTHING
-   but a `_SUMMARY.md` that cross-linked every one of the real package's docs — zero real
-   content of its own — passed `checks.coverage` **cleanly, with zero warnings**, under a
-   plain wildcard kind glob (`spikes` matching `**/docs/design/*/spikes.md`, any package).
-   Not theoretical: an author (or a tool generating filler to satisfy a gate) could get a
-   fully green check without writing a single real word.
-2. **Scoping per-package by hand closes that, but reopens the original gap.** An interim fix
-   gave every kind id an exact, package-specific path (`101-spikes`, no wildcard). Re-ran the
-   attack — correctly rejected. But a THIRD throwaway package — genuinely new, genuinely
-   incomplete, never added to `.cairnrc.json` — got **zero warnings, completely invisible**.
-   The scoped fix traded a rare adversarial gap for a common accidental one: any new package
-   nobody remembers to hand-configure is silently unchecked, worse than not having the check
-   at all for that package. It also meant `.cairnrc.json` growing without bound — one
-   hand-copied 8-kind/7-rule block per package, forever.
-3. **The real fix: `scope: "sibling"` on a `CoverageRule`.** A genuinely new
-   `checks.coverage` capability (`core/Config.ts`, `core/structure/Coverage.ts`) — a rule
-   marked `scope: "sibling"` is satisfied only by a `to`-kind doc sharing the `from` doc's
-   own parent directory. One generic, wildcard-glob config block (above) now closes BOTH
-   findings at once: a hollow cross-linking package fails (no sibling of its own to link to),
-   AND a brand-new, never-configured package is checked automatically (the wildcard glob
-   already matches it) — verified by re-running both attacks against the final config: both
-   correctly caught, with zero manual `.cairnrc.json` changes for either scenario.
-
-This made a repo-level onboarding-guard script (an earlier, interim mitigation for finding
-2, scanning `docs/design/*/` and failing if a package had no matching kind) **provably dead
-code** — with a wildcard kind, that check can structurally never fail again — so it was
-removed rather than left as confusing, pointless cruft (verified before removal: created a
-package under a totally unrelated name, confirmed the script still reported "all onboarded,
-OK" — it could no longer distinguish onboarded from not).
-
-**Materialized as a real, shipped skill, not just this repo's own docs.** `cairn init
---agent claude` scaffolds a second skill file (`.claude/skills/cairn-design-package/
-SKILL.md`, sourced from `DESIGN_PACKAGE_SKILL_BODY` in `src/init/content.ts`) teaching this
-entire discipline — the seven documents, sibling-scoped kinds, precise verb naming with real
-guidance text, and self-stress-testing before trusting a package — to every future cairn
-consumer. Dogfooded for real: ran `cairn init --agent claude` against a scratch directory
-and confirmed the file writes with the expected content, locked in with a real integration
-test (`src/init/generate.integration.test.ts`).
-
-## A vocabulary for rule names — and words that actually reach the reader
-
-**A real gap, found by refuting whether the vocabulary below actually GUIDES anyone**:
-`rule.name` (e.g. `grounded_by`) only ever fed a bare, quoted, disambiguating label into the
-report — `no link ("grounded_by") to a "spikes"-kind doc` — its own code comment says so
-explicitly: it exists so two rules sharing a kind pair "don't collapse," not to explain
-anything. A reader hitting that message with no prior context has no way to know what
-`grounded_by` MEANS or how to fix it without separately finding and reading this doc.
-
-**Closed with a real `description` field** (`core/Config.ts`'s `CoverageRule`), rendered
-directly under the missing-coverage line when present — real, in-context guidance, not a
-label to look up elsewhere. Structurally optional on the field itself, but **mandatory
-whenever `name` is set** — enforced by a decode-time cross-field check. An unnamed rule's
-report line (`no link to a "decision"-kind doc`) can genuinely be self-explanatory in some
-cases, so the schema doesn't force `description` there — but re-examining THIS repo's own 7
-"design-package requires X" star rules found they weren't actually exempt in practice: "why
-does a design package need its own spikes.md" is exactly the kind of thing worth explaining,
-not assuming obvious. All 13 rules in this repo's own `.cairnrc.json` ended up named
-(`requires`, `grounded_by`, `builds_on`, `sourced_from`, `derived_from`) with real
-descriptions — the schema's exemption for unnamed rules stays available for a genuinely
-self-evident case, but isn't a default to reach for. A config with a named rule and no
-description now fails to load AT ALL (not just a coverage warning), verified for real: a
-description was removed from this repo's own `.cairnrc.json`, `cairn check` refused to even
-start, restored, green again.
+Example report line with a `description`:
 
 ```
 ❌ 1 doc(s) missing required coverage:
@@ -225,150 +128,100 @@ start, restored, green again.
       A cost/feasibility/risk claim needs real evidence — cite the spike that backs it.
 ```
 
-**The same principle extended to KINDS, not just rules.** A kind id (`design-package`,
-`spikes`) isn't self-explanatory to a reader unfamiliar with this repo's own convention
-either — unlike a rule, a kind has no fallback (its id is the ONLY thing that ever names it,
-there's no auto-generated sentence around it the way a rule's report line has one), so
-`description` on `KindDef` (`core/Config.ts`'s `KindDefInputSchema`) is unconditionally
-**required**, not conditional on anything. Every one of this repo's own 8 kinds now carries
-one. Purely metadata today (never consulted by kind-matching logic — verified by reading
-`core/structure/DocMetadata.ts`'s classification code, which only ever touches `id`/
-`select`), the same "additive, never affects behavior" shape `description` on a rule has.
+Choosing a rule name means re-reading the actual sentence making the claim and picking the
+word that's true of that relationship, not the most generic-sounding one. For example, in
+this repo's own rules, `solution-space`/`roadmap`/`problem-space` → `spikes` are each an
+ARGUMENT citing spike evidence as support (`grounded_by`), while `implementation-details` →
+`spikes` builds on a spike's validated approach (`builds_on`) and `knowledge` → `spikes`
+restates content directly from the spike (`sourced_from`) — three different relationships
+that an earlier, single `grounded_by` catch-all had conflated.
 
-Adding `description` to `CoverageRule` also caught a real, adversarial-review-documented
-recurring bug on its own: `checkCoverage`'s rule-dedup key (`program/structure/
-CheckCoverage.ts`) has now collapsed two same-pair rules differing only by an undeduped
-field FOUR separate times across this feature's history — `scope` (added alongside
-`description`) hit the exact same landmine on first write, caught immediately by that key's
-own standing warning comment rather than shipping a fifth silent regression. `description`
-itself deliberately stays OUT of the key: purely cosmetic report text, never changes what a
-rule actually checks.
+A reference vocabulary, drawn from established fields rather than invented per-edge:
 
-`checks.coverage`'s `name` field exists precisely so two rules on the same kind pair can mean
-different things (`docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`'s own `implements`/`verified_by` precedent). Early drafts
-of this package's own rules used `grounded_by` as a catch-all for every "X cites spikes.md"
-edge — re-reading the actual content found it was quietly standing in for at least three
-different real relationships:
+**Requirements traceability** (also used in
+`docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`): `implements`,
+`verifies`, `verified_by`, `satisfies`, `derives_from`, `refines`, `traces_to`,
+`depends_on`, `realizes`, `conforms_to`, `specializes`, `generalizes`.
 
-- `solution-space` → `spikes`, `roadmap` → `spikes`, `problem-space` → `spikes`: the source
-  doc makes an ARGUMENT, and spike evidence is offered as support — genuinely `grounded_by`
-  (Toulmin's own argumentation-theory term for exactly this: a claim's grounds/data).
-- `implementation-details` → `spikes`: "Built on spike 4's confirmed-viable primitive" — not
-  an argument being supported, an IMPLEMENTATION using the spike's validated approach as its
-  foundation — renamed to `builds_on`.
-- `knowledge` → `spikes`: "Use the CORRECTED signature from spikes.md" — instructional
-  content directly copied/restated from the spike, not argued for — renamed to `sourced_from`.
-
-A larger reference vocabulary, drawn from established fields rather than invented per-edge,
-for whoever names the next rule:
-
-**Requirements traceability** (already partly used in `docs/adr/0002-coverage-orphan-check-scoped-to-declared-to-kinds.md`): `implements`,
-`verifies`, `verified_by`, `satisfies`, `derives_from`, `refines`, `traces_to`, `depends_on`,
-`realizes`, `conforms_to`, `specializes`, `generalizes`.
-
-**Toulmin argumentation theory** (claim / grounds / warrant / backing / qualifier / rebuttal
-— the actual academic model `grounded_by` borrows from, not an invented term): `grounds` /
-`grounded_by`, `warrants`, `backs` / `backed_by`, `qualifies`, `rebuts` / `rebutted_by`,
-`refutes`, `supports`, `contradicts`, `undermines`, `corroborates`.
+**Toulmin argumentation theory** (claim / grounds / warrant / backing / qualifier /
+rebuttal): `grounds` / `grounded_by`, `warrants`, `backs` / `backed_by`, `qualifies`,
+`rebuts` / `rebutted_by`, `refutes`, `supports`, `contradicts`, `undermines`,
+`corroborates`.
 
 **Evidence / epistemic relations**: `evidences` / `evidenced_by`, `justifies`,
 `substantiates`, `validates`, `confirms`, `disconfirms`, `motivates`, `informs`.
 
-**Lineage / process relations** (for how a doc came to exist, not what it claims):
+**Lineage / process relations** (how a doc came to exist, not what it claims):
 `derived_from`, `sourced_from`, `distilled_from`, `builds_on`, `supersedes`, `deprecates`,
 `amends`, `extends`, `elaborates`, `clarifies`.
 
-Picking from this list is not optional decoration — the same discipline `knowledge.md`
-already documents applies here: before naming a rule, re-read the actual sentence making the
-claim, and pick the word that's true of THAT sentence, not the word that sounds most
-sophisticated. `satisfies` → `derived_from` and `grounded_by` → `builds_on`/`sourced_from`
-(both corrected earlier in this same package, by exactly this process) are the proof this
-isn't hypothetical.
+## Judging this convention
 
-## Judging this convention — two real refutation rounds, and a repeatable prompt
-
-Two independent, context-free adversarial reviews were run against this convention on two
-separate claims. Both were genuinely tested against real content in this repo, not assumed.
+Two claims about this convention have been checked against real content in this repo.
 
 **Claim 1 — "the content this convention produces has clear purpose encoding for both
-development AND product audiences" — HOLDS for dev, REFUTED for product.** The developer
-angle holds: a real captured report (`✗ no link ("requires") to a "spikes"-kind doc ...
-skipping it means claims rest on assumption, not evidence`) is specific and actionable
-without prior context, because `description` (above) makes it so. The product angle fails on
-inspection of this repo's own `docs/design/101-refs-symbol-scoping/` package: `problem-space
-.md`'s "evidence basis" is a single GitHub issue filed by cairn's own maintainer, not market
-or customer signal; `story-map.md`'s "personas" are internal engineering roles (doc author,
-contributor, maintainer, CI pipeline), not customer segments; `roadmap.md`'s rationale is
-dependency sequencing, not business tradeoff. The filenames borrow product vocabulary
-(`problem-space`, `story-map`, `roadmap`) but `checks.coverage` only enforces link
-EXISTENCE — it cannot and does not check whether the linked doc's CONTENT is actually
+development AND product audiences."** Holds for a developer reader: a real captured report
+(`✗ no link ("requires") to a "spikes"-kind doc ... skipping it means claims rest on
+assumption, not evidence`) is specific and actionable without prior context, because
+`description` (above) makes it so. The product angle does not hold: in this repo's own
+`docs/design/101-refs-symbol-scoping/` package, `problem-space.md`'s "evidence basis" is a
+single GitHub issue filed by cairn's own maintainer, not market or customer signal;
+`story-map.md`'s "personas" are internal engineering roles (doc author, contributor,
+maintainer, CI pipeline), not customer segments; `roadmap.md`'s rationale is dependency
+sequencing, not business tradeoff. The filenames borrow product vocabulary
+(`problem-space`, `story-map`, `roadmap`), but `checks.coverage` only enforces link
+EXISTENCE — it does not and cannot check whether the linked doc's content is actually
 product-shaped versus a restated bug report wearing a product-sounding filename.
 
 **Claim 2 — "the config mechanism can express whatever document structure is actually
-necessary, not just this repo's fixed 7-doc shape" — REFUTED.** Confirmed by reading
-`core/Config.ts`/`core/structure/Coverage.ts` directly, not by trusting this doc's own prior
-self-reports (which turned out accurate where they existed, but incomplete): `KindSelector`
-has exactly one variant (`by: 'path'`, glob-only — no way to target one specific instance,
-only a path-shaped class); `CoverageTarget` has exactly two variants (kind id, or
-`{external: 'path'}` resolved against real files on disk — no URL/pattern variant, so a
-GitHub issue link can never be enforced, only asserted in prose); `scope` is a single literal
-(`'sibling'` or absent/corpus-wide — no granularity in between, e.g. "anywhere under this
-sub-tree" or "any doc in a named group"); `CoverageRequirement.by` is a single variant
-(`'link'`, meaning "at least one" — no `minCount`/N-of-M/alternation construct, so two rules
-on the same `from` are always AND'd, never OR'd); and nothing in the schema touches
-dates/mtimes at all, so a "doc must be re-validated after N months" freshness rule is outside
-its vocabulary entirely, not just unconfigured.
+necessary, not just this repo's fixed 7-doc shape."** Does not hold, per
+`core/Config.ts`/`core/structure/Coverage.ts`: `KindSelector` has exactly one variant
+(`by: 'path'`, glob-only — no way to target one specific instance, only a path-shaped
+class); `CoverageTarget` has exactly two variants (a kind id, or `{ external: 'path' }`
+resolved against a real file on disk — no URL/pattern variant, so a GitHub issue link can
+never be enforced, only asserted in prose); `scope` is a single literal (`'sibling'` or
+absent/corpus-wide — no granularity in between, e.g. "anywhere under this sub-tree" or "any
+doc in a named group"); `CoverageRequirement.by` is a single variant (`'link'`, meaning "at
+least one" — no `minCount`/N-of-M/alternation construct, so two rules on the same `from` are
+always AND'd, never OR'd); and nothing in the schema touches dates/mtimes at all, so a "doc
+must be re-validated after N months" freshness rule is outside its vocabulary entirely, not
+just unconfigured.
 
-**A repeatable prompt to judge this system again later** (run as a fresh, context-free
-subagent — biased self-review misses exactly what these two rounds found):
+A prompt for re-checking these two claims later, and reusable checklists for applying the
+same kind of review to `checks.coverage` in any other domain, live in
+[`review-prompts.md`](./review-prompts.md).
 
-> You are adversarially reviewing cairn's design-package convention (`docs/design/
-CONVENTION.md`, `.cairnrc.json`'s `checks.coverage` block, `core/Config.ts`/`core/
-structure/Coverage.ts`, and a real design package under `docs/design/<slug>/`). Test two
-> claims and try to REFUTE each, not confirm it: (1) "the enforced content has clear purpose
-> encoding for both a developer AND a product reader" — read a real package's
-> `problem-space.md`/`story-map.md`/`roadmap.md` and judge whether a product person would
-> gain anything a well-written bug report wouldn't already give them; (2) "the config schema
-> can express whatever document/relationship structure a team actually needs" — read
-> `KindSelector`, `CoverageTarget`, `CoverageRequirement`, and `CoverageRule.scope`'s real
-> type definitions, then attempt to express 3-4 concrete, plausible real needs (an external
-> URL target, a named sub-tree scope narrower than corpus-wide but broader than sibling,
-> N-of-M alternative satisfaction, a freshness/staleness rule) as actual valid config: which
-> succeed, which fail, and is each failure schema-fundamental or just unconfigured? Report
-> concrete quoted evidence for every finding, never a vibe-only judgment, and end with
-> measurable checks (see below) that could be re-run without a human re-reading everything.
+**Measurable checks, compiled from both claims above — track these as numbers over time,
+not prose:**
 
-**Measurable checks this prompt should apply, compiled from both review rounds — track these
-as numbers over time, not prose:**
-
-- **Product-signal lexicon ratio**: grep each `problem-space.md`/`story-map.md`/`roadmap.md`
-  for product-signal terms (`user segment`, `customer`, `market`, `revenue`, `competitor`,
-  `interview`, `willingness to pay`, `retention`) versus dev-signal terms (`API`, `hash`,
-  `CLI`, `flag`, `dependency`, `scanner`, `sidecar`). A near-zero product-term ratio against a
-  doc named `problem-space.md` is the measurable form of Claim 1's failure.
-- **Persona audit**: grep every `story-map.md` for `As a ` and list the extracted role nouns;
-  flag when every persona is an internal engineering role rather than an external
+- **Product-signal lexicon ratio**: grep each `problem-space.md`/`story-map.md`/
+  `roadmap.md` for product-signal terms (`user segment`, `customer`, `market`, `revenue`,
+  `competitor`, `interview`, `willingness to pay`, `retention`) versus dev-signal terms
+  (`API`, `hash`, `CLI`, `flag`, `dependency`, `scanner`, `sidecar`). A near-zero
+  product-term ratio against a doc named `problem-space.md` is the measurable form of
+  Claim 1's failure.
+- **Persona audit**: grep every `story-map.md` for `As a ` and list the extracted role
+  nouns; flag when every persona is an internal engineering role rather than an external
   customer/user of the thing being built.
 - **Evidence-source classifier**: for each `problem-space.md`'s evidence-basis section,
   classify each citation as GitHub-issue-only versus interview/survey/support-ticket-volume/
   analytics; flag packages where 100% of cited evidence is a single maintainer-filed issue.
-- **Schema variant census**: count `KindSelector.by`, `CoverageTarget`, `CoverageRequirement
-.by`, and `CoverageRule.scope`'s Literal/Union variants (currently 1, 2, 1, 1
-  respectively); keep a running log of real requests that needed a variant that doesn't exist
-  yet — a rising unmet-request count against a static variant count is Claim 2's gap growing,
-  numerically, not just narratively.
-- **Self-reported-gap closure tracking**: this doc already names two open gaps (URL-pattern
-  target, product-issue/vision layer) as "not designed here, deliberately." On a fixed cadence
-  (e.g. every time this doc is next substantively edited), check whether either has a real
-  filed GitHub issue; an item surviving multiple such checks with no filed issue is a signal
-  the "future work" framing has gone stale, not active.
+- **Schema variant census**: count `KindSelector.by`, `CoverageTarget`,
+  `CoverageRequirement.by`, and `CoverageRule.scope`'s Literal/Union variants (currently 1,
+  2, 1, 1 respectively); keep a running log of real requests that needed a variant that
+  doesn't exist yet — a rising unmet-request count against a static variant count is
+  Claim 2's gap growing, numerically, not just narratively.
+- **Self-reported-gap closure tracking**: this doc names two open gaps (URL-pattern target,
+  product-issue/vision layer). On a fixed cadence (e.g. every time this doc is next
+  substantively edited), check whether either has a real filed GitHub issue; an item
+  surviving multiple such checks with no filed issue is a signal the "future work" framing
+  has gone stale, not active.
 - **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
   phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
-  self-admitted gap already found by dogfooding; whether this count shrinks or grows release
-  over release is a direct measure of whether refutation rounds like this one are actually
-  closing gaps or just re-discovering and re-recording the same ones.
+  self-admitted gap already found by review; whether this count shrinks or grows release
+  over release is a direct measure of whether reviews like this are actually closing gaps
+  or just re-discovering and re-recording the same ones.
 
-Neither Claim 1's nor Claim 2's gap is closed by this section — both are recorded honestly as
-open, exactly like the URL-target and product-issue gaps above, rather than silently
-"solved" by writing a prompt about them. The prompt and the metrics are the mechanism for
-catching drift and progress on both, not a substitute for actually closing them.
+Neither Claim 1's nor Claim 2's gap is closed by this section — both are recorded as open,
+exactly like the URL-target and product-issue gaps above, rather than treated as solved by
+writing about them.

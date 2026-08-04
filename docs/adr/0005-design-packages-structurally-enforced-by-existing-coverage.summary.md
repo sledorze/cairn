@@ -36,3 +36,25 @@ would just be filler. Verified by real falsification against this repo's own `.c
 descriptions. Same principle extended to `KindDef`: a bare kind id has no auto-generated
 sentence around it, so `description` there is unconditionally required — every one of this
 repo's 8 kinds now carries one.
+
+**Amendment: rule-naming vocabulary refined.** An early catch-all `grounded_by` was found
+to conflate three different relationships once each rule's actual claim was re-read: kept
+for genuine argument-citing-evidence cases, split into `builds_on` (implementation built on
+a validated spike) and `sourced_from` (content restated from a spike). The corrected names
+and a broader reference vocabulary now live in `docs/design/CONVENTION.md`.
+
+**Amendment: dev-issue linking, and an unmodeled product-issue layer.** Plain-text "issue
+#101" mentions were replaced with one real link per doc. This stays unenforced —
+`checks.coverage`'s `CoverageTarget` has no URL variant, only path/`{external: 'path'}`. A
+related "product issue" layer (interview/user-feedback signal upstream of a dev issue) was
+raised and deliberately left unmodeled: this repo has no real product-feedback content to
+ground it in.
+
+**Amendment: shipped as a skill, and judged by adversarial review.** `cairn init --agent
+claude` now scaffolds `.claude/skills/cairn-design-package/SKILL.md` teaching this whole
+convention, locked in with a real integration test. Two context-free adversarial reviews
+were run against the convention's own claims: purpose-clarity holds for a developer reader
+but is refuted for a product reader; schema expressiveness (`KindSelector`/`CoverageTarget`/
+`CoverageRequirement`/`CoverageRule.scope`) is refuted outright. Findings, a judge-prompt,
+and measurable checks are in `docs/design/CONVENTION.md`; reusable, domain-agnostic versions
+of the review prompts are in `docs/design/review-prompts.md`.

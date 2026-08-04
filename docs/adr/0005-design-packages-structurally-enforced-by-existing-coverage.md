@@ -107,3 +107,65 @@ default to reach for. The same principle was also extended to `KindDef`: a kind 
 (`design-package`, `spikes`) has no auto-generated sentence around it the way a rule's report
 line does, so `description` there is unconditionally required, not conditional on anything —
 every one of this repo's 8 kinds now carries one.
+
+## Amendment: rule-naming vocabulary refined by re-reading the actual claims
+
+Early drafts of this package's own rules used `grounded_by` as a catch-all for every "X
+cites spikes.md" edge. Re-reading the actual content each rule stood for found it was
+quietly standing in for at least three different relationships: `solution-space` →
+`spikes`, `roadmap` → `spikes`, and `problem-space` → `spikes` are each a genuine argument
+citing spike evidence as support (Toulmin's `grounded_by`, kept); `implementation-details`
+→ `spikes` is not an argument being supported but an implementation built on the spike's
+validated approach (renamed `builds_on`); `knowledge` → `spikes` restates content directly
+from the spike, not an argued claim (renamed `sourced_from`). The corrected rule names, and
+a broader reference vocabulary (requirements-traceability terms, Toulmin argumentation
+terms, evidence/epistemic terms, lineage/process terms) for whoever names the next rule, are
+recorded in `docs/design/CONVENTION.md`'s "A vocabulary for rule names" section — the
+takeaway generalizes: pick the word that's true of the specific sentence making the claim,
+not the most generic-sounding term available.
+
+## Amendment: dev-issue linking, and a deliberately unmodeled product-issue layer
+
+Every doc in the `101-refs-symbol-scoping` package originally referenced "issue #101" as
+plain, unlinked text. Fixed by adding one authoritative
+`[issue #101](https://github.com/sledorze/cairn/issues/101)` link per doc (the first
+substantive mention, not every occurrence). This link is real and useful but currently
+unenforced: `checks.coverage`'s `CoverageTarget` classifies real files by path glob or by
+`{ external: 'path' }` against a file on disk — it has no concept of an external URL as a
+target, so "every design package must link a real GitHub issue" cannot be expressed as a
+`checks.coverage` rule the way "must link a `spikes`-kind doc" can. Closing that gap would
+need a new `CoverageTarget` variant (e.g. `{ external: 'url', pattern: '...' }`) — not
+designed here, since it needs its own problem-space/solution-space treatment, not a
+bolt-on paragraph.
+
+A related, larger idea was raised alongside this and deliberately NOT modeled: linking
+design packages not just to a dev issue (GitHub, this repo) but to a "product issue" layer
+capturing feedback from interviews or real user experience that shapes vision, upstream of
+any specific GitHub issue. This repo has no real content to ground that in — every issue
+here is dev-flavored (dogfooded by the tool's own maintainer), not sourced from a separate
+product/customer-feedback process. Modeling it here would mean inventing fictional
+interview data to hang a schema on. Worth pursuing as its own scoped design package, filed
+as a real GitHub issue first, once there's real product-issue content (this repo's own, or
+a consumer's) to verify the model against.
+
+## Amendment: scaffolded as a shipped skill, and judged by adversarial review
+
+This convention is now materialized as a shipped skill, not just this repo's own docs:
+`cairn init --agent claude` scaffolds a second skill file
+(`.claude/skills/cairn-design-package/SKILL.md`, sourced from `DESIGN_PACKAGE_SKILL_BODY`
+in `src/init/content.ts`) teaching the seven-document shape, sibling-scoped kinds, and
+rule-naming vocabulary to any future cairn consumer — locked in with a real integration
+test (`src/init/generate.integration.test.ts`).
+
+Two context-free adversarial reviews were separately run against the convention's own
+claims, refuting rather than confirming each: whether the enforced content has clear
+purpose for both a developer and a product reader (holds for developer, refuted for
+product — `checks.coverage` enforces link existence, not content shape), and whether the
+`checks.coverage` schema can express whatever document structure a team actually needs
+(refuted — `KindSelector`, `CoverageTarget`, `CoverageRequirement`, and `CoverageRule.scope`
+are each single- or dual-variant today, unable to express a URL target, a scope narrower
+than corpus-wide but broader than sibling, N-of-M alternation, or a freshness rule). Both
+findings, a repeatable judge-prompt, and six measurable checks to re-run over time are
+recorded in `docs/design/CONVENTION.md`'s "Judging this convention" section; two
+business-agnostic prompts for running the same kind of review against any
+`checks.coverage` structure are in `docs/design/review-prompts.md`.
