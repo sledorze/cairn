@@ -284,3 +284,91 @@ claim, and pick the word that's true of THAT sentence, not the word that sounds 
 sophisticated. `satisfies` → `derived_from` and `grounded_by` → `builds_on`/`sourced_from`
 (both corrected earlier in this same package, by exactly this process) are the proof this
 isn't hypothetical.
+
+## Judging this convention — two real refutation rounds, and a repeatable prompt
+
+Two independent, context-free adversarial reviews were run against this convention on two
+separate claims. Both were genuinely tested against real content in this repo, not assumed.
+
+**Claim 1 — "the content this convention produces has clear purpose encoding for both
+development AND product audiences" — HOLDS for dev, REFUTED for product.** The developer
+angle holds: a real captured report (`✗ no link ("requires") to a "spikes"-kind doc ...
+skipping it means claims rest on assumption, not evidence`) is specific and actionable
+without prior context, because `description` (above) makes it so. The product angle fails on
+inspection of this repo's own `docs/design/101-refs-symbol-scoping/` package: `problem-space
+.md`'s "evidence basis" is a single GitHub issue filed by cairn's own maintainer, not market
+or customer signal; `story-map.md`'s "personas" are internal engineering roles (doc author,
+contributor, maintainer, CI pipeline), not customer segments; `roadmap.md`'s rationale is
+dependency sequencing, not business tradeoff. The filenames borrow product vocabulary
+(`problem-space`, `story-map`, `roadmap`) but `checks.coverage` only enforces link
+EXISTENCE — it cannot and does not check whether the linked doc's CONTENT is actually
+product-shaped versus a restated bug report wearing a product-sounding filename.
+
+**Claim 2 — "the config mechanism can express whatever document structure is actually
+necessary, not just this repo's fixed 7-doc shape" — REFUTED.** Confirmed by reading
+`core/Config.ts`/`core/structure/Coverage.ts` directly, not by trusting this doc's own prior
+self-reports (which turned out accurate where they existed, but incomplete): `KindSelector`
+has exactly one variant (`by: 'path'`, glob-only — no way to target one specific instance,
+only a path-shaped class); `CoverageTarget` has exactly two variants (kind id, or
+`{external: 'path'}` resolved against real files on disk — no URL/pattern variant, so a
+GitHub issue link can never be enforced, only asserted in prose); `scope` is a single literal
+(`'sibling'` or absent/corpus-wide — no granularity in between, e.g. "anywhere under this
+sub-tree" or "any doc in a named group"); `CoverageRequirement.by` is a single variant
+(`'link'`, meaning "at least one" — no `minCount`/N-of-M/alternation construct, so two rules
+on the same `from` are always AND'd, never OR'd); and nothing in the schema touches
+dates/mtimes at all, so a "doc must be re-validated after N months" freshness rule is outside
+its vocabulary entirely, not just unconfigured.
+
+**A repeatable prompt to judge this system again later** (run as a fresh, context-free
+subagent — biased self-review misses exactly what these two rounds found):
+
+> You are adversarially reviewing cairn's design-package convention (`docs/design/
+CONVENTION.md`, `.cairnrc.json`'s `checks.coverage` block, `core/Config.ts`/`core/
+structure/Coverage.ts`, and a real design package under `docs/design/<slug>/`). Test two
+> claims and try to REFUTE each, not confirm it: (1) "the enforced content has clear purpose
+> encoding for both a developer AND a product reader" — read a real package's
+> `problem-space.md`/`story-map.md`/`roadmap.md` and judge whether a product person would
+> gain anything a well-written bug report wouldn't already give them; (2) "the config schema
+> can express whatever document/relationship structure a team actually needs" — read
+> `KindSelector`, `CoverageTarget`, `CoverageRequirement`, and `CoverageRule.scope`'s real
+> type definitions, then attempt to express 3-4 concrete, plausible real needs (an external
+> URL target, a named sub-tree scope narrower than corpus-wide but broader than sibling,
+> N-of-M alternative satisfaction, a freshness/staleness rule) as actual valid config: which
+> succeed, which fail, and is each failure schema-fundamental or just unconfigured? Report
+> concrete quoted evidence for every finding, never a vibe-only judgment, and end with
+> measurable checks (see below) that could be re-run without a human re-reading everything.
+
+**Measurable checks this prompt should apply, compiled from both review rounds — track these
+as numbers over time, not prose:**
+
+- **Product-signal lexicon ratio**: grep each `problem-space.md`/`story-map.md`/`roadmap.md`
+  for product-signal terms (`user segment`, `customer`, `market`, `revenue`, `competitor`,
+  `interview`, `willingness to pay`, `retention`) versus dev-signal terms (`API`, `hash`,
+  `CLI`, `flag`, `dependency`, `scanner`, `sidecar`). A near-zero product-term ratio against a
+  doc named `problem-space.md` is the measurable form of Claim 1's failure.
+- **Persona audit**: grep every `story-map.md` for `As a ` and list the extracted role nouns;
+  flag when every persona is an internal engineering role rather than an external
+  customer/user of the thing being built.
+- **Evidence-source classifier**: for each `problem-space.md`'s evidence-basis section,
+  classify each citation as GitHub-issue-only versus interview/survey/support-ticket-volume/
+  analytics; flag packages where 100% of cited evidence is a single maintainer-filed issue.
+- **Schema variant census**: count `KindSelector.by`, `CoverageTarget`, `CoverageRequirement
+.by`, and `CoverageRule.scope`'s Literal/Union variants (currently 1, 2, 1, 1
+  respectively); keep a running log of real requests that needed a variant that doesn't exist
+  yet — a rising unmet-request count against a static variant count is Claim 2's gap growing,
+  numerically, not just narratively.
+- **Self-reported-gap closure tracking**: this doc already names two open gaps (URL-pattern
+  target, product-issue/vision layer) as "not designed here, deliberately." On a fixed cadence
+  (e.g. every time this doc is next substantively edited), check whether either has a real
+  filed GitHub issue; an item surviving multiple such checks with no filed issue is a signal
+  the "future work" framing has gone stale, not active.
+- **Hedge-language census**: grep this repo's own configs/ADRs/CONVENTION.md for hedge
+  phrases (`not modeled`, `un-enforced`, `out of scope`, `no concept of`) — each marks a
+  self-admitted gap already found by dogfooding; whether this count shrinks or grows release
+  over release is a direct measure of whether refutation rounds like this one are actually
+  closing gaps or just re-discovering and re-recording the same ones.
+
+Neither Claim 1's nor Claim 2's gap is closed by this section — both are recorded honestly as
+open, exactly like the URL-target and product-issue gaps above, rather than silently
+"solved" by writing a prompt about them. The prompt and the metrics are the mechanism for
+catching drift and progress on both, not a substitute for actually closing them.

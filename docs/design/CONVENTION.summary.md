@@ -46,3 +46,16 @@ future cairn consumer — dogfooded and locked in with a real integration test.
 URL as a kind today — would need a new `CoverageTarget` variant). **Product-issue/vision
 layer:** raised, not modeled — no real interview/customer-feedback content exists in this
 repo to ground it in honestly.
+
+**Two adversarial refutation rounds, run for real by context-free reviewers, both found real
+gaps:** (1) purpose-clarity holds for developers (a captured real report line is specific and
+actionable) but is REFUTED for product — this repo's own `problem-space.md`/`story-map.md`/
+`roadmap.md` are dev-shaped content wearing product-sounding filenames; `checks.coverage`
+enforces link existence only, never content. (2) "the schema can express whatever structure
+is necessary" is REFUTED — `KindSelector`/`CoverageTarget`/`CoverageRequirement.by`/`scope`
+are each single- or dual-variant unions today, unable to express a URL target, a
+sub-tree-scoped rule, N-of-M alternation, or a freshness/staleness rule. A repeatable
+judge-prompt plus six measurable checks (product-term lexicon ratio, persona audit,
+evidence-source classifier, schema variant census, self-reported-gap closure tracking,
+hedge-language census) are recorded in the "Judging this convention" section — neither gap
+is closed, both are tracked honestly as open.
