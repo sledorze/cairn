@@ -1,3 +1,4 @@
+import { it as effectIt } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -353,6 +354,56 @@ describe('checkCoverage()', () => {
     )
     expect(result.missing).toHaveLength(2)
   })
+
+  // Key-order independence: `JSON.stringify` serializes object properties in
+  // INSERTION order, so two rules that are semantically IDENTICAL but built
+  // with their nested `to`/`scope` object keys in a different order (e.g.
+  // one from `Schema.decode`'s fixed field order, one from a hand-written
+  // object literal or a future programmatic rule-builder) must still dedupe
+  // to ONE rule, not silently be treated as two DIFFERENT ones — the mirror
+  // bug of every "Round N" above: under-deduplication instead of
+  // over-collapse. Falsified for real: with a non-canonicalized
+  // `JSON.stringify`, this test fails with `result.missing` of length 2.
+  //
+  // Built via `Object.fromEntries`, not object literals, so the two rules'
+  // properties are genuinely inserted in a DIFFERENT order — an object
+  // literal's keys get reordered to satisfy this repo's own `sort-keys`
+  // lint rule, which would silently defeat the very thing this test is
+  // proving order-independence against.
+  const firstRuleKeyOrder: CoverageRule = {
+    from: 'feature',
+    scope: { under: 'team-a' },
+    to: { atLeast: { n: 1, of: ['decision'] } },
+  }
+  const secondRuleKeyOrder = Object.fromEntries([
+    ['scope', { under: 'team-a' }],
+    [
+      'to',
+      {
+        atLeast: Object.fromEntries([
+          ['of', ['decision']],
+          ['n', 1],
+        ]),
+      },
+    ],
+    ['from', 'feature'],
+  ]) as CoverageRule
+  effectIt.layer(makeTestDocsFs({ '/r/features/f1.md': { content: '# Feature, no links', mtimeMs: 1 } }))(
+    'differently-ordered dedup key',
+    (layerIt) => {
+      layerIt.effect('dedupes two rules that are semantically identical but have differently-ordered object keys', () =>
+        Effect.gen(function* () {
+          const result = yield* checkCoverage({
+            base: '/r',
+            kinds: KINDS,
+            roots: ['/r'],
+            rules: [firstRuleKeyOrder, secondRuleKeyOrder],
+          })
+          expect(result.missing).toHaveLength(1)
+        }),
+      )
+    },
+  )
 
   // Round 4 of the dedup key's own recurring bug (see its file-level
   // comment) — this time caught BEFORE shipping, not after: `scope` is a

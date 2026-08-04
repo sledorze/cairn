@@ -31,6 +31,7 @@
 
 import { Effect } from 'effect'
 
+import { canonicalJson } from '../../core/canonicalJson.ts'
 import type { CoverageRule, CoverageTarget, CoverageToSpec, KindDef } from '../../core/Config.ts'
 import { isAnyTarget, isAtLeastTarget, isKindTarget, isTargetArray, isUrlTarget, targetsOf } from '../../core/Config.ts'
 import { matchesAny, matchesGlob } from '../../core/glob.ts'
@@ -147,6 +148,17 @@ export const checkCoverage = ({
     // the moment it exists on the object — this closes the recurring bug
     // CLASS, not just this round's instance of it.
     //
+    // `canonicalJson` (not plain `JSON.stringify`) matters here: `JSON.
+    // stringify` serializes object properties in INSERTION order, so two
+    // semantically identical rules (same `to`/`scope` object, keys just
+    // built in a different order — `Schema.decode`'s fixed field order vs.
+    // a hand-written literal or a future rule-builder) would otherwise
+    // stringify to different keys and be treated as DISTINCT rules — the
+    // mirror-image of every prior round's bug: under-deduplication instead
+    // of over-collapse. `canonicalJson` recursively sorts object keys
+    // before stringifying so the key represents the RULE's VALUE, not one
+    // particular way of constructing it.
+    //
     // Full history, for context only (no longer prescriptive — the
     // denylist above needs no per-field updates): Round 1, an accidentally
     // duplicated rule entry produced a duplicate `missing` report line for
@@ -162,7 +174,7 @@ export const checkCoverage = ({
     // regardless of its actual value. Round 6, `to` grew alternation
     // (array-shaped), which an `isKindTarget(r.to) ? r.to :
     // JSON.stringify(r.to)` branch hadn't accounted for.
-    const uniqueRules = [...new Map(rules.map((r) => [JSON.stringify({ ...r, description: undefined }), r])).values()]
+    const uniqueRules = [...new Map(rules.map((r) => [canonicalJson({ ...r, description: undefined }), r])).values()]
 
     // `readMarkdownCorpus` already gives an unreadable doc (permission
     // denied) the same lenient skip this used to hand-roll.

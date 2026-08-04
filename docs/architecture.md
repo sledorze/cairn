@@ -121,7 +121,13 @@ summary links to every child") — is one-directional and real, not a cycle.
      `DocSummaries.ts` once an import-graph audit showed it was the one
      function pulling a `links/`-domain program into a `summaries/`-named file),
      [`glob.ts`](../src/core/glob.ts) (a tiny dependency-free glob matcher
-     for `ignore` and root expansion), [`paths.ts`](../src/core/paths.ts)
+     for `ignore` and root expansion),
+     [`canonicalJson.ts`](../src/core/canonicalJson.ts) (`JSON.stringify`
+     with object keys sorted recursively, so a dedup/equality key represents
+     a VALUE, not one particular construction order — extracted for
+     `program/structure/CheckCoverage.ts`'s own rule-dedup key, generic
+     enough that any future caller needing an order-independent structural
+     key can reuse it), [`paths.ts`](../src/core/paths.ts)
      (POSIX path normalisation and the `base`-containment check
      (`isWithinBase`) that bounds every out-of-`roots` filesystem access in
      `program/`), [`Config.ts`](../src/core/Config.ts) (the config domain:
