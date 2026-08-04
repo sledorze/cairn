@@ -464,6 +464,13 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
         if (parsed.explain && summaries.todo.length > 0) {
           const explanation = yield* explainSummaries(summaryArgs, { locale })
           yield* Console.log(explanation.join('\n'))
+        } else if (summaries.todo.length > 0) {
+          yield* Console.log(
+            pick(locale, {
+              en: '\nTip: run with --explain to see why each summary above is stale or missing.',
+              fr: '\nAstuce : relancez avec --explain pour voir pourquoi chaque résumé ci-dessus est périmé ou manquant.',
+            }),
+          )
         }
       }
       code = Math.max(code, summaryExitCode(summaries))
