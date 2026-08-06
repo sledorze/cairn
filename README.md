@@ -76,6 +76,19 @@ never writes into content either.
 | `cairn check --report-deletions`                            | Opt-in, informational only: report a deleted doc's orphaned content        |
 | `cairn init --agent claude\|copilot\|agents\|opencode\|all` | Scaffold agent guidance files                                              |
 
+### Other flags
+
+A handful of `check` flags don't fit the table above (they modify an existing run rather
+than selecting a distinct mode):
+
+| Flag              | What it does                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--root <dir>`    | Add a documentation root (repeatable); merged with any positional `roots` — together they REPLACE config `roots` wholesale, not merge with it |
+| `--config <path>` | Path to a config file (default: `.cairnrc.json` / `.cairnrc` / `package.json#cairn`)                                                          |
+| `--threshold <n>` | Override `thresholdLines` for this run                                                                                                        |
+| `--locale en\|fr` | Override `locale` for this run                                                                                                                |
+| `--explain`       | Explain why each stale/missing summary reported by a plain `cairn check` is not ok                                                            |
+
 ### Link checking
 
 A dead link is only the most obvious way a reference rots. `cairn check` (or
