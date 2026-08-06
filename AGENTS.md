@@ -192,11 +192,12 @@ assert the break is caught, revert, re-assert clean. Prefer this over an in-memo
 alone when the thing under test is real filesystem behavior (path resolution, sidecar
 placement, hashing).
 
-**Prove a new regression test fails against the bug it claims to catch, before trusting it
-green.** `git stash` the fix, rerun the test, confirm it fails for the right reason, then
-`git stash pop`. Incident: a `--json`-incompatibility test once only checked "the flag's
-name appears somewhere in README" — trivially true even with the incompatibility
-undocumented, since the same names appear elsewhere as ordinary references.
+**RED before GREEN for any new test, not just regression tests.** Prove it fails against
+the thing it claims to catch before trusting it green — `git stash` the fix (or comment out
+the feature), rerun, confirm it fails for the right reason, then restore. Incident: a
+`--json`-incompatibility test once only checked "the flag's name appears somewhere in
+README" — trivially true even with the incompatibility undocumented, since the same names
+appear elsewhere as ordinary references.
 
 **Run an adversarial review, from an unbiased sub-agent, before every push.** The author is
 the worst-positioned reviewer — they already believe the fix is correct. Spawn a fresh
