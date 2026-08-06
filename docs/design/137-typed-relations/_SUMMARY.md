@@ -14,9 +14,10 @@ say a claim is right or wrong — only different. See
   one held partially, one did not reproduce).
 - [Solution space](./solution-space.md) — five candidate directions, evaluated and ranked;
   the relationship to ADR 0004 stated explicitly.
-- [Spikes](./spikes.md) — eight real probes run against this repo's own toolchain,
-  including a working end-to-end walking skeleton that catches the actual #130 incident
-  shape, red then green.
+- [Spikes](./spikes.md) — eight probes against this repo's own source and toolchain (six
+  run as real scripts/CLI commands, two settled by direct source reading where no code
+  needed to run), including a working end-to-end walking skeleton that catches the actual
+  #130 incident shape, red then green.
 - [Story map](./story-map.md) — the doc author's real workflow, mapped to stories and the
   walking-skeleton slice.
 - [Roadmap](./roadmap.md) — five releases (an explicit ROI checkpoint first, then four

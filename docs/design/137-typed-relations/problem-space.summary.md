@@ -12,7 +12,8 @@ which report lines are self-checking).
 **Evidence basis, stated honestly:** one maintainer's own dogfooding across two side
 projects, zero outside corroboration on any of #137/#130/#133. What's new versus a first
 report: this exact territory (`checks.claims`) was designed once already and killed by an
-ROI attack, per `AGENTS.md`'s own recorded lesson — provenance traces it to the same #130
+ROI attack, per `AGENTS.md`'s own recorded lesson — plausibly, though only circumstantially
+(a single multi-purpose commit, not a clean provenance trace), tied to the same #130
 incident. #137 clears the recurrence gate (twelve independently-added checkers in
 `falsestart`'s `documented.test.ts`); it does not by itself clear an ROI bar, which is why
 this package's job is producing a design an ROI attack can be run against, not

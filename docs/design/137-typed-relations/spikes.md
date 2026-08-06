@@ -153,6 +153,16 @@ match — `s7-walking-skeleton.ts`.
   drift today's `cairn check` cannot see, per `problem-space.md` — caught here.
 - After fixing the doc: `{ ok: true, detail: 'matches' }`.
 
+**Correction, found by adversarial review of an earlier draft of this spike:** the first
+version of `s7-walking-skeleton.ts` produced the AFTER state by rewriting the DOC (dropping
+`CHANGELOG.md` from its declared list) while leaving `package.json` untouched — the
+opposite of #130's real incident, where the doc stayed put and `package.json#files` was
+what actually changed. The printed numbers were identical either way (the comparison is
+symmetric), so this didn't invalidate the predicate itself, but the narration didn't match
+the code. Corrected to write `package.json` and the doc's matching content ONCE up front,
+then mutate only `package.json` for the AFTER state — the doc genuinely never touched
+between BEFORE and AFTER, matching the real incident's causal direction exactly.
+
 This is the Must-tier claim declaration (`option C`) plus one Should-tier decidable runner
 (`option A`'s `covers`), built together — confirming `solution-space.md`'s synthesis that
 pairing them is what actually closes the one fully-reproduced incident, not (C) alone.

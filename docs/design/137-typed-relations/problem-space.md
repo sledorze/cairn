@@ -72,10 +72,16 @@ episode — two turns of design spent before an ROI attack (run against the _now
 design) reversed the pick, with nothing committed: no schema, no vocabulary, no
 rejected-options record survives. The lesson drawn from that was explicit: _run a cheap
 recurrence gate first; save the full ROI attack for after a concrete design exists._ Traced
-by provenance (`git log -S "checks.claims"` finds it only in that one AGENTS.md addition,
-added in the same PR — #135 — that fixed #130's own incident): `checks.claims` was almost
-certainly the design killed _for_ #130's incident. #137 reopens the same territory three
-days later, citing **twelve independently-added, hand-written checkers** in
+by provenance (`git log -S "checks.claims"` finds it only in one commit, PR #135 — merged
+2026-08-06T07:19 UTC — which ALSO fixed #130's own incident): `checks.claims` was **plausibly**
+the design killed for #130's incident, though this is weaker than a full provenance trace —
+PR #135 is an explicitly multi-purpose bundle (README fixes, the #130/#134 packaging fix, an
+AGENTS.md tightening pass covering more than one lesson, a new `ship` skill, a new Stop hook),
+and neither the commit nor the AGENTS.md paragraph itself names #130 specifically; the same
+paragraph also cites an unrelated incident (a multi-round README review) for a different rule.
+Real, but circumstantial. #137 reopens the same territory the same day (filed
+2026-08-06T15:32 UTC, ~8 hours after PR #135 merged — about a day and a half after #130 itself
+was filed on 2026-08-04T21:42 UTC), citing **twelve independently-added, hand-written checkers** in
 `falsestart/src/documented.test.ts` (850 lines, 26 tests), each added after a real bug
 shipped with `cairn check` green — a materially larger evidence base than "one incident,"
 even though it is still all self-reported by the same person. That clears the recurrence
