@@ -15,7 +15,7 @@ import { Console, Data, Effect, Option, Runtime } from 'effect'
 import { Argument, Command, Flag } from 'effect/unstable/cli'
 
 import type { SummaryPlan } from './core/summaries/SummaryTree.ts'
-import type { Overrides } from './config.ts'
+import type { Overrides, ResolvedConfig } from './config.ts'
 import { expandRoots, loadConfig, loadConfigWithSource, LOCALES } from './config.ts'
 import { AGENT_TARGETS, runInit } from './init/generate.ts'
 import { DocsFsLive } from './io/DocsFs.ts'
@@ -203,49 +203,14 @@ const gracefulGitList = (
     return yield* list(gitFs)
   }).pipe(Effect.catch(() => Effect.succeed<readonly string[]>([])))
 
-/** `cairn check` (also the default action when no subcommand is given). */
-const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
-  const cwd = process.cwd()
-  const overrides = overridesFrom(parsed.locale, parsed.threshold, [...parsed.root, ...parsed.roots])
-  const config = yield* loadConfigOrFail(cwd, overrides, Option.getOrUndefined(parsed.config))
-  const locale = config.locale
-
-  const cliFlags: CheckCliFlags = {
-    fix: parsed.fix,
-    json: parsed.json,
-    linksOnly: parsed.linksOnly,
-    prose: parsed.prose,
-    refs: parsed.refs,
-    stamp: parsed.stamp,
-    summariesOnly: parsed.summariesOnly,
-  }
-
-  if (parsed.json && (parsed.stamp || parsed.migrateStamps)) {
-    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp/--migrate-stamps' }))
-    yield* Effect.sync(() => (process.exitCode = 1))
-    return
-  }
-  // --report-deletions isn't part of the CheckPlugin registry (it needs
-  // live GitFs, which the registry deliberately keeps out — see its own
-  // wiring below), so it can't share `rejectedJsonMessage`'s generic check;
-  // one hand-written guard, same shape the registry replaced 3 of.
-  if (parsed.json && parsed.reportDeletions) {
-    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --report-deletions' }))
-    yield* Effect.sync(() => (process.exitCode = 1))
-    return
-  }
-  // Replaces 3 near-identical hand-written guards (--refs/--prose-refs/
-  // checks.coverage) with one generic, order-preserving check — each
-  // migrated plugin owns its own `jsonUnsupportedMessage`
-  // (./program/checks/CheckPlugin.ts), so a NEW plugin never needs a 4th
-  // copy-pasted `if` here.
-  const jsonRejection = rejectedJsonMessage(JSON_INCOMPATIBLE_PLUGINS, config, cliFlags)
-  if (jsonRejection !== null) {
-    yield* Console.log(JSON.stringify({ error: jsonRejection }))
-    yield* Effect.sync(() => (process.exitCode = 1))
-    return
-  }
-
+/**
+ * Resolve the roots/git/ignore/tracked-files inputs every check needs,
+ * BEFORE any individual check runs — a distinct concern from dispatching
+ * the checks themselves (what's on disk/in git, not what the caller
+ * asked for), split out of `runCheck` below. `cliFlags`/`pluginArgs` stay
+ * in `runCheck` — those are built from `parsed`, not from this lookup.
+ */
+const resolveCheckInputs = Effect.fn('resolveCheckInputs')(function* (cwd: string, config: ResolvedConfig) {
   const absRoots = yield* expandRootsOrFail(cwd, config.roots)
 
   // Issue #48: a hard error, never a silent fallback — someone who enabled
@@ -293,6 +258,142 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
     thresholdLines: config.thresholdLines,
     ...(trackedFiles === undefined ? {} : { trackedFiles }),
   }
+
+  return { absRoots, effectiveIgnore, summaryArgs, trackedFiles }
+})
+
+type CheckInputs = Effect.Success<ReturnType<typeof resolveCheckInputs>>
+
+/**
+ * The prune/migrate-stamps/stamp/plain summaries sub-flow — a self-contained
+ * concern (only touches its own running `code`/`summariesResult` and the
+ * `summaryArgs` it's handed), split out of `runCheck`. Callers keep the
+ * `config.checks.summaries && !parsed.linksOnly` guard — unchanged from
+ * before this extraction.
+ */
+const runSummariesVerb = Effect.fn('runSummariesVerb')(function* (
+  parsed: CheckParsed,
+  config: ResolvedConfig,
+  locale: Locale,
+  summaryArgs: CheckInputs['summaryArgs'],
+) {
+  let code = 0
+  let summariesResult: SummaryPlan | null = null
+
+  if (parsed.prune) {
+    const removed = yield* pruneOrphans(summaryArgs)
+    if (!parsed.json) {
+      yield* Console.log(
+        pick(locale, {
+          en: `🗑  removed ${removed} orphan summary/ies.`,
+          fr: `🗑  ${removed} résumé(s) orphelin(s) supprimé(s).`,
+        }),
+      )
+    }
+  }
+  if (parsed.migrateStamps) {
+    const result = yield* migrateStamps(summaryArgs)
+    yield* Console.log(
+      pick(locale, {
+        en: `🔄 Migrated ${result.migrated} legacy in-content stamp(s) off; stamped ${result.stamped} summary/ies (sidecar, bottom-up).`,
+        fr: `🔄 ${result.migrated} ancien(s) tampon(s) intégré(s) migré(s) ; ${result.stamped} résumé(s) tamponné(s) (fichier annexe, de bas en haut).`,
+      }),
+    )
+  } else if (parsed.stamp) {
+    const result = yield* stampSummaries(summaryArgs)
+    yield* Console.log(
+      pick(locale, {
+        en: `🔖 Stamped ${result.stamped} summary/ies (.cairn/** sidecar, bottom-up).`,
+        fr: `🔖 ${result.stamped} résumé(s) tamponné(s) (fichier annexe .cairn/**, de bas en haut).`,
+      }),
+    )
+    if (result.migrated > 0) {
+      yield* Console.log(
+        pick(locale, {
+          en: `🔄 Also cleaned up ${result.migrated} legacy in-content stamp(s) along the way — nothing else to do.`,
+          fr: `🔄 ${result.migrated} ancien(s) tampon(s) intégré(s) nettoyé(s) au passage — rien d'autre à faire.`,
+        }),
+      )
+    }
+    if (result.missing.length > 0) {
+      yield* Console.log(
+        pick(locale, {
+          en: `⚠️  ${result.missing.length} summary/ies to author first (content not written):`,
+          fr: `⚠️  ${result.missing.length} résumé(s) à créer d'abord (contenu non rédigé) :`,
+        }),
+      )
+      for (const node of result.missing) {
+        yield* Console.log(`  - ${node.path}`)
+      }
+      code = 1
+    }
+  } else {
+    const summaries = yield* checkSummaries(summaryArgs)
+    summariesResult = summaries
+    if (!parsed.json) {
+      yield* Console.log(formatSummaryReport(summaries, { locale, stampCommand: config.stampCommand }).join('\n'))
+      if (parsed.explain && summaries.todo.length > 0) {
+        const explanation = yield* explainSummaries(summaryArgs, { locale })
+        yield* Console.log(explanation.join('\n'))
+      } else if (summaries.todo.length > 0) {
+        yield* Console.log(
+          pick(locale, {
+            en: '\nTip: run with --explain to see why each summary above is stale or missing.',
+            fr: '\nAstuce : relancez avec --explain pour voir pourquoi chaque résumé ci-dessus est périmé ou manquant.',
+          }),
+        )
+      }
+    }
+    code = Math.max(code, summaryExitCode(summaries))
+  }
+
+  return { code, summariesResult }
+})
+
+/** `cairn check` (also the default action when no subcommand is given). */
+const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
+  const cwd = process.cwd()
+  const overrides = overridesFrom(parsed.locale, parsed.threshold, [...parsed.root, ...parsed.roots])
+  const config = yield* loadConfigOrFail(cwd, overrides, Option.getOrUndefined(parsed.config))
+  const locale = config.locale
+
+  const cliFlags: CheckCliFlags = {
+    fix: parsed.fix,
+    json: parsed.json,
+    linksOnly: parsed.linksOnly,
+    prose: parsed.prose,
+    refs: parsed.refs,
+    stamp: parsed.stamp,
+    summariesOnly: parsed.summariesOnly,
+  }
+
+  if (parsed.json && (parsed.stamp || parsed.migrateStamps)) {
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --stamp/--migrate-stamps' }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+  // --report-deletions isn't part of the CheckPlugin registry (it needs
+  // live GitFs, which the registry deliberately keeps out — see its own
+  // wiring below), so it can't share `rejectedJsonMessage`'s generic check;
+  // one hand-written guard, same shape the registry replaced 3 of.
+  if (parsed.json && parsed.reportDeletions) {
+    yield* Console.log(JSON.stringify({ error: '--json cannot be combined with --report-deletions' }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+  // Replaces 3 near-identical hand-written guards (--refs/--prose-refs/
+  // checks.coverage) with one generic, order-preserving check — each
+  // migrated plugin owns its own `jsonUnsupportedMessage`
+  // (./program/checks/CheckPlugin.ts), so a NEW plugin never needs a 4th
+  // copy-pasted `if` here.
+  const jsonRejection = rejectedJsonMessage(JSON_INCOMPATIBLE_PLUGINS, config, cliFlags)
+  if (jsonRejection !== null) {
+    yield* Console.log(JSON.stringify({ error: jsonRejection }))
+    yield* Effect.sync(() => (process.exitCode = 1))
+    return
+  }
+
+  const { absRoots, effectiveIgnore, summaryArgs, trackedFiles } = yield* resolveCheckInputs(cwd, config)
 
   let code = 0
   let linksResult: LinkCheckResult | null = null
@@ -409,72 +510,9 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   yield* reportOutcome(linksOutcome)
 
   if (config.checks.summaries && !parsed.linksOnly) {
-    if (parsed.prune) {
-      const removed = yield* pruneOrphans(summaryArgs)
-      if (!parsed.json) {
-        yield* Console.log(
-          pick(locale, {
-            en: `🗑  removed ${removed} orphan summary/ies.`,
-            fr: `🗑  ${removed} résumé(s) orphelin(s) supprimé(s).`,
-          }),
-        )
-      }
-    }
-    if (parsed.migrateStamps) {
-      const result = yield* migrateStamps(summaryArgs)
-      yield* Console.log(
-        pick(locale, {
-          en: `🔄 Migrated ${result.migrated} legacy in-content stamp(s) off; stamped ${result.stamped} summary/ies (sidecar, bottom-up).`,
-          fr: `🔄 ${result.migrated} ancien(s) tampon(s) intégré(s) migré(s) ; ${result.stamped} résumé(s) tamponné(s) (fichier annexe, de bas en haut).`,
-        }),
-      )
-    } else if (parsed.stamp) {
-      const result = yield* stampSummaries(summaryArgs)
-      yield* Console.log(
-        pick(locale, {
-          en: `🔖 Stamped ${result.stamped} summary/ies (.cairn/** sidecar, bottom-up).`,
-          fr: `🔖 ${result.stamped} résumé(s) tamponné(s) (fichier annexe .cairn/**, de bas en haut).`,
-        }),
-      )
-      if (result.migrated > 0) {
-        yield* Console.log(
-          pick(locale, {
-            en: `🔄 Also cleaned up ${result.migrated} legacy in-content stamp(s) along the way — nothing else to do.`,
-            fr: `🔄 ${result.migrated} ancien(s) tampon(s) intégré(s) nettoyé(s) au passage — rien d'autre à faire.`,
-          }),
-        )
-      }
-      if (result.missing.length > 0) {
-        yield* Console.log(
-          pick(locale, {
-            en: `⚠️  ${result.missing.length} summary/ies to author first (content not written):`,
-            fr: `⚠️  ${result.missing.length} résumé(s) à créer d'abord (contenu non rédigé) :`,
-          }),
-        )
-        for (const node of result.missing) {
-          yield* Console.log(`  - ${node.path}`)
-        }
-        code = 1
-      }
-    } else {
-      const summaries = yield* checkSummaries(summaryArgs)
-      summariesResult = summaries
-      if (!parsed.json) {
-        yield* Console.log(formatSummaryReport(summaries, { locale, stampCommand: config.stampCommand }).join('\n'))
-        if (parsed.explain && summaries.todo.length > 0) {
-          const explanation = yield* explainSummaries(summaryArgs, { locale })
-          yield* Console.log(explanation.join('\n'))
-        } else if (summaries.todo.length > 0) {
-          yield* Console.log(
-            pick(locale, {
-              en: '\nTip: run with --explain to see why each summary above is stale or missing.',
-              fr: '\nAstuce : relancez avec --explain pour voir pourquoi chaque résumé ci-dessus est périmé ou manquant.',
-            }),
-          )
-        }
-      }
-      code = Math.max(code, summaryExitCode(summaries))
-    }
+    const summariesOutcome = yield* runSummariesVerb(parsed, config, locale, summaryArgs)
+    code = Math.max(code, summariesOutcome.code)
+    summariesResult = summariesOutcome.summariesResult
   }
 
   // refs is the one migrated check with a `--stamp` verb of its own (a
