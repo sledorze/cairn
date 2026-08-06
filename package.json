@@ -36,7 +36,8 @@
   },
   "files": [
     "dist",
-    "schema"
+    "schema",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "bench": "vitest bench",
@@ -54,6 +55,7 @@
     "prepare": "lefthook install || true",
     "prepublishOnly": "pnpm build",
     "release": "changeset publish",
+    "ship": "bash scripts/ship.sh",
     "stamp": "tsx src/cli.ts check --summaries-only --stamp",
     "test": "vitest run",
     "test:watch": "vitest",

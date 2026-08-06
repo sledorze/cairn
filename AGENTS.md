@@ -99,6 +99,20 @@ You author the prose. The tool only verifies and stamps — and it never touches
 
 <!-- cairn:end -->
 
+# Maintaining this file
+
+Everything below `<!-- cairn:end -->` is hand-authored, not cairn-generated — it loads into
+every session's context regardless of relevance, so keep it lean. Per Anthropic's own
+guidance ([Claude Code best practices](https://code.claude.com/docs/en/best-practices)):
+"For each line, ask: would removing this cause Claude to make mistakes? If not, cut it" —
+a bloated file causes Claude to ignore the rules that matter.
+
+When adding a rule: state it, then ONE clause of concrete evidence (a file:line, a
+function name, a one-sentence incident) — not a paragraph of narrative setup. When editing
+an existing rule, tighten rather than append. Re-justify the file's length the same
+adversarial way periodically, not by self-assessment — this file was cut 33% (308→231
+lines) doing exactly that once; it can drift back up the same way it grew.
+
 # Release convention
 
 Releases are automated via [Changesets](https://github.com/changesets/changesets) (see
@@ -113,145 +127,119 @@ up in the next changelog, not a build failure.
 
 ## Reviewing the "Version Packages" PR before merging it
 
-Merging "Version Packages" is irreversible in effect — it publishes to npm and cuts a
-GitHub Release, not just a git merge. Before merging it, check each unconsumed changeset
-individually, not just that the PR's diff (`package.json`/`CHANGELOG.md`) looks
-mechanically correct:
+Merging it is irreversible in effect — it publishes to npm and cuts a GitHub Release, not
+just a git merge. Verify each unconsumed changeset individually before merging, not just
+that the diff looks mechanically correct:
 
-- **The changeset's own wording becomes the published CHANGELOG entry verbatim** — it is
-  not internal PR description text a reviewer can silently correct later. A real incident
-  this repo hit: a changeset described a new restriction as narrower than the code
-  actually implemented ("no leading `../`" when the real check exempted a `..` segment
-  anywhere), and that inaccurate sentence would have shipped to every consumer reading the
-  changelog. Re-verify every factual claim in a changeset against the CURRENT code before
-  merging, the same "grepped, not assumed" discipline this file requires everywhere else —
-  a changeset written when a PR was opened can go stale by the time it merges.
-- **A silently-introduced behavior change from an unrelated PR needs its own changeset,
-  retroactively, before release** — not just the PR that happened to also fix the original
-  issue. This repo hit exactly this: a `config.ts` rewrite (an internal Effect-conversion
-  refactor) incidentally carried a real, user-facing stricter symlink-escape check that its
-  own PR never flagged as user-facing and never got a changeset for. A stricter check is a
-  real, sharp-edged behavior change (see below), not "just an internal refactor," even when
-  it rides along inside one.
-- **Check for redundant/superseded open PRs targeting an issue a changeset is about to
-  close** — a changeset's issue reference can make GitHub auto-close that issue on merge,
-  silently orphaning another still-open PR that already fixed the same thing independently
-  (this repo had exactly this: two unrelated PRs, opened days apart, both fixing the same
-  filed issue). Cross-check `gh issue view <n>` / `gh pr list` for the referenced issue
-  before merging, not just before opening your own PR.
-- **A new restriction needs to be discoverable, not just correct** — if the change adds or
-  tightens a config-level constraint, confirm the JSON Schema description (`schema/
-cairn.schema.json`, generated from `core/Config.ts`'s own `Schema.annotate` calls) and any
-  relevant `--help` text mention it, not just the changeset/README. An editor's config
-  autocomplete/tooltip is a real user-facing surface this repo has silently left stale
-  before.
+- **A changeset's wording ships to the CHANGELOG verbatim** — re-verify every factual claim
+  against CURRENT code first. Incident: a changeset once understated a restriction ("no
+  leading `../`" when the real check exempted a `..` segment anywhere).
+- **An unrelated PR's incidental behavior change still needs its own changeset,
+  retroactively.** Incident: a `config.ts` Effect-conversion refactor once carried a real,
+  unflagged, user-facing stricter symlink-escape check.
+- **Check for a redundant open PR before merging a changeset that auto-closes its issue** —
+  GitHub auto-closes the referenced issue on merge. Incident: two independent PRs once fixed
+  the same filed issue days apart. `gh issue view <n>` / `gh pr list` before merging.
+- **A new restriction must be discoverable, not just correct** — confirm
+  `schema/cairn.schema.json` (from `Config.ts`'s `Schema.annotate`) and `--help` mention it,
+  not just the changeset/README.
 
 # Content-mutation safety (writing to files this codebase doesn't fully own)
 
-Any code path that WRITES BACK to a file the user authored — not a `.cairn/**` sidecar,
-not a build artifact, an actual doc/source file — must scope _which files it's allowed to
-touch_ structurally (by path/role classification: is this a summary? a managed artifact?),
-**never by a content-pattern match alone**. A regex/string match against file content can
-legitimately fire on a file that isn't the kind of file the operation is meant for — e.g. a
-doc that _documents_ one of cairn's own formats, with a real-looking example of it in prose.
-Scoping by content alone will silently mutate that doc's real, authored content, which is
-exactly the "silently checks/changes the wrong thing" failure class this whole tool exists
-to prevent, now committed by the tool itself.
+Any write-back to a user-authored file (not a `.cairn/**` sidecar, not a build artifact)
+must scope which files it's allowed to touch **structurally** (path/role classification),
+never by content-pattern match alone — a doc can legitimately contain the exact pattern
+you're matching (e.g. one documenting cairn's own stamp format).
 
-Concrete incident this rule generalises from: `CheckSummaries.ts`'s `stampFiles` originally
-stripped a legacy `<!-- source-sha256 -->` comment from **every** markdown file it read,
-scoped only by "does the content match `HASH_RE`" — with no check that the file was actually
-a summary. A source doc whose own prose legitimately contained that exact comment (e.g. one
-explaining cairn's old stamp format) had it silently deleted by an ordinary `--stamp` run.
-Fixed by additionally requiring `isSummaryFile(p, naming) || isDirSummary(p, naming)` before
-ever stripping — content-pattern match is necessary, never sufficient, to justify a write.
+Incident: `CheckSummaries.ts`'s `stampFiles` once stripped a legacy
+`<!-- source-sha256 -->` comment from any file matching `HASH_RE`, with no check the file
+was actually a summary — silently deleting it from a source doc that discussed the format.
+Fixed by requiring `isSummaryFile(p, naming) || isDirSummary(p, naming)` first.
 
-The positive example already in this codebase: `CheckLinks.ts`'s `--fix` never scans file
-content for a bare pattern — it rewrites only a specific link's target, recovered via
-_structured_ extraction (`checkContent`/`extractLinks`) and only when the replacement was
-independently verified unambiguous (`applyFix`). That's the shape to match: identify the
-exact structural element you're allowed to touch first, then mutate only that, never "find
-this pattern anywhere and replace it."
+Model to match: `CheckLinks.ts`'s `--fix` only mutates a link target recovered via
+structured extraction (`extractLinks`), and only once `applyFix` confirms it unambiguous —
+never "find this pattern anywhere and replace it."
 
-**When you add or review any new write path** (a new `--fix`-like flag, a new migration, a
-new auto-repair): ask "what stops this from firing on a file it wasn't meant for?" If the
-answer is only "the content happened to match," that's not yet a real answer. And pair the
-fix with a NEGATIVE test — not just "the target file gets fixed correctly," but "an
-adjacent, superficially-similar file is provably left untouched" (see
-`CheckSummaries.unit.test.ts`'s "never strips the legacy pattern from a SOURCE doc" test for
-the pattern to copy).
+New write path? Ask "what stops this from firing on an unintended file?" — "the content
+matched" isn't an answer. Pair the fix with a negative test proving an adjacent, similar
+file is left untouched (see `CheckSummaries.unit.test.ts`).
 
 # Shipping one iteration well
 
-No `CONTRIBUTING.md` exists, and the "Release convention" section above only covers
-changesets — neither says how to actually take a change from idea to merged PR. This section
-does. It's not aspirational: every rule below is a concrete lesson, distilled from real
-incidents that a lighter process missed.
+No `CONTRIBUTING.md` exists; this section covers idea → merged PR. Every rule below is a
+concrete lesson from a real incident, not aspirational advice.
 
-**Full local verify before every push, every time — not just before "done."**
-`pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check` (`pnpm verify` runs
-all five). `lefthook.yml`'s hooks already automate most of this — `pre-commit` runs
-lint/format, `pre-push` runs typecheck+test+build, then `check`, then the perf-regression
-gate — but that's not a reason to treat it as covered: hooks are skippable (`git ... --no-verify`),
-and no hook can construct the actual scenario a feature is meant to catch for you (see
-"Dogfood," next). Treat the hooks as the backstop, not the practice. A change that "obviously
-can't affect X" still gets the full pass regardless: the reference content-hash tracking
-feature (`RefStore.ts`) silently clobbered an unrelated summary sidecar the first time it ran
-for real — `tsc`/`vitest` were both green throughout, because nothing in the type system or
-the unit tests encoded "these two sidecar kinds must never share a path." Only running the
-real CLI against the real repo caught it.
+Use the `ship` skill (`.claude/skills/ship/`, wraps `pnpm ship`) to run this — one enforced
+path, not two copies to keep in sync.
 
-**Dogfood the actual CLI against the actual repo before calling a feature done — unit tests
-that pass are necessary, not sufficient.** Build `dist/cli.js` (or run via `tsx`) and run it
-for real, including the negative case: construct the exact scenario the feature is meant to
-catch (a renamed file, a reworded heading, a changed reference target), confirm it's
-reported, then revert and confirm it's clean again. Every check-detection feature in this
-repo (`CheckLinks.ts`'s anchor/cross-hierarchy validation, `CheckRefs.ts`'s drift tracking)
-had a real gap that only showed up this way — a blank error-report field, a crash on an
-unusual link shape, a false negative on a multi-reference doc — never caught by `tsc` or a
-unit test written before the dogfooding pass found the gap.
+**Full local verify before every push, every time.** `pnpm verify` (lint+typecheck+test+
+build+check). `lefthook.yml` automates most of this on `pre-commit`/`pre-push`, but hooks
+are skippable (`--no-verify`) and can't construct the scenario a feature is meant to catch —
+treat them as backstop, not practice. Incident: `RefStore.ts` once silently clobbered an
+unrelated summary sidecar on first real run, with `tsc`/`vitest` green throughout — only
+running the real CLI caught it.
 
-**Convert every manual dogfooding proof into a permanent test before moving on.** A bug you
-found by hand and fixed, with no test added, is a bug that can silently come back. The
-pattern that's worked repeatedly here: a real temp directory (`src/testSupport/tempProject.ts`),
-BEFORE/AFTER structure — assert clean, mutate a file on real disk exactly like a later commit
-would, assert the specific break is now caught with real (not placeholder) detail, then
-revert and re-assert clean. Prefer this over the in-memory test double alone when the thing
-under test is specifically about real filesystem behaviour (path resolution, sidecar
-placement, content hashing) — the in-memory double is faster and still worth keeping
-alongside it, but it can't catch what only the real `DocsFsLive` binding exercises.
+**Dogfood the actual CLI before calling a feature done — passing unit tests are necessary,
+not sufficient.** Build and run it for real: construct the exact scenario the feature
+should catch, confirm it's reported, revert, confirm clean. Every check-detection feature
+here (`CheckLinks.ts`, `CheckRefs.ts`) had a real gap — a blank field, a crash, a false
+negative — that only dogfooding found.
 
-**Run an adversarial review, from a purposely unbiased sub-agent, before every push.** The
-author of a change is the worst-positioned reviewer of it — they already believe the fix is
-correct, so they re-read their own reasoning instead of checking it. Before pushing, spawn a
-fresh agent with no prior context on the change (a plain diff/PR description, not a summary of
-your own reasoning) and ask it to find reasons the change is wrong, not to confirm it's right —
-try to break the fix, not tour it. This is a distinct step from "Dogfood" and "Convert every
-manual proof into a test" above: dogfooding proves the fix catches what it's meant to; an
-adversarial review checks for what you didn't think to test, an edge case the fix doesn't
-cover, or a regression it silently introduces elsewhere. Skippable only when the change is
-trivial (a typo, a comment, a one-line doc fix) — anything touching behaviour, a check's
-detection logic, or a write path gets the review.
+**Convert every manual dogfooding proof into a permanent test.** A bug found and fixed by
+hand with no test added can silently come back. Pattern that's worked: a real temp dir
+(`src/testSupport/tempProject.ts`), BEFORE/AFTER — assert clean, mutate on real disk,
+assert the break is caught, revert, re-assert clean. Prefer this over an in-memory double
+alone when the thing under test is real filesystem behavior (path resolution, sidecar
+placement, hashing).
+
+**RED before GREEN for any new test, not just regression tests.** Prove it fails against
+the thing it claims to catch before trusting it green — `git stash` the fix (or comment out
+the feature), rerun, confirm it fails for the right reason, then restore. Incident: a
+`--json`-incompatibility test once only checked "the flag's name appears somewhere in
+README" — trivially true even with the incompatibility undocumented, since the same names
+appear elsewhere as ordinary references.
+
+**Run an adversarial review, from an unbiased sub-agent, before every push.** The author is
+the worst-positioned reviewer — they already believe the fix is correct. Spawn a fresh
+agent with just the diff, no summary of your own reasoning, and ask it to find reasons the
+change is wrong. Distinct from dogfooding: dogfooding proves the fix catches what it's
+meant to; adversarial review checks for what you didn't think to test. Skippable only for a
+trivial change (typo, comment, one-line doc fix).
+
+**Before designing a new capability, run a cheap recurrence gate first; save the full ROI
+attack for after a concrete design exists.** "Has this happened more than once,
+independently?" is answerable before any design work and kills a true one-off cheaply.
+Don't front-load the full cost attack — cost is a property of the specific design, not the
+abstract problem. Incident: this repo's `checks.claims` episode spent two turns on design
+before an ROI attack (on the now-concrete design) reversed the pick; a one-line prevalence
+check up front (the bug had occurred once, self-found, in the same session proposing the
+fix) would have flagged it sooner.
+
+**For a high-stakes or uncertain finding, run at least one review-of-the-review round** —
+attacking the previous review's _completeness_, not the code. Incident: this repo's own
+README review needed a second round to catch it was itself incomplete (2 of 7 real `--json`
+cases found), a third round to catch an RCE risk in the safety-approved design that round
+missed, and a fourth to catch that even the safety-approved pick wasn't worth building.
+"What would make your last answer wrong?" surfaced each miss — a second identical review
+pass would not have.
 
 **Treat a structural/architectural claim in a doc as unverified until grepped, not just
-re-read.** "The architecture doc reflects the code" and "these two modules don't depend on
-each other" are exactly the kind of claim that silently rots as a codebase grows — this repo
-has caught real drift here twice (undocumented files after a feature PR; a mutual dependency
-between two directories that were supposed to be one-directional). Verify by construction:
-grep every import, confirm every doc-linked path resolves, confirm every real source file is
-named somewhere. For anything you can't easily self-check (you wrote both the code and the
-doc, so you're not a neutral reader of either), get an independent read — a fresh subagent
-with no context beyond "verify this claim," not a re-read of your own reasoning.
+re-read.** This repo has caught real drift here twice (undocumented files after a feature
+PR; a mutual dependency between two directories meant to be one-directional). Verify by
+construction: grep every import, confirm every doc-linked path resolves. For anything you
+can't self-check neutrally, get an independent read from a fresh subagent.
 
-**One logical concern per PR, based on the right parent branch.** If work B genuinely
-depends on work A landing first (A fixes a doc that B's own changes then build further on),
-branch B off A's branch, not off `main` — don't let a dependent change get PR'd against a
-`main` that doesn't have the prerequisite yet. Small, focused PRs are also what makes the
-rest of this section practical: a full verify pass and a dogfooding pass are fast and legible
-on one concern, and slow and easy to skim past on five.
+The same trap applies to a review's own evidence: a cited line range (e.g.
+`cli.ts:223-233`) is an unverified completeness claim, not a boundary. Incident: this
+repo's own README review cited that range for "2 `--json` conflicts" and never grepped past
+it, missing a 5-entry registry (`JSON_INCOMPATIBLE_PLUGINS`) that raised the real count to 7. Grep for the enclosing declaration (registry, array, enum) before trusting a line-range
+citation as the full extent.
 
-**A changeset for every user-facing change** (see "Release convention" above) — and write
-its summary for someone who will never read the PR description: what changed, and whether
-it can flip a previously-passing repo to failing (a new check getting stricter is a real,
-sharp-edged behaviour change, not just a bugfix, even though it "only" makes `cairn` more
-correct).
+**One logical concern per PR, based on the right parent branch.** If B genuinely depends on
+A landing first, branch B off A, not off `main`. Small, focused PRs are also what makes a
+full verify + dogfooding pass fast and legible on one concern instead of easy to skim past
+on five.
+
+**A changeset for every user-facing change** — written for someone who'll never read the PR
+description: what changed, and whether it can flip a previously-passing repo to failing (a
+stricter check is a real behavior change, not just a bugfix).

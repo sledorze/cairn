@@ -61,20 +61,20 @@ never writes into content either.
 
 ### Commands
 
-| Command                                   | What it does                                                               |
-| ----------------------------------------- | -------------------------------------------------------------------------- |
-| `cairn check`                             | Check summaries + links; exit 1 on any problem                             |
-| `cairn check --summaries-only`            | Check only summary freshness                                               |
-| `cairn check --links-only`                | Check only Markdown links                                                  |
-| `cairn check --links-only --fix`          | Auto-repair unambiguous dead links                                         |
-| `cairn check --summaries-only --stamp`    | Rewrite the `.cairn/` sidecar hash of existing summaries, bottom-up        |
-| `cairn check --prune`                     | Delete orphan summaries and orphan `.cairn/` sidecars                      |
-| `cairn check --migrate-stamps`            | Optional: same self-healing `--stamp` already does, as its own named step  |
-| `cairn check --refs --stamp`              | Opt-in: record each real reference target's content hash                   |
-| `cairn check --refs`                      | Opt-in: report references whose target content has drifted since           |
-| `cairn check --prose-refs`                | Opt-in, safe for permanent use: flag a drifted bare-backtick file citation |
-| `cairn check --report-deletions`          | Opt-in, informational only: report a deleted doc's orphaned content        |
-| `cairn init --agent claude\|copilot\|all` | Scaffold agent guidance files                                              |
+| Command                                                     | What it does                                                               |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `cairn check`                                               | Check summaries + links; exit 1 on any problem                             |
+| `cairn check --summaries-only`                              | Check only summary freshness                                               |
+| `cairn check --links-only`                                  | Check only Markdown links                                                  |
+| `cairn check --links-only --fix`                            | Auto-repair unambiguous dead links                                         |
+| `cairn check --summaries-only --stamp`                      | Rewrite the `.cairn/` sidecar hash of existing summaries, bottom-up        |
+| `cairn check --prune`                                       | Delete orphan summaries and orphan `.cairn/` sidecars                      |
+| `cairn check --migrate-stamps`                              | Optional: same self-healing `--stamp` already does, as its own named step  |
+| `cairn check --refs --stamp`                                | Opt-in: record each real reference target's content hash                   |
+| `cairn check --refs`                                        | Opt-in: report references whose target content has drifted since           |
+| `cairn check --prose-refs`                                  | Opt-in, safe for permanent use: flag a drifted bare-backtick file citation |
+| `cairn check --report-deletions`                            | Opt-in, informational only: report a deleted doc's orphaned content        |
+| `cairn init --agent claude\|copilot\|agents\|opencode\|all` | Scaffold agent guidance files                                              |
 
 ### Link checking
 
@@ -110,6 +110,11 @@ the run exit non-zero, same as a broken link would. `--summaries-only`, `--refs`
 `--prose-refs` skip an unreadable doc without crashing too, though without that same explicit
 `unreadable` reporting — for `--summaries-only` specifically, an unreadable-but-existing
 summary currently reads as `missing` rather than distinctly `unreadable`.
+
+`--json` cannot be combined with `--stamp`, `--migrate-stamps`, `--report-deletions`,
+`--refs`, `--prose-refs`, `checks.coverage`, `checks.docCoverage`, or `checks.freshness` —
+each rejects the combination with its own explicit (JSON-shaped) error rather than silently
+ignoring `--json` or one of the other flags.
 
 `cairn check --refs` is a separate, **opt-in** signal, off by default and not part of the
 `path`/`anchor`/`line` checks above: it tracks the _content_ of what a link points to, not
@@ -581,7 +586,9 @@ automatically:
 - **`AGENTS.md`** — a block appended to the repo-wide agent guide.
 - **`SKILL.md`** — the on-demand methodology for _writing good summaries_.
 
-Pass `--agent claude`, `--agent copilot`, or `--agent all`.
+Pass `--agent claude`, `--agent copilot`, `--agent agents` (writes only the cross-tool
+`AGENTS.md` block above — `--agent opencode` is an alias for this, since OpenCode and Codex
+read `AGENTS.md` natively and need no tool-specific file), or `--agent all`.
 
 ## CI usage
 
