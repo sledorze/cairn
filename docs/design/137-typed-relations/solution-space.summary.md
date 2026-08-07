@@ -24,8 +24,14 @@ Release 3 (symbol-scoped citations) as one instance of `symbol:`-typed object re
 leaving Releases 1–2 (file-level hash granularity) untouched. Under (E), ADR 0004 is
 unaffected either way.
 
-**Synthesis:** (C) ships first — smallest slice that makes #130 expressible — paired with
-(B)'s object-addressing so the one reproduced incident is actually caught, not just
-declared. Generic runners (the rest of (A)'s Should tier) ship one predicate at a time,
-each gated on a real declared-but-`open` relation in this repo's own docs. (D) stays
+**Synthesis, as originally proposed:** (C) ships first — smallest slice that makes #130
+expressible — paired with (B)'s object-addressing so the one reproduced incident is
+actually caught, not just declared. Generic runners (the rest of (A)'s Should tier) ship
+one predicate at a time, each gated on a real declared-but-`open` relation. (D) stays
 rejected as primary; (E) is the fallback if the deferred ROI attack comes back negative.
+
+**Revised, once the ROI attack was actually run (`roadmap.md` Release 0):** bundling (C)
+with (B) didn't hold up — (B) alone, using only existing `--refs`/`RefStore.ts` machinery,
+closes #130 without (C)'s vocabulary, syntax, or config surface. **(B) ships alone; (C) and
+everything downstream (including all of A's Should tier) is deferred**, not built, until a
+second, independent, in-repo recurrence justifies the added machinery.

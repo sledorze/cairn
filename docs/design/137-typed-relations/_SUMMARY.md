@@ -20,8 +20,10 @@ say a claim is right or wrong — only different. See
   #130 incident shape, red then green.
 - [Story map](./story-map.md) — the doc author's real workflow, mapped to stories and the
   walking-skeleton slice.
-- [Roadmap](./roadmap.md) — five releases (an explicit ROI checkpoint first, then four
-  shippable increments), with migration notes.
+- [Roadmap](./roadmap.md) — an explicit ROI checkpoint, actually run: verdict was **don't
+  build the full vocabulary**; only the narrow `--refs`-extra-target slice (solution-space
+  option B) is accepted scope. The originally-proposed larger Release 1 and Releases 2–4
+  are kept as a rejected-options record, gated on a concrete future trigger.
 - [Implementation details](./implementation-details.md) — concrete enough to start Release
   1 from directly; later releases are provisional.
 - [Knowledge / skill](./knowledge.md) — the reusable technique this design surfaced,

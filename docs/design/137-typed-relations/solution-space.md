@@ -150,7 +150,7 @@ question typed relations doesn't need to re-answer, only to let a `symbol:`-obje
 opt into once it's built. Under option (E), ADR 0004 is untouched and unaffected, which is
 also a legitimate reading of "do nothing" — it does not require reopening that ADR.
 
-## Synthesis — the roadmap's actual recommendation (detailed in `roadmap.md`)
+## Synthesis, as originally proposed — since revised by the Release 0 ROI checkpoint
 
 **(C) ships first: vocabulary, declaration, validation, mandatory evidence, gap reporting —
 no generic runners.** This is the smallest slice that makes #130 EXPRESSIBLE (the issue's
@@ -167,3 +167,13 @@ mechanism** but revisited for doc-level (not claim-site) relations if a real cas
 `problem-space.md`'s evidence-basis section) comes back negative** — every increment below
 is independently abandonable at that checkpoint without leaving ADR 0004 or #133 worse off
 than before this package existed.
+
+**Revised, after the ROI attack was actually run (`roadmap.md`'s Release 0):** the
+synthesis above bundled (C) and (B) together on the reasoning that (C)'s object-addressing
+was needed anyway; the ROI attack found that reasoning didn't hold at this evidence level —
+(B) alone, using only existing `--refs`/`RefStore.ts` machinery, closes the one
+fully-reproduced incident (#130) without (C)'s vocabulary, annotation syntax, or config
+surface at all. **(B) ships alone. (C) — and everything downstream of it, including the
+Should-tier runners and (A) in full — is deferred, not built**, until a second, independent,
+in-repo recurrence makes the added machinery earn its cost. See `roadmap.md`'s Release 0
+and Release 1 for the full verdict and the accepted, narrower scope.

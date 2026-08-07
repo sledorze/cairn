@@ -1,22 +1,29 @@
 # Roadmap (issue #137) — summary
 
-Five releases; unlike `101-refs-symbol-scoping/roadmap.md`, the split here is genuinely
-load-bearing, not just conservative sequencing — it exists specifically to avoid repeating
-the killed `checks.claims` episode's mistake of designing generic runners ahead of real
-need.
+**Release 0's ROI checkpoint was actually run**, not just proposed — an independent
+adversarial review against this design's real cost. **Verdict: don't build the full
+vocabulary.** Six findings: evidence base (one maintainer, no outside corroboration)
+doesn't support the investment size versus option B's much smaller cost; the recurrence
+evidence (`falsestart`'s 12 checkers) is from a different repo, not a second recurrence
+inside cairn itself; a closed predicate registry is a many-contributor governance defense
+cairn's one maintainer doesn't need; ADR 0004's own Release 1 is already accepted, cheaper,
+and still unbuilt — real opportunity cost; a cheaper "just write more careful prose"
+alternative was never given a fair hearing; and two full design efforts landing on the same
+"don't build the big version" conclusion is itself a process signal.
 
-- **Release 0** — an explicit ROI checkpoint (adversarial review of this design's actual
-  cost), not code. "Don't build this" is a legitimate outcome.
-- **Release 1** — the Must tier (declare, validate, mandatory evidence, gap report) plus
-  the one Should-tier runner already proven in spike 7 (`covers set:published-files`),
-  shipped together because Must alone can't catch the reproduced #130 incident.
-- **Release 2** — `symbol:path#Name` objects, reusing ADR 0004's own validated scanner
-  primitive; explicitly supersedes (amends) ADR 0004's Release 3 only, leaving its
-  Releases 1–2 untouched.
-- **Release 3** — modality-grouped reporting, closing #133, strictly stronger than #133's
-  own proposed doc-vs-source label.
-- **Release 4** — one more Should-tier predicate, chosen from real accumulated `open`
-  relations in this repo's own docs, deliberately unscoped here.
+**What actually ships — Release 1 (accepted): solution-space option B only.** Declared
+extra `--refs` targets, no predicate vocabulary. One small extraction function plus a
+one-line union at one call site in `CheckRefs.ts`'s `stampRefs` — `checkRefs` needs zero
+changes, since it already replays whatever's in the sidecar regardless of how the target
+got there. Fully closes the one reproduced incident (#130, spike 7's shape) using only
+existing `RefStore.ts` machinery.
 
-Out of scope for every release: the Could-tier review-prompt generation, adjudicating
-undecidable relations, executing arbitrary project code — all per the issue's own MoSCoW.
+**Releases 2–4 (on hold, kept as a rejected-options record, not deleted):** the original,
+larger Release 1 (Must tier + `covers`), `symbol:path#Name` objects, modality-grouped
+reporting, and further Should-tier predicates all build on the rejected vocabulary
+architecture and stay on hold behind one shared trigger: a second, independently-shaped
+incident recurring inside cairn's OWN repo that option B's extra-target mechanism genuinely
+can't express — not a fixed date, not "if it becomes more important."
+
+Out of scope regardless: the Could-tier review-prompt generation, adjudicating undecidable
+relations, executing arbitrary project code — all per the issue's own MoSCoW.
