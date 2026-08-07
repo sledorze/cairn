@@ -125,6 +125,20 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
     expect(fs.existsSync(refsSidecarPath)).toBeTruthy()
   })
 
+  it('checkRefs() treats a corrupt/unparseable refs sidecar as nothing recorded, not a crash', async () => {
+    const p = project('checkrefs-corrupt-sidecar', {
+      '.cairn/refs/docs/index.md.json': 'not valid json at all {{{',
+      'docs/index.md': '[core](../src/engine.ts)',
+      'src/engine.ts': 'export const x = 1\n',
+    })
+    const result = await run(checkRefs({ base: p.root, roots: [path.join(p.root, 'docs')] }))
+    // The corrupt sidecar contributes nothing — same as a doc never stamped
+    // at all, matching `parseRefs`'s own "corrupt JSON reads as null, never
+    // throws" contract.
+    expect(result.checked).toBe(0)
+    expect(result.stale).toEqual([])
+  })
+
   // Found via adversarial "no unhandled exception" review: a doc that lists
   // fine but can't be READ used to crash the whole run — `dfs.readFile` on
   // the primary scan is `Effect.orDie`-wrapped. Skipped when running as
@@ -188,4 +202,85 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
       }
     },
   )
+})
+
+// Issue #130's real incident, reproduced end to end: a doc's claim about
+// package.json#files has no natural [text](path) link target, so nothing
+// tracked its drift before this feature — this is the permanent regression
+// test converted from docs/design/137-typed-relations/spikes.md's spike 7
+// manual dogfooding proof (AGENTS.md: "convert every manual dogfooding proof
+// into a permanent test").
+describe('stampRefs() / checkRefs() with a declared `cairn-refs` target (issue #130)', () => {
+  it('BEFORE/AFTER: package.json changes with no matching link in the doc, still caught as stale, then a doc fix clears it', async () => {
+    const p = project('checkrefs-declared', {
+      'docs/README.summary.md': [
+        'The published tarball ships:',
+        '',
+        '```cairn-refs',
+        '../package.json',
+        '```',
+        '',
+      ].join('\n'),
+      'package.json': '{\n  "files": ["dist", "schema"]\n}\n',
+    })
+    const args = { base: p.root, roots: [path.join(p.root, 'docs')] }
+
+    const stampResult = await run(stampRefs(args))
+    expect(stampResult.stamped).toBe(1)
+
+    const before = await run(checkRefs(args))
+    expect(before.checked).toBe(1)
+    expect(before.stale).toEqual([])
+
+    // The real #130 incident: package.json#files gains an entry; the doc
+    // (which never linked package.json at all) is never touched.
+    p.write('package.json', '{\n  "files": ["dist", "schema", "CHANGELOG.md"]\n}\n')
+
+    const after = await run(checkRefs(args))
+    expect(after.stale).toHaveLength(1)
+    expect(after.stale[0]?.file).toBe(path.join(p.root, 'docs', 'README.summary.md'))
+    expect(after.stale[0]?.refs).toEqual([
+      { currentHash: expect.any(String), recordedHash: expect.any(String), target: '../package.json' },
+    ])
+    expect(after.stale[0]?.refs[0]?.currentHash).not.toBe(after.stale[0]?.refs[0]?.recordedHash)
+
+    // Re-stamping (the doc author's real fix: "yes, I've now accounted for
+    // this change") clears the drift, same as any real link's target.
+    const restamp = await run(stampRefs(args))
+    expect(restamp.stamped).toBe(1)
+    const reverified = await run(checkRefs(args))
+    expect(reverified.stale).toEqual([])
+  })
+
+  it('a real link and a declared target in the same doc are both tracked, deduped if they name the same target', async () => {
+    const p = project('checkrefs-declared-mixed', {
+      'docs/index.md': [
+        '[core](../src/engine.ts)',
+        '',
+        '```cairn-refs',
+        '../package.json',
+        '../src/engine.ts',
+        '```',
+      ].join('\n'),
+      'package.json': '{}\n',
+      'src/engine.ts': 'export const x = 1\n',
+    })
+    const args = { base: p.root, roots: [path.join(p.root, 'docs')] }
+
+    const stampResult = await run(stampRefs(args))
+    expect(stampResult.stamped).toBe(1)
+
+    const sidecarPath = path.join(p.root, '.cairn', 'refs', 'docs', 'index.md.json')
+    const sidecar = fs.readFileSync(sidecarPath, 'utf8')
+    // Exactly two records: the real link and the declared package.json —
+    // engine.ts declared a second time is deduped against the real link,
+    // not recorded twice.
+    expect(sidecar.match(/"target"/g) ?? []).toHaveLength(2)
+
+    p.write('package.json', '{"changed": true}\n')
+    const after = await run(checkRefs(args))
+    expect(after.stale).toEqual([
+      { file: path.join(p.root, 'docs', 'index.md'), refs: [expect.objectContaining({ target: '../package.json' })] },
+    ])
+  })
 })

@@ -1,3 +1,4 @@
+import { it as effectIt } from '@effect/vitest'
 import { Effect } from 'effect'
 import { describe, expect, it, test } from 'vitest'
 
@@ -125,4 +126,24 @@ describe('refsPlugin.stamp()', () => {
     )
     expect(lines).toEqual(['🔗 1 document(s) tamponné(s) (hachage des références, fichier annexe .cairn/**).'])
   })
+
+  // Same `trackedFiles`-narrowing wiring `describe('refsPlugin.run()')`
+  // exercises, but on the `stamp` side of the ternary
+  // (`trackedFiles === undefined ? {} : { trackedFiles }`) — an untracked
+  // doc's link must not get stamped even though it's a real, resolvable
+  // reference.
+  effectIt.effect('reaches stampRefs with trackedFiles narrowing which docs get stamped', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs(FIXTURE)
+      const lines = yield* stamp({
+        base: '/r',
+        cli: CLI,
+        ignore: [],
+        resolved: DEFAULT_CONFIG,
+        roots: ['/r'],
+        trackedFiles: new Set(['/r/b.md']), // a.md itself is untracked
+      }).pipe(Effect.provide(layer))
+      expect(lines).toEqual(["🔗 Stamped 0 doc(s)' reference hash(es) (.cairn/** sidecar)."])
+    }),
+  )
 })

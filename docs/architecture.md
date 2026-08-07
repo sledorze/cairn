@@ -70,6 +70,13 @@ summary links to every child") — is one-directional and real, not a cycle.
        shape and its `.cairn/refs/**` namespace (via `../sidecar.ts`'s
        `namespace` parameter — see its own file header for the real path
        collision this closes) for `program/links/CheckRefs.ts`'s drift tracking.
+     - [`DeclaredRefs.ts`](../src/core/links/DeclaredRefs.ts) — extraction of
+       DECLARED `--refs` targets from a ` ```cairn-refs ``` ` fenced block
+       (issue #130): a doc's claim about a file it has no reason to
+       hyperlink still gets its drift tracked, feeding the same
+       `program/links/CheckRefs.ts` `stampRefs` pipeline a real link's
+       target already uses — `checkRefs` itself needs no changes, since it
+       only ever replays what `stampRefs` wrote to the sidecar.
      - [`ProseRefs.ts`](../src/core/links/ProseRefs.ts) — pure extraction of
        bare-backtick file-path citations in prose (`--prose-refs`, issue
        #47): which inline code spans look like a rooted repo path, worth

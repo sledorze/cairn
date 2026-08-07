@@ -137,6 +137,19 @@ be stale," distinct from a broken link (the link still resolves; what it once me
 still hold). Still v1/experimental (whole-file hashing only — a one-line unrelated change to
 a large target file is reported the same as a change to the exact part being referenced).
 
+Some claims have no `[text](path)` link to make in the first place — "the published tarball
+ships these files" isn't naturally a hyperlink to `package.json`. A ` ```cairn-refs ``` `
+fenced block declares extra targets for `--refs`/`--stamp` to track alongside a doc's real
+links, one path (optionally `path#anchor`) per line:
+
+````markdown
+```cairn-refs
+../package.json
+```
+````
+
+Tracked exactly like a real link's target — same hash, same drift report, same `--stamp`.
+
 ### Prose file citations: `--prose-refs`
 
 Docs often cite a source file inline in backticks, with no `[text](path)` syntax at all — e.g.
