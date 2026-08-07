@@ -21,7 +21,10 @@ Separation of concerns: pure decisions, IO at the edges.
     (linear fenced-code masking), `RefStore` (`RefsRecord` shape, `.cairn/refs/**`
     namespace — kept disjoint from `StampStore`'s sidecar path: a summary-tree node and a
     scanned doc can be the SAME file, so the two must never collide), `ProseRefs` (pure
-    bare-backtick-citation candidate extraction for `--prose-refs`, issue #47).
+    bare-backtick-citation candidate extraction for `--prose-refs`, issue #47),
+    `DeclaredRefs` (issue #130: extracts extra `--refs` targets from a `cairn-refs` fenced
+    block — a doc's claim with no reason to hyperlink still gets drift-tracked, feeding
+    `stampRefs`'s existing pipeline; `checkRefs` itself needs no changes).
   - **`structure/`**: the doc-kind/coverage-graph domain (docs/adr/0002, docs/adr/0003) —
     `DocMetadata` (path-glob kind classification + one ordered `heading`/`ref` node
     sequence per doc), `DocGraph` (corpus-wide inbound-reference `Bag`, for orphans),

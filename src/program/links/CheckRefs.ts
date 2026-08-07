@@ -17,6 +17,8 @@ import * as nodePath from 'node:path'
 
 import { Effect } from 'effect'
 
+import { extractDeclaredRefs } from '../../core/links/DeclaredRefs.ts'
+import type { Reference } from '../../core/links/MarkdownLinks.ts'
 import { extractReferences } from '../../core/links/MarkdownLinks.ts'
 import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
@@ -111,6 +113,28 @@ const toRecord = (ref: { readonly anchor: string | null; readonly target: string
   ref.anchor === null ? { hash, target: ref.target } : { anchor: ref.anchor, hash, target: ref.target }
 
 /**
+ * A real link's targets (`extractReferences`) plus a doc's DECLARED extra
+ * targets (`extractDeclaredRefs`, issue #130 — a claim with no natural link
+ * syntax) — unioned, deduped by `(target, anchor)`. Real links win ties: a
+ * target already reached via a real link is never re-added from a
+ * declaration, so nothing about how a target reached this list is visible
+ * downstream (same `RefRecord` shape either way). `checkRefs` needs no
+ * matching change — it only ever replays what `stampRefs` already wrote.
+ */
+const allReferenceTargets = (content: string): Reference[] => {
+  const refs = extractReferences(content)
+  const seen = new Set(refs.map((r) => `${r.target}#${r.anchor ?? ''}`))
+  for (const ref of extractDeclaredRefs(content)) {
+    const key = `${ref.target}#${ref.anchor ?? ''}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      refs.push(ref)
+    }
+  }
+  return refs
+}
+
+/**
  * Record the current content hash of every real reference each scanned doc
  * makes. Overwrites any previously-recorded sidecar unconditionally (same
  * "stamp always writes fresh state" convention as `stampSummaries`) — a doc
@@ -134,7 +158,7 @@ export const stampRefs = ({
     for (const [file, content] of mdFiles) {
       const fromDir = path.dirname(file)
       const records: RefRecord[] = []
-      for (const ref of extractReferences(content)) {
+      for (const ref of allReferenceTargets(content)) {
         const targetAbs = path.resolve(fromDir, ref.target)
         const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs })
         if (targetContent !== null) {

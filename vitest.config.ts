@@ -53,7 +53,7 @@ export default defineConfig({
         // own `checkAtLeastSane` precedent above already explains — the
         // math looks like a regression only because the removed branches
         // were covered at 100%, above the overall average.
-        branches: 92.54,
+        branches: 92.63,
         // functions/statements: manually recalibrated (config.ts's move to
         // Effect's FileSystem service), not auto-raised.
         // `assertNoRootEscape`'s `fs.realPath(dir)` failure-recovery
@@ -73,9 +73,9 @@ export default defineConfig({
         // ratio shift with no coverage lost: every real branch this
         // rewrite touches (the mixed file/directory glob-segment case
         // included) has its own real-filesystem test.
-        functions: 98.92,
-        lines: 99.44,
-        statements: 99.27,
+        functions: 98.93,
+        lines: 99.51,
+        statements: 99.34,
       },
     },
     // scripts/**/*.test.ts: a genuine exception to "tests live under src/" —
