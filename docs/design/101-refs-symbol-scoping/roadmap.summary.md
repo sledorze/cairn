@@ -1,5 +1,7 @@
 # Roadmap (issue #101) — summary
 
+**Release 1 has shipped** (ADR 0004, now `accepted`). Releases 2/3 remain provisional.
+
 Release 1 ships before Release 2 not because Release 2 is too risky
 to attempt directly (its core mechanism was already spike-confirmed
 before this roadmap was written) — the real reason is narrower:

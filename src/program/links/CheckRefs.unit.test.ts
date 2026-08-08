@@ -1,6 +1,8 @@
-import { Effect } from 'effect'
+import { it as effectIt } from '@effect/vitest'
+import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './CheckRefs.ts'
 
@@ -309,7 +311,132 @@ describe('ignore (found via a second independent audit)', () => {
     )
     expect(result.stamped).toBe(1)
   })
+})
 
+// ADR 0004 Release 1 (issue #101): `refs.scope`, a per-glob hashing
+// granularity for `--refs` targets. `unit: 'ignore'` closes the reported
+// repro — a doc citing many noisy leaf files no longer fails on every
+// unrelated edit to an exempted one — without needing Release 2's
+// export-surface parser at all.
+describe('scope (ADR 0004 Release 1, refs.scope)', () => {
+  effectIt.effect(
+    'a target matching unit: "ignore" is never included in stampRefs\'s sidecar, and its later edits never report drift',
+    () =>
+      Effect.gen(function* () {
+        const layer = makeTestDocsFs({
+          '/r/docs/index.md': { content: '[a](../src/a.ts)\n[b](../src/noisy.ts)', mtimeMs: 1 },
+          '/r/src/a.ts': { content: 'export const a = 1\n', mtimeMs: 1 },
+          '/r/src/noisy.ts': { content: 'export const noisy = 1\n', mtimeMs: 1 },
+        })
+        const scope = [{ glob: 'src/noisy.ts', unit: 'ignore' as const }]
+        yield* stampRefs({ base: '/r', roots: ['/r/docs'], scope }).pipe(Effect.provide(layer))
+        const before = yield* checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+        expect(before.checked).toBe(1) // a.ts's sidecar exists; noisy.ts was never recorded
+
+        const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+        yield* dfs.writeFile('/r/src/noisy.ts', 'export const noisy = 2 // changed\n')
+        const after = yield* checkRefs({ base: '/r', roots: ['/r/docs'], scope }).pipe(Effect.provide(layer))
+        expect(after.stale).toEqual([])
+      }),
+  )
+
+  effectIt.effect(
+    'checkRefs never reports a unit: "ignore" target even against a sidecar recorded BEFORE scope was added',
+    () =>
+      Effect.gen(function* () {
+        const layer = makeTestDocsFs({
+          '/r/.cairn/refs/docs/index.md.json': {
+            content: '{"refs":[{"target":"../src/noisy.ts","hash":"old-hash"}]}',
+            mtimeMs: 1,
+          },
+          '/r/docs/index.md': { content: '[b](../src/noisy.ts)', mtimeMs: 1 },
+          '/r/src/noisy.ts': { content: 'export const noisy = 2 // already drifted\n', mtimeMs: 1 },
+        })
+        const result = yield* checkRefs({
+          base: '/r',
+          roots: ['/r/docs'],
+          scope: [{ glob: 'src/noisy.ts', unit: 'ignore' }],
+        }).pipe(Effect.provide(layer))
+        expect(result.stale).toEqual([])
+      }),
+  )
+
+  // Matches `CheckCoverage.unit.test.ts`'s own "never touches the
+  // filesystem for X" pattern (issue #39's own discipline): an ignored
+  // target must be excluded BEFORE `isSafelyWithinBase`/`realPath` runs, not
+  // read-then-discarded.
+  effectIt.effect('never calls realPath (isSafelyWithinBase) for an ignored target', () =>
+    Effect.gen(function* () {
+      const files: Record<string, string> = {
+        '/r/docs/index.md': '[b](../src/noisy.ts)',
+        '/r/src/noisy.ts': 'export const noisy = 1\n',
+      }
+      let realPathCalledForNoisy = false
+      const service: DocsFsService = {
+        deleteFile: () => Effect.succeed(undefined),
+        exists: () => Effect.succeed(true),
+        listFiles: () => Effect.succeed(Object.keys(files)),
+        readFile: (abs) => Effect.succeed(files[abs] ?? ''),
+        realPath: (abs) => {
+          if (abs.endsWith('noisy.ts')) {
+            realPathCalledForNoisy = true
+          }
+          return Effect.succeed(abs)
+        },
+        stat: () => Effect.die('not used in this test'),
+        writeFile: () => Effect.succeed(undefined),
+      }
+      const layer = Layer.succeed(DocsFs, service)
+      yield* stampRefs({
+        base: '/r',
+        roots: ['/r/docs'],
+        scope: [{ glob: 'src/noisy.ts', unit: 'ignore' }],
+      }).pipe(Effect.provide(layer))
+      expect(realPathCalledForNoisy).toBeFalsy()
+    }),
+  )
+
+  effectIt.effect(
+    'first-match-wins: an earlier "ignore" group beats a later "whole-file" group covering the same target',
+    () =>
+      Effect.gen(function* () {
+        const layer = makeTestDocsFs({
+          '/r/docs/index.md': { content: '[b](../src/noisy.ts)', mtimeMs: 1 },
+          '/r/src/noisy.ts': { content: 'export const noisy = 1\n', mtimeMs: 1 },
+        })
+        yield* stampRefs({
+          base: '/r',
+          roots: ['/r/docs'],
+          scope: [
+            { glob: 'src/noisy.ts', unit: 'ignore' },
+            { glob: 'src/**', unit: 'whole-file' },
+          ],
+        }).pipe(Effect.provide(layer))
+        const result = yield* checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+        expect(result.checked).toBe(0) // nothing was recorded — no sidecar to check
+      }),
+  )
+
+  effectIt.effect("no matching scope group preserves today's only behavior — whole-file, drift still detected", () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/index.md': { content: '[b](../src/other.ts)', mtimeMs: 1 },
+        '/r/src/other.ts': { content: 'export const other = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({
+        base: '/r',
+        roots: ['/r/docs'],
+        scope: [{ glob: 'src/noisy.ts', unit: 'ignore' }],
+      }).pipe(Effect.provide(layer))
+      const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+      yield* dfs.writeFile('/r/src/other.ts', 'export const other = 2 // changed\n')
+      const result = yield* checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      expect(result.stale).toHaveLength(1)
+    }),
+  )
+})
+
+describe('ignore-glob-shape (root-relative, issue #102 regression host)', () => {
   // Issue #102: a root-relative pattern with no leading `**/` (the form
   // anyone actually writes) must exclude a file just as reliably as the
   // `**`-prefixed patterns above — regression coverage exercised through
