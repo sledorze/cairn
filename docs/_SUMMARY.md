@@ -7,3 +7,5 @@ Design notes for cairn. Start here.
 - [adr](./adr) — architectural decision records.
 - [design](./design) — full problem-space/solution-space design packages for non-trivial
   issues, ahead of implementation.
+- [incidents](./incidents) — real mistakes made building this repo, each traced to the
+  `AGENTS.md` rule it produced.

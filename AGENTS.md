@@ -181,11 +181,9 @@ running the real CLI caught it.
 
 **`pnpm coverage`'s auto-raised thresholds (`vitest.config.ts`) are a real diff to commit,
 not a side effect to ignore.** The tool prints "you may want to push with updated coverage
-thresholds" for exactly this reason — it's a hint, not a formality. Incident: left
-uncommitted across two separate ship runs in the same session before being caught; the
-coverage GATE still passed each time (old thresholds were a lower floor than real coverage),
-masking that the floor itself hadn't tightened to match. `git status` after `pnpm ship`
-before considering a push done.
+thresholds" for exactly this reason — it's a hint, not a formality. `git status` after
+`pnpm ship` before considering a push done. Incident:
+[`docs/incidents/coverage-thresholds-left-uncommitted-twice.md`](docs/incidents/coverage-thresholds-left-uncommitted-twice.md).
 
 **Dogfood the actual CLI before calling a feature done — passing unit tests are necessary,
 not sufficient.** Build and run it for real: construct the exact scenario the feature
@@ -207,9 +205,9 @@ the feature), rerun, confirm it fails for the right reason, then restore. Incide
 README" — trivially true even with the incompatibility undocumented, since the same names
 appear elsewhere as ordinary references. **Stage the real implementation before mutating it
 for this** — `git checkout -- <file>` restores the INDEX, not your last edit; done on an
-unstaged file it silently discards the real fix along with the mutation. Incident: exactly
-this wiped a real `checkRefs` implementation mid-session, costing a full re-write to recover
-— `git add` the real change first, then mutate, then `git restore --worktree` to come back.
+unstaged file it silently discards the real fix along with the mutation; `git add` the real
+change first, then mutate, then `git restore --worktree` to come back. Incident:
+[`docs/incidents/git-checkout-discards-unstaged-mutation-proof.md`](docs/incidents/git-checkout-discards-unstaged-mutation-proof.md).
 
 **Run an adversarial review, from an unbiased sub-agent, before every push — "just a test
 file" is not the trivial exception.** The author is the worst-positioned reviewer — they
@@ -217,9 +215,9 @@ already believe the fix is correct. Spawn a fresh agent with just the diff, no s
 your own reasoning, and ask it to find reasons the change is wrong. Distinct from
 dogfooding: dogfooding proves the fix catches what it's meant to; adversarial review checks
 for what you didn't think to test. Skippable only for a genuinely trivial change (typo,
-comment, one-line doc fix) — NOT "I only added a test," which still needs review of what
-the test actually proves. Incident: a "just a test" commit's later review caught it covered
-only half the wiring it claimed (`refsPlugin.run` but not `.stamp`).
+comment, one-line doc fix) — NOT "I only added a test," which still needs review of what the
+test actually proves. Incident:
+[`docs/incidents/just-a-test-review-skip-hid-a-real-gap.md`](docs/incidents/just-a-test-review-skip-hid-a-real-gap.md).
 
 **Before designing a new capability, run a cheap recurrence gate first; save the full ROI
 attack for after a concrete design exists.** "Has this happened more than once,
@@ -255,9 +253,8 @@ citation as the full extent.
 right.** If B genuinely depends on A landing first, branch B off A, not off `main`; new,
 unrelated work never piles onto whatever branch happens to be checked out, even one with an
 open PR already. Small, focused PRs are also what makes a full verify + dogfooding pass fast
-and legible on one concern instead of easy to skim past on five. Incident: a feature built
-directly on a docs-only PR's branch silently grew that PR a full unrelated production
-change, caught late, needing a `git reset --hard` + cherry-pick to split apart.
+and legible on one concern instead of easy to skim past on five. Incident:
+[`docs/incidents/unrelated-feature-bundled-into-docs-only-pr.md`](docs/incidents/unrelated-feature-bundled-into-docs-only-pr.md).
 
 **A changeset for every user-facing change** — written for someone who'll never read the PR
 description: what changed, and whether it can flip a previously-passing repo to failing (a
