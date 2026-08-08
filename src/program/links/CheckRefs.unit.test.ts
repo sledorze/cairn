@@ -2,6 +2,7 @@ import { it as effectIt } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { hashContent } from '../../core/hashing.ts'
 import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import { checkRefs, formatRefsReport, refsExitCode, stampRefs } from './CheckRefs.ts'
@@ -105,7 +106,12 @@ describe('stampRefs() / checkRefs()', () => {
     expect(after.stale[0]?.file).toBe('/r/docs/index.md')
     // Exactly the ONE drifted reference — not a, not c, not the guide anchor.
     expect(after.stale[0]?.refs).toEqual([
-      { currentHash: expect.any(String), recordedHash: expect.any(String), target: '../src/b.ts' },
+      {
+        currentHash: expect.any(String),
+        recordedHash: expect.any(String),
+        target: '../src/b.ts',
+        targetKindGuidance: [],
+      },
     ])
 
     // Now change a SECOND target too — both, and only both, must be reported,
@@ -186,7 +192,15 @@ describe('formatRefsReport()', () => {
       stale: [
         {
           file: 'docs/index.md',
-          refs: [{ currentHash: 'def456ghijk', recordedHash: 'abc123defgh', target: '../src/x.ts' }],
+          kindGuidance: [],
+          refs: [
+            {
+              currentHash: 'def456ghijk',
+              recordedHash: 'abc123defgh',
+              target: '../src/x.ts',
+              targetKindGuidance: [],
+            },
+          ],
         },
       ],
     })
@@ -201,7 +215,10 @@ describe('formatRefsReport()', () => {
       stale: [
         {
           file: 'docs/index.md',
-          refs: [{ anchor: 'intro', currentHash: 'bb', recordedHash: 'aa', target: './guide.md' }],
+          kindGuidance: [],
+          refs: [
+            { anchor: 'intro', currentHash: 'bb', recordedHash: 'aa', target: './guide.md', targetKindGuidance: [] },
+          ],
         },
       ],
     })
@@ -432,6 +449,152 @@ describe('scope (ADR 0004 Release 1, refs.scope)', () => {
       yield* dfs.writeFile('/r/src/other.ts', 'export const other = 2 // changed\n')
       const result = yield* checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
       expect(result.stale).toHaveLength(1)
+    }),
+  )
+})
+
+// Kind-aware stale-ref guidance: reuses `checks.coverage.kinds`' own,
+// already-mandatory `description` field as review context on drift — no new
+// config surface, no free-text-per-reference field (design's own v1 was
+// rejected for exactly that: citation rot, no closed vocabulary). Absent
+// `kinds` (the default) preserves today's behavior byte-for-byte.
+describe('kind-aware stale-ref guidance', () => {
+  const SPEC_KIND = {
+    description: 'States a behavioral contract for checkout.',
+    id: 'spec',
+    select: { by: 'path' as const, glob: '**/spec/**' },
+  }
+  const PERF_KIND = {
+    description: 'Perf-critical; re-benchmark before accepting drift.',
+    id: 'perf',
+    select: { by: 'path' as const, glob: '**/perf/**' },
+  }
+
+  effectIt.effect("surfaces a matching kind's description as guidance on a stale doc", () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/spec/checkout.md': { content: '[impl](../../src/checkout.ts)', mtimeMs: 1 },
+        '/r/src/checkout.ts': { content: 'export const checkout = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+      yield* dfs.writeFile('/r/src/checkout.ts', 'export const checkout = 2 // changed\n')
+      const result = yield* checkRefs({ base: '/r', kinds: [SPEC_KIND], roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      expect(result.stale[0]?.kindGuidance).toEqual(['States a behavioral contract for checkout.'])
+    }),
+  )
+
+  effectIt.effect('a stale doc matching NO declared kind gets an empty kindGuidance, not an error', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/random/notes.md': { content: '[impl](../../src/other.ts)', mtimeMs: 1 },
+        '/r/src/other.ts': { content: 'export const other = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+      yield* dfs.writeFile('/r/src/other.ts', 'export const other = 2 // changed\n')
+      const result = yield* checkRefs({ base: '/r', kinds: [SPEC_KIND, PERF_KIND], roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      expect(result.stale[0]?.kindGuidance).toEqual([])
+    }),
+  )
+
+  effectIt.effect("a doc matching multiple declared kinds surfaces each one's guidance", () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/spec/perf/budget.md': { content: '[impl](../../../src/hotpath.ts)', mtimeMs: 1 },
+        '/r/src/hotpath.ts': { content: 'export const hotpath = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+      yield* dfs.writeFile('/r/src/hotpath.ts', 'export const hotpath = 2 // changed\n')
+      const result = yield* checkRefs({ base: '/r', kinds: [SPEC_KIND, PERF_KIND], roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      expect(result.stale[0]?.kindGuidance).toEqual([
+        'States a behavioral contract for checkout.',
+        'Perf-critical; re-benchmark before accepting drift.',
+      ])
+    }),
+  )
+
+  // Directly answers the adversarial review's IO-cost finding: guidance
+  // lookup must cost NOTHING beyond what `checkRefs` already pays when
+  // either no kinds are configured (the common case today) or nothing is
+  // stale.
+  effectIt.effect("reads the citing doc's content ONLY when it is actually stale, never otherwise", () =>
+    Effect.gen(function* () {
+      const files: Record<string, string> = {
+        '/r/docs/spec/checkout.md': '[impl](../../src/checkout.ts)',
+        '/r/src/checkout.ts': 'export const checkout = 1\n',
+      }
+      const readCalls: string[] = []
+      const stampedHash = hashContent(files['/r/src/checkout.ts'] as string)
+      const service: DocsFsService = {
+        deleteFile: () => Effect.succeed(undefined),
+        exists: () => Effect.succeed(true),
+        listFiles: () => Effect.succeed(Object.keys(files)),
+        readFile: (abs) => {
+          readCalls.push(abs)
+          if (abs.endsWith('.json')) {
+            // Real stamped sidecar matching checkout.ts's CURRENT content —
+            // this doc has nothing stale.
+            return Effect.succeed(`{"refs":[{"target":"../../src/checkout.ts","hash":"${stampedHash}"}]}`)
+          }
+          return Effect.succeed(files[abs] ?? '')
+        },
+        realPath: (abs) => Effect.succeed(abs),
+        stat: () => Effect.die('not used in this test'),
+        writeFile: () => Effect.succeed(undefined),
+      }
+      const layer = Layer.succeed(DocsFs, service)
+      yield* checkRefs({ base: '/r', kinds: [SPEC_KIND], roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      // The sidecar was read (needed regardless), but the DOC's own content
+      // (checkout.md) never was — nothing is stale, so no kind lookup ran.
+      expect(readCalls.some((c) => c.endsWith('checkout.md'))).toBeFalsy()
+    }),
+  )
+
+  // Generalization: real repo data (docs/adr + docs/design cross-references)
+  // showed far more .md-to-.md citations than .md-to-code ones, so kind
+  // guidance must work on the TARGET side too, not just the citing side.
+  effectIt.effect('also classifies the TARGET when it is itself a kind-matching .md file', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/perf/budget.md': { content: '# Budget', mtimeMs: 1 },
+        '/r/docs/spec/checkout.md': { content: '[budget](../perf/budget.md)', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+      yield* dfs.writeFile('/r/docs/perf/budget.md', '# Budget, revised')
+      const result = yield* checkRefs({ base: '/r', kinds: [SPEC_KIND, PERF_KIND], roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      // Both sides classified: the CITING doc (spec) via kindGuidance, the
+      // TARGET doc (perf) via the drifted ref's own targetKindGuidance.
+      expect(result.stale[0]?.kindGuidance).toEqual(['States a behavioral contract for checkout.'])
+      expect(result.stale[0]?.refs[0]?.targetKindGuidance).toEqual([
+        'Perf-critical; re-benchmark before accepting drift.',
+      ])
+    }),
+  )
+
+  effectIt.effect('a code target (not .md) never gets targetKindGuidance, even with kinds configured', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/spec/checkout.md': { content: '[impl](../../src/checkout.ts)', mtimeMs: 1 },
+        '/r/src/checkout.ts': { content: 'export const checkout = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+      yield* dfs.writeFile('/r/src/checkout.ts', 'export const checkout = 2 // changed\n')
+      const result = yield* checkRefs({ base: '/r', kinds: [SPEC_KIND, PERF_KIND], roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      expect(result.stale[0]?.refs[0]?.targetKindGuidance).toEqual([])
     }),
   )
 })
