@@ -2,7 +2,7 @@
 
 ## What happened
 
-`pnpm ship`'s coverage step raises [`vitest.config.ts`](../../vitest.config.ts)'s committed
+`pnpm ship`'s coverage step raises [`vitest.config.ts`](../../../vitest.config.ts)'s committed
 thresholds automatically when real coverage improves, and prints "you may want to push with
 updated coverage thresholds." That hint was ignored across two separate ship runs in the
 same session — the coverage GATE still passed each time, because the OLD (lower) committed

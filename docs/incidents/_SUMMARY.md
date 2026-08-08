@@ -1,10 +1,11 @@
-# Incidents
+# Incidents, by category
 
-Real, dated mistakes made while building this repo, each traced to the `AGENTS.md` rule it
-produced — kept as the full record so the rule's own evidence stays terse and linkable,
-instead of growing inline every time a new incident happens.
+Real, dated mistakes made while building this repo, grouped by the `AGENTS.md` rule each
+category produced — one subdirectory per rule, so a new incident in an EXISTING category
+only ever touches that subdirectory, never `AGENTS.md` itself. A genuinely new category of
+mistake is the only thing that should ever need a new `AGENTS.md` link.
 
-- [git checkout -- discarded a real implementation, not just its mutation](./git-checkout-discards-unstaged-mutation-proof.md)
-- ["Just a test" review-skip hid a real gap](./just-a-test-review-skip-hid-a-real-gap.md)
-- [Coverage thresholds left uncommitted, twice](./coverage-thresholds-left-uncommitted-twice.md)
-- [An unrelated feature was bundled into a docs-only PR](./unrelated-feature-bundled-into-docs-only-pr.md)
+- [red-before-green](./red-before-green) — RED-before-GREEN proof mechanics.
+- [adversarial-review](./adversarial-review) — what counts as "trivial enough to skip review."
+- [verify-before-push](./verify-before-push) — local-verify gaps a passing gate can still hide.
+- [branch-hygiene](./branch-hygiene) — picking the right parent branch for new work.

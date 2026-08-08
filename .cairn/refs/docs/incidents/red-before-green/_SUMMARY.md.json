@@ -1,0 +1,8 @@
+{
+  "refs": [
+    {
+      "hash": "3edac1cf9b7232da9b10175cdc8935d2e2da9d68cf91a10e27abf51270ff17cc",
+      "target": "./git-checkout-discards-unstaged-mutation-proof.md"
+    }
+  ]
+}
