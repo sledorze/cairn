@@ -1126,6 +1126,7 @@ describe('the built-in defaults', () => {
       locale: 'en',
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },
       onlyGitTracked: false,
+      refs: { scope: [] },
       requireDirSummaries: true,
       roots: ['docs'],
       stampCommand: 'npx cairn check --summaries-only --stamp',

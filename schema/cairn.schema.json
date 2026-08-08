@@ -289,6 +289,19 @@
       "additionalProperties": false,
       "description": "Configurable filenames for the summary system."
     },
+    "CairnRefsScopeGroup": {
+      "type": "object",
+      "properties": { "glob": { "type": "string" }, "unit": { "type": "string", "enum": ["whole-file", "ignore"] } },
+      "required": ["glob", "unit"],
+      "additionalProperties": false,
+      "description": "One glob and the granularity `--refs` uses for content matching it."
+    },
+    "CairnRefsConfig": {
+      "type": "object",
+      "properties": { "scope": { "type": "array", "items": { "$ref": "#/$defs/CairnRefsScopeGroup" } } },
+      "additionalProperties": false,
+      "description": "Tuning for `--refs` (a CLI-flag opt-in check; this config section only tunes it, it does not enable it — absent means no scope overrides, every target hashed whole-file)."
+    },
     "CairnConfig": {
       "type": "object",
       "properties": {
@@ -313,6 +326,7 @@
           "type": "boolean",
           "description": "Restrict the scanned file universe to files `git ls-files` reports as tracked/staged (issue #48) — so a local run sees the same files a fresh CI checkout would, ignoring untracked scratch docs and links to them. Default false (unchanged, glob-only behavior)."
         },
+        "refs": { "$ref": "#/$defs/CairnRefsConfig" },
         "requireDirSummaries": {
           "type": "boolean",
           "description": "Require a directory summary in every in-scope directory. Default true."

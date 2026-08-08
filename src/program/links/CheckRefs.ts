@@ -23,6 +23,8 @@ import { extractReferences } from '../../core/links/MarkdownLinks.ts'
 import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
 import { hashContent } from '../../core/hashing.ts'
+import { matchesGlobNearBase } from '../../core/paths.ts'
+import type { RefsScopeGroup } from '../../core/Config.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
 import { DocsFs, isSafelyWithinBase, listMarkdownFiles, readMarkdownCorpus } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
@@ -47,6 +49,10 @@ export interface CheckRefsArgs {
    * defeating the CI-parity guarantee `onlyGitTracked` makes everywhere
    * else. `undefined` (the default) preserves today's behavior unchanged. */
   readonly trackedFiles?: ReadonlySet<string> | undefined
+  /** ADR 0004 Release 1 (`refs.scope`): first-match-wins glob groups deciding
+   * a target's hashing granularity. `[]` (the default) preserves today's
+   * only behavior — every target hashed `whole-file`. */
+  readonly scope?: readonly RefsScopeGroup[]
 }
 
 export interface StaleRef {
@@ -74,6 +80,17 @@ export interface StampRefsResult {
 export const refsExitCode = (result: RefsCheckResult): number => (result.stale.length > 0 ? 1 : 0)
 
 /**
+ * First matching `scope` group (array order) decides `targetAbs`'s hashing
+ * granularity; no match keeps today's only behavior, `whole-file` — see
+ * `RefsScopeGroupInputSchema`'s own comment (`core/Config.ts`) for the
+ * first-match-wins semantics. Matched via `matchesGlobNearBase`, the same
+ * helper `CheckDocCoverage.ts`'s own glob groups already use, so a glob
+ * written root-relative (the form anyone writes) matches as expected.
+ */
+const unitFor = (targetAbs: string, base: string, scope: readonly RefsScopeGroup[]): 'whole-file' | 'ignore' =>
+  scope.find((group) => matchesGlobNearBase(targetAbs, base, [group.glob]))?.unit ?? 'whole-file'
+
+/**
  * Resolve one reference target to its real, CURRENT content — bounded by
  * `base` exactly like `CheckLinks.ts`'s `resolvePendingCheck` (nothing
  * outside the checkout root is ever stat'd/read). `null` if the target
@@ -81,11 +98,18 @@ export const refsExitCode = (result: RefsCheckResult): number => (result.stale.l
  * that no longer resolves is `CheckLinks.ts`'s "broken" concern, not this
  * file's "stale" concern, so it's silently skipped here rather than
  * double-reported.
+ *
+ * `unit === 'ignore'` (ADR 0004 Release 1) short-circuits to `null` BEFORE
+ * `isSafelyWithinBase` even runs — an ignored glob is never read at all, not
+ * read-then-discarded, matching this repo's own "don't touch the filesystem
+ * for something structurally excluded" discipline (e.g. `DocsFs.ts`'s
+ * `isPrunedDir` pruning before `readDirectory`, not after).
  */
 const resolveReferenceContent = ({
   base,
   dfs,
   targetAbs,
+  unit,
 }: {
   readonly base: string
   readonly dfs: {
@@ -93,8 +117,12 @@ const resolveReferenceContent = ({
     realPath: (p: string) => Effect.Effect<string | null>
   }
   readonly targetAbs: string
+  readonly unit: 'whole-file' | 'ignore'
 }): Effect.Effect<string | null> =>
   Effect.gen(function* () {
+    if (unit === 'ignore') {
+      return null
+    }
     // `isSafelyWithinBase` (../../io/DocsFs.ts): a symlink physically
     // located INSIDE `base` can still point OUTSIDE it. Without this, a
     // symlink escaping `base` had its CONTENT hashed and the hash
@@ -145,6 +173,7 @@ export const stampRefs = ({
   base,
   roots,
   ignore = [],
+  scope = [],
   trackedFiles,
 }: CheckRefsArgs): Effect.Effect<StampRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
@@ -160,7 +189,8 @@ export const stampRefs = ({
       const records: RefRecord[] = []
       for (const ref of allReferenceTargets(content)) {
         const targetAbs = path.resolve(fromDir, ref.target)
-        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs })
+        const unit = unitFor(targetAbs, base, scope)
+        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs, unit })
         if (targetContent !== null) {
           records.push(toRecord(ref, hashContent(targetContent)))
         }
@@ -183,6 +213,7 @@ export const checkRefs = ({
   base,
   roots,
   ignore = [],
+  scope = [],
   trackedFiles,
 }: CheckRefsArgs): Effect.Effect<RefsCheckResult, never, DocsFs> =>
   Effect.gen(function* () {
@@ -211,7 +242,8 @@ export const checkRefs = ({
       const drifted: StaleRef[] = []
       for (const record of recorded.refs) {
         const targetAbs = path.resolve(fromDir, record.target)
-        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs })
+        const unit = unitFor(targetAbs, base, scope)
+        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs, unit })
         if (targetContent === null) {
           continue
         }
@@ -279,11 +311,23 @@ export const refsPlugin: CheckPlugin<RefsCheckResult> = {
   isEnabled: (_resolved, cli) => cli.refs,
   jsonUnsupportedMessage: '--json cannot be combined with --refs yet',
   name: 'refs',
-  run: ({ base, ignore, roots, trackedFiles }) =>
-    checkRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) }),
+  run: ({ base, ignore, resolved, roots, trackedFiles }) =>
+    checkRefs({
+      base,
+      ignore,
+      roots,
+      scope: resolved.refs.scope,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
+    }),
   stamp: ({ base, ignore, resolved, roots, trackedFiles }) =>
     Effect.gen(function* () {
-      const result = yield* stampRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) })
+      const result = yield* stampRefs({
+        base,
+        ignore,
+        roots,
+        scope: resolved.refs.scope,
+        ...(trackedFiles === undefined ? {} : { trackedFiles }),
+      })
       return [
         pick(resolved.locale, {
           en: `🔗 Stamped ${result.stamped} doc(s)' reference hash(es) (.cairn/** sidecar).`,

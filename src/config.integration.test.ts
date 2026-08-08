@@ -328,6 +328,47 @@ describe('loadConfig()', () => {
     expect(config.checks.proseRefs).toEqual({ ignore: [] })
   })
 
+  // ADR 0004 Release 1 (issue #101): `refs.scope` is a NEW top-level key
+  // (not nested under `checks`), same three-way "inherits / replaces
+  // wholesale / defaults" reasoning as `checks.proseRefs.ignore` above.
+  it('inherits `refs.scope` from an `extends` preset when the local file does not set it', async () => {
+    const cwd = mkTmp('cairn-extends-refsscope-inherit-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ refs: { scope: [{ glob: 'src/noisy.ts', unit: 'ignore' }] } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { links: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.refs).toEqual({ scope: [{ glob: 'src/noisy.ts', unit: 'ignore' }] })
+  })
+
+  it('replaces (not merges) `refs.scope` entirely when the local file also sets it', async () => {
+    const cwd = mkTmp('cairn-extends-refsscope-replace-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ refs: { scope: [{ glob: 'from-base/*.ts', unit: 'ignore' }] } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({
+        extends: './base.cairnrc.json',
+        refs: { scope: [{ glob: 'from-local/*.ts', unit: 'ignore' }] },
+      }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.refs).toEqual({ scope: [{ glob: 'from-local/*.ts', unit: 'ignore' }] })
+  })
+
+  it('defaults `refs.scope` to an empty array when no config sets it', async () => {
+    const cwd = mkTmp('cairn-refsscope-default-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({}))
+    const config = await run(loadConfig(cwd))
+    expect(config.refs).toEqual({ scope: [] })
+  })
+
   it('re-disables `checks.coverage` with `false` when a local config overrides an `extends` preset that enabled it', async () => {
     const cwd = mkTmp('cairn-extends-coverage-disable-')
     fs.writeFileSync(

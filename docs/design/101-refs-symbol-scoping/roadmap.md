@@ -1,5 +1,9 @@
 # Roadmap: issue #101 (`--refs` granularity)
 
+**Release 1 has shipped** (`refs.scope`, below — see `docs/adr/0004-refs-scoped-hashing-granularity.md`,
+now `accepted`). Releases 2/3 below remain provisional, unchanged, gated as this doc already
+states.
+
 Three releases, each independently shippable and independently valuable — not a single
 big-bang redesign. Each release closes with the same falsification discipline this repo
 uses everywhere else (`AGENTS.md`'s "Shipping one iteration well," `CheckDocCoverage`'s own
