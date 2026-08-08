@@ -296,6 +296,16 @@ export const formatRefsReport = (result: RefsCheckResult, options: RefsReportOpt
       )
     }
   }
+  // Adversarial review finding: unlike the stale-summaries path (cli.ts's own
+  // `--explain` tip), this report named WHAT drifted but never HOW to fix it
+  // — a contributor who's never touched `--refs` before has no way to guess
+  // the fix command from a bare hash diff.
+  lines.push(
+    pick(locale, {
+      en: '\nFix: re-stamp with `cairn check --refs --stamp` (or `pnpm run stamp:refs` if this repo has that script), then re-run.',
+      fr: '\nCorrection : re-tamponnez avec `cairn check --refs --stamp` (ou `pnpm run stamp:refs` si ce dépôt a ce script), puis relancez.',
+    }),
+  )
   return lines
 }
 

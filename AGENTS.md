@@ -146,11 +146,13 @@ that the diff looks mechanically correct:
 
 # `--refs` is enforced here, not just available
 
-`pnpm check` runs `cairn check --refs` — editing a file `docs/architecture.md` cites (e.g.
-`src/core/Config.ts`) needs `pnpm run stamp:refs` too, not just editing the doc itself, or
-`pnpm check` fails. Dogfooded for real, not just wired: `.cairn/refs/**` sidecars sat stale
-for years before this was turned on (nothing ran `--refs` at all); editing a cited file
-without re-stamping now fails `pnpm check` (confirmed), same as any other stale summary.
+`pnpm check` runs `cairn check --refs` — NOT scoped to `docs/architecture.md` alone.
+`docs/adr/**` and `docs/design/**` cite real `src/**` files directly too (`git grep -l
+'\.ts)' docs/adr docs/design` finds them). Editing ANY cited file needs `pnpm run
+stamp:refs`, or `pnpm check` fails — the failure message itself now names the fix command.
+Dogfooded for real: `.cairn/refs/**` sidecars sat stale for years before this was turned on
+(nothing ran `--refs` at all); editing a cited file without re-stamping fails `pnpm check`
+(confirmed), same as any other stale summary.
 
 # Content-mutation safety (writing to files this codebase doesn't fully own)
 
