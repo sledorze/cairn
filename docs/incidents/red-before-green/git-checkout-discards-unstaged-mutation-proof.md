@@ -4,7 +4,7 @@
 
 Proving a new test RED-before-GREEN: mutate the implementation to disprove the claim, run
 the test, confirm it fails for the right reason, then restore. The implementation
-([`checkRefs`](../../src/program/links/CheckRefs.ts)) had never been `git add`ed — the
+([`checkRefs`](../../../src/program/links/CheckRefs.ts)) had never been `git add`ed — the
 mutation and the real, unstaged implementation were both wiped by `git checkout -- <file>`,
 which restores the INDEX (the last commit), not the working tree's last edit. Recovering
 cost a full re-write of the feature.
