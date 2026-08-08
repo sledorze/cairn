@@ -1,0 +1,8 @@
+{
+  "refs": [
+    {
+      "hash": "3ee01a23b9f8778c3f3588717d3beca8853ba8f8e937815e1cc428e2d9943a32",
+      "target": "./unrelated-feature-bundled-into-docs-only-pr.md"
+    }
+  ]
+}

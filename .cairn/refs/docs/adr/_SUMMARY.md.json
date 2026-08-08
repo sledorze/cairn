@@ -11,6 +11,14 @@
     {
       "hash": "228191e91515efeafe7627c21565817a1a08bdcfbff3c08e41a715cf03ccc023",
       "target": "./0003-check-plugin-registry.md"
+    },
+    {
+      "hash": "60d961e423df3d4b087c498368660625b3151a69eafb7b7dac0a8235feca6d70",
+      "target": "./0004-refs-scoped-hashing-granularity.md"
+    },
+    {
+      "hash": "edf96df5b4c735058d8bde991851b8975f87511b2da0bcaf7088290b3fa25253",
+      "target": "./0005-design-packages-structurally-enforced-by-existing-coverage.md"
     }
   ]
 }

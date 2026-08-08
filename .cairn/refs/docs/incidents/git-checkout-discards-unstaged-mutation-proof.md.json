@@ -1,0 +1,8 @@
+{
+  "refs": [
+    {
+      "hash": "967b352e53e1f8ba3f337059d968f78772e6fcd97ab33ea9916acbc76b7b7937",
+      "target": "../../src/program/links/CheckRefs.ts"
+    }
+  ]
+}
