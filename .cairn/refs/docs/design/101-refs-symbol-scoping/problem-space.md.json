@@ -1,0 +1,16 @@
+{
+  "refs": [
+    {
+      "hash": "706318364c0abee04538aac31dfc3110544dbad6008cf315fb184510e87d28ce",
+      "target": "../../../src/program/links/CheckRefs.ts"
+    },
+    {
+      "hash": "313e94fa17add2642380c1ae0eef34ace377bc901d763536f685bb89697841aa",
+      "target": "../../../src/core/links/RefStore.ts"
+    },
+    {
+      "hash": "593fa8e111da912beef5cabfa4125754768cdb5d8ade98a33eae719ac3d6cea7",
+      "target": "./spikes.md"
+    }
+  ]
+}
