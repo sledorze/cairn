@@ -218,7 +218,15 @@ describe('formatRefsReport()', () => {
       stale: [
         {
           file: 'docs/index.md',
-          refs: [{ currentHash: 'def456ghijk', recordedHash: 'abc123defgh', target: '../src/x.ts' }],
+          kindGuidance: [],
+          refs: [
+            {
+              currentHash: 'def456ghijk',
+              recordedHash: 'abc123defgh',
+              target: '../src/x.ts',
+              targetKindGuidance: [],
+            },
+          ],
         },
       ],
     })
