@@ -1,5 +1,85 @@
 # @sledorze/cairn
 
+## 0.10.0
+
+### Minor Changes
+
+- 6b88594: `cairn check --refs`'s stale-reference report can now show WHY a citation matters, not just
+  that it changed — when `checks.coverage.kinds` is also configured, each stale entry gets its
+  citing doc's kind description (and, when the target is itself a `.md` file, the target's
+  kind description too) as review context, reusing that field's existing, already-mandatory
+  role — no new config surface.
+
+  Dogfooded live against this repo's own `docs/adr`/`docs/design` cross-references before
+  shipping: real drift on a doc cited by 6 sibling docs surfaced kind guidance on all 6, not a
+  synthetic example.
+
+  Absent by default — a project with no `checks.coverage.kinds` configured (or `--refs` used
+  alone) behaves identically to before.
+
+- d4b1484: `--prose-refs` gets a config-level escape hatch and a more honest report: `checks.proseRefs.ignore`
+  (an array of exact citation text, or a glob over it) exempts a backticked prose citation from ever
+  being checked — for a doc that documents a path FORMAT (a sample-path table, a prose example naming
+  a fictitious filename) rather than citing a real file, which previously had no way to avoid being
+  flagged as broken.
+
+  ```json
+  "checks": {
+    "proseRefs": { "ignore": ["src/a.ts", "examples/*.ts"] }
+  }
+  ```
+
+  Absent by default (no ignore list) — existing configs are unaffected. This doesn't enable
+  `--prose-refs`; the CLI flag still does that, this only tunes it.
+
+  Also: the report wording changed from "no longer resolves" to "does not resolve" (and the summary
+  line from "drifted" to "broken"). `--prose-refs` is a live, stateless existence check with no
+  history of a citation's target — it cannot tell a citation that was genuinely moved or deleted from
+  one that was never real (a typo, an illustrative example), so the prior wording implied a certainty
+  the check never had.
+
+- 64ad856: `cairn check --refs`/`--stamp` can now track a doc's claim about a file it has no reason to
+  hyperlink. A fenced block tagged `cairn-refs` declares extra targets — one path (optionally
+  `path#anchor`) per line — tracked exactly like a real link's target: same content hash, same
+  drift report, same `--stamp`. Closes the gap where a doc's claim about, say,
+  `package.json#files` had no way to be tracked at all, since nothing in the sentence was a
+  `[text](path)` link (issue #130).
+
+  Absent by default — a doc with no `cairn-refs` block behaves identically to before. No new
+  config surface.
+
+- e1c0d9a: `cairn check --refs`/`--stamp` gains its first config-level knob: `refs.scope`, a list of
+  `{ glob, unit }` groups (`unit: "whole-file"` (default, unchanged) | `"ignore"`) deciding how
+  finely a reference target's content is hashed. First matching glob (array order) wins; no
+  match keeps today's only behavior.
+
+  Closes issue #101: a doc citing a noisy file it merely mentions in passing used to fail
+  `--refs` on every unrelated edit to that file. Give that glob `unit: "ignore"` and it's
+  exempted from hashing entirely — no facade-file restructure needed to work around it.
+
+  Absent by default — a project with no `refs.scope` behaves identically to before. ADR 0004
+  Release 1 (`docs/adr/0004-refs-scoped-hashing-granularity.md`); `unit: "exports-only"`
+  (hashing a file's exported surface, not its full bytes) is a separate, not-yet-built release.
+
+### Patch Changes
+
+- a3f4a48: A plain `cairn check` failure now ends with a one-line pointer to `--explain` when there's a
+  stale or missing summary to explain (`Tip: run with --explain to see why each summary above is
+stale or missing.`). Previously the flag existed but the failure output never mentioned it, so
+  discovering it required already knowing to look for it. The hint never appears on `--explain`
+  runs themselves, on a clean run, or on an orphans-only failure (nothing in `--explain`'s scope
+  to explain there).
+- 9fda67f: Packaging fix: `CHANGELOG.md` is now included in the published npm tarball (`files` in
+  `package.json`) — previously it was generated on every release but never shipped, so
+  upgrading consumers had no in-package way to see what changed.
+
+  Docs fixes: README's `cairn init --agent` documentation now lists all 5 real values
+  (`claude`, `copilot`, `agents`, `opencode`, `all` — `agents`/`opencode` were previously
+  missing from both the command table and the prose), and README now documents that `--json`
+  cannot be combined with `--stamp`, `--migrate-stamps`, `--report-deletions`, `--refs`,
+  `--prose-refs`, `checks.coverage`, `checks.docCoverage`, or `checks.freshness` (each errors
+  out explicitly rather than silently ignoring a flag).
+
 ## 0.9.0
 
 ### Minor Changes
