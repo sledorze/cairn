@@ -166,6 +166,24 @@ First matching glob (array order) decides a target's `unit`; no match keeps the 
 `"whole-file"`. `"ignore"` means that target is never read or hashed at all — edits to it
 never register as drift. Absent by default, same as `--refs` itself.
 
+A "possibly stale reference" report line only ever says WHAT changed, not why it matters —
+identical wording whether a doc cites a security-sensitive file or an unrelated one. If
+`checks.coverage.kinds` is also configured, `--refs` reuses each kind's own `description`
+(already required for coverage reporting) as review context, on BOTH sides of a citation —
+the citing doc's kind and, when the target is itself a `.md` file, the target's kind too:
+
+```
+⚠️  1 possibly stale reference(s):
+  docs/spec/checkout.md
+    [kind] States a behavioral contract for checkout.
+    ~ ../perf/budget.md (a1b2c3d4 → e5f6a7b8)
+      [target kind] Perf-critical; re-benchmark before accepting drift.
+```
+
+No new config surface — reuses `checks.coverage.kinds`' existing, already-mandatory field.
+Absent when `checks.coverage` isn't configured (the common case), same as every other
+opt-in-widening feature here.
+
 ### Prose file citations: `--prose-refs`
 
 Docs often cite a source file inline in backticks, with no `[text](path)` syntax at all — e.g.

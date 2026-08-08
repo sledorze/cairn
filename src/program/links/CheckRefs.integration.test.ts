@@ -61,6 +61,7 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
         currentHash: expect.any(String),
         recordedHash: expect.any(String),
         target: '../src/engine.ts',
+        targetKindGuidance: [],
       },
     ])
     expect(after.stale[0]?.refs[0]?.currentHash).not.toBe(after.stale[0]?.refs[0]?.recordedHash)
@@ -240,7 +241,12 @@ describe('stampRefs() / checkRefs() with a declared `cairn-refs` target (issue #
     expect(after.stale).toHaveLength(1)
     expect(after.stale[0]?.file).toBe(path.join(p.root, 'docs', 'README.summary.md'))
     expect(after.stale[0]?.refs).toEqual([
-      { currentHash: expect.any(String), recordedHash: expect.any(String), target: '../package.json' },
+      {
+        currentHash: expect.any(String),
+        recordedHash: expect.any(String),
+        target: '../package.json',
+        targetKindGuidance: [],
+      },
     ])
     expect(after.stale[0]?.refs[0]?.currentHash).not.toBe(after.stale[0]?.refs[0]?.recordedHash)
 
@@ -280,7 +286,11 @@ describe('stampRefs() / checkRefs() with a declared `cairn-refs` target (issue #
     p.write('package.json', '{"changed": true}\n')
     const after = await run(checkRefs(args))
     expect(after.stale).toEqual([
-      { file: path.join(p.root, 'docs', 'index.md'), refs: [expect.objectContaining({ target: '../package.json' })] },
+      {
+        file: path.join(p.root, 'docs', 'index.md'),
+        kindGuidance: [],
+        refs: [expect.objectContaining({ target: '../package.json' })],
+      },
     ])
   })
 })
