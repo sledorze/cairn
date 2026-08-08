@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import { describe, expect, it, test } from 'vitest'
 
 import { DEFAULT_CONFIG } from '../../core/Config.ts'
-import { makeTestDocsFs } from '../../io/DocsFs.ts'
+import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
 import type { CheckCliFlags } from '../checks/CheckPlugin.ts'
 import { formatRefsReport, refsPlugin } from './CheckRefs.ts'
 
@@ -87,6 +87,38 @@ describe('refsPlugin.run()', () => {
     )
     expect(result.checked).toBe(1) // only a.md — untracked.md's own stamped sidecar is excluded
   })
+
+  // ADR 0004 Release 1: closes the ONE gap adversarial review found in the
+  // original PR — every other `refs.scope` test exercises `stampRefs`/
+  // `checkRefs` directly, bypassing `refsPlugin` entirely, so a future
+  // refactor that silently dropped `scope: resolved.refs.scope` from
+  // `refsPlugin.run`/`.stamp` (CheckRefs.ts) would still pass every one of
+  // them. This test goes through `resolved` (the real decoded-config shape
+  // `cli.ts` actually passes), the same boundary `DEFAULT_CONFIG` fixtures
+  // above stub away.
+  effectIt.effect(
+    'reaches stampRefs/checkRefs with `resolved.refs.scope` wired through — an "ignore"-scoped target is never stamped, even though it is otherwise a real, resolvable reference',
+    () =>
+      Effect.gen(function* () {
+        const layer = makeTestDocsFs({
+          '/r/a.md': { content: '# A\n\n[b](./b.md)\n[noisy](./noisy.md)', mtimeMs: 1 },
+          '/r/b.md': { content: '# B', mtimeMs: 1 },
+          '/r/noisy.md': { content: '# Noisy', mtimeMs: 1 },
+        })
+        const resolved = { ...DEFAULT_CONFIG, refs: { scope: [{ glob: 'noisy.md', unit: 'ignore' as const }] } }
+        const args = { base: '/r', cli: CLI, ignore: [], resolved, roots: ['/r'] }
+        yield* stamp(args).pipe(Effect.provide(layer))
+        const result = yield* refsPlugin.run(args).pipe(Effect.provide(layer))
+        expect(result).toEqual({ checked: 1, stale: [] }) // b.md tracked; noisy.md never recorded
+
+        // A mutant that dropped the `scope` wiring would hash noisy.md
+        // whole-file too, and this edit would then report it as stale.
+        const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+        yield* dfs.writeFile('/r/noisy.md', '# Noisy, changed constantly')
+        const after = yield* refsPlugin.run(args).pipe(Effect.provide(layer))
+        expect(after.stale).toEqual([])
+      }),
+  )
 })
 
 describe('refsPlugin.stamp()', () => {
