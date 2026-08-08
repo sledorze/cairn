@@ -1,0 +1,12 @@
+{
+  "refs": [
+    {
+      "hash": "593fa8e111da912beef5cabfa4125754768cdb5d8ade98a33eae719ac3d6cea7",
+      "target": "./spikes.md"
+    },
+    {
+      "hash": "25258b125c07c731e8953174d988ae49c536913dee2b2dee05454bcc605cabfa",
+      "target": "./story-map.md"
+    }
+  ]
+}

@@ -144,6 +144,14 @@ that the diff looks mechanically correct:
   `schema/cairn.schema.json` (from `Config.ts`'s `Schema.annotate`) and `--help` mention it,
   not just the changeset/README.
 
+# `--refs` is enforced here, not just available
+
+`pnpm check` runs `cairn check --refs` — editing a file `docs/architecture.md` cites (e.g.
+`src/core/Config.ts`) needs `pnpm run stamp:refs` too, not just editing the doc itself, or
+`pnpm check` fails. Dogfooded for real, not just wired: `.cairn/refs/**` sidecars sat stale
+for years before this was turned on (nothing ran `--refs` at all); editing a cited file
+without re-stamping now fails `pnpm check` (confirmed), same as any other stale summary.
+
 # Content-mutation safety (writing to files this codebase doesn't fully own)
 
 Any write-back to a user-authored file (not a `.cairn/**` sidecar, not a build artifact)
