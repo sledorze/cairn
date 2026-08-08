@@ -10,7 +10,15 @@
     "coverage": {
       "kinds": [
         {
-          "description": "The package's own index — links to every other required document and marks a directory as a design package.",
+          "description": "The single source-of-truth map of src/'s module boundaries and responsibilities. A stale citation here usually means that module's real responsibility shifted — re-read the section and confirm it still describes what the file actually does, don't just re-stamp the hash.",
+          "id": "architecture",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/architecture.md"
+          }
+        },
+        {
+          "description": "The package's own index, linking every sibling doc. A stale citation to a sibling usually means that doc was restructured — confirm the link still points at the right section, not just that the file still exists.",
           "id": "design-package",
           "select": {
             "by": "path",
@@ -18,7 +26,7 @@
           }
         },
         {
-          "description": "The real need, market, or context this work responds to — not just its technical symptom.",
+          "description": "States why this work matters, grounded in a cited spike (see this package's grounded_by rule). If that spike changed, re-check whether it still supports the stated need — a changed spike can quietly invalidate the whole problem statement.",
           "id": "problem-space",
           "select": {
             "by": "path",
@@ -26,7 +34,7 @@
           }
         },
         {
-          "description": "Candidate directions, evaluated and ranked, with rejected options recorded.",
+          "description": "Ranks directions against a cited spike's evidence. If that spike changed, re-check whether the ranking or a rejected option's reasoning still holds — a stale citation here can mean a decision now rests on outdated evidence.",
           "id": "solution-space",
           "select": {
             "by": "path",
@@ -34,7 +42,7 @@
           }
         },
         {
-          "description": "Feasibility evidence actually run, not assumed.",
+          "description": "Real, run feasibility evidence, not narrated. If the code this spike cites changed, the primitive it once confirmed working may no longer be — don't assume it still is; re-run the spike or downgrade the citing doc's confidence.",
           "id": "spikes",
           "select": {
             "by": "path",
@@ -42,7 +50,7 @@
           }
         },
         {
-          "description": "The real user workflow, mapped to stories and a walking-skeleton release.",
+          "description": "Maps the real user workflow to a walking-skeleton release scope. If a cited doc changed, check whether the walking skeleton it marks out is still accurately described.",
           "id": "story-map",
           "select": {
             "by": "path",
@@ -50,7 +58,7 @@
           }
         },
         {
-          "description": "Shippable increments, with migration notes.",
+          "description": "Sequences shippable releases, grounded in a cited spike and derived from a cited story-map. A stale citation to either means the sequencing rationale may need re-justifying, not just re-stamping.",
           "id": "roadmap",
           "select": {
             "by": "path",
@@ -58,7 +66,7 @@
           }
         },
         {
-          "description": "Concrete enough to start implementation from directly.",
+          "description": "Concrete enough to implement from directly, built on a cited spike's validated primitive (see this package's builds_on rule). If that spike changed, confirm the primitive is still validated before trusting this doc's approach.",
           "id": "implementation-details",
           "select": {
             "by": "path",
@@ -66,7 +74,7 @@
           }
         },
         {
-          "description": "The reusable technique and lessons, for whoever extends this work later.",
+          "description": "Reusable lessons, sourced from a cited spike. If that spike changed, re-verify the lesson still accurately reflects it — a lesson can quietly go stale even when the underlying technique is still fine.",
           "id": "knowledge",
           "select": {
             "by": "path",
