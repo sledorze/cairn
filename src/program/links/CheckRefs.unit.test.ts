@@ -209,6 +209,40 @@ describe('formatRefsReport()', () => {
     expect(lines.at(-1)).toBe('    ~ ../src/x.ts (abc123de → def456gh)')
   })
 
+  // Exercises the actual RENDER of kindGuidance/targetKindGuidance (not just
+  // that checkRefs computes them, covered elsewhere) — coverage gap found by
+  // the coverage ratchet itself when this feature first shipped: the data
+  // was tested, the report FORMATTING of that data was not.
+  it("renders both the citing doc's kindGuidance and a ref's targetKindGuidance", () => {
+    const lines = formatRefsReport({
+      checked: 1,
+      stale: [
+        {
+          file: 'docs/spec/checkout.md',
+          kindGuidance: ['States a behavioral contract for checkout.'],
+          refs: [
+            {
+              currentHash: 'def456ghijk',
+              recordedHash: 'abc123defgh',
+              target: '../perf/budget.md',
+              targetKindGuidance: ['Perf-critical; re-benchmark before accepting drift.'],
+            },
+          ],
+        },
+      ],
+    })
+    expect(lines).toContain('    [kind] States a behavioral contract for checkout.')
+    expect(lines).toContain('      [target kind] Perf-critical; re-benchmark before accepting drift.')
+    // Order: file -> kindGuidance -> ref line -> that ref's targetKindGuidance.
+    const fileIdx = lines.indexOf('  docs/spec/checkout.md')
+    const kindIdx = lines.indexOf('    [kind] States a behavioral contract for checkout.')
+    const refIdx = lines.findIndex((l) => l.startsWith('    ~ '))
+    const targetKindIdx = lines.indexOf('      [target kind] Perf-critical; re-benchmark before accepting drift.')
+    expect(fileIdx).toBeLessThan(kindIdx)
+    expect(kindIdx).toBeLessThan(refIdx)
+    expect(refIdx).toBeLessThan(targetKindIdx)
+  })
+
   it('includes the anchor when present', () => {
     const lines = formatRefsReport({
       checked: 1,
@@ -556,6 +590,43 @@ describe('kind-aware stale-ref guidance', () => {
       // (checkout.md) never was — nothing is stale, so no kind lookup ran.
       expect(readCalls.some((c) => c.endsWith('checkout.md'))).toBeFalsy()
     }),
+  )
+
+  // A stale doc whose OWN content can't be read (permission denied mid-run,
+  // same class of race `readMarkdownCorpus`'s own lenient-skip discipline
+  // handles elsewhere) must not crash the kind lookup — treated as "nothing
+  // to classify," same as a doc that matches no kind.
+  effectIt.effect(
+    'a stale doc that becomes unreadable while computing kind guidance gets an empty kindGuidance, not a crash',
+    () =>
+      Effect.gen(function* () {
+        const files: Record<string, string> = {
+          '/r/docs/spec/checkout.md': '[impl](../../src/checkout.ts)',
+          '/r/src/checkout.ts': 'export const checkout = 1\n',
+        }
+        const service: DocsFsService = {
+          deleteFile: () => Effect.succeed(undefined),
+          exists: () => Effect.succeed(true),
+          listFiles: () => Effect.succeed(Object.keys(files)),
+          readFile: (abs) => {
+            if (abs.endsWith('.json')) {
+              return Effect.succeed('{"refs":[{"target":"../../src/checkout.ts","hash":"stale-on-purpose"}]}')
+            }
+            if (abs.endsWith('checkout.md')) {
+              return Effect.die(new Error('EACCES: permission denied'))
+            }
+            return Effect.succeed(files[abs] ?? '')
+          },
+          realPath: (abs) => Effect.succeed(abs),
+          stat: () => Effect.die('not used in this test'),
+          writeFile: () => Effect.succeed(undefined),
+        }
+        const layer = Layer.succeed(DocsFs, service)
+        const result = yield* checkRefs({ base: '/r', kinds: [SPEC_KIND], roots: ['/r/docs'] }).pipe(
+          Effect.provide(layer),
+        )
+        expect(result.stale[0]?.kindGuidance).toEqual([])
+      }),
   )
 
   // Generalization: real repo data (docs/adr + docs/design cross-references)
