@@ -119,6 +119,36 @@ describe('refsPlugin.run()', () => {
         expect(after.stale).toEqual([])
       }),
   )
+
+  // Adversarial re-review of the test above found it does NOT actually
+  // cover `.stamp`'s own wiring, despite its name/comment claiming to:
+  // `checkRefs` (driven by `.run`) recomputes `unitFor` independently at
+  // check time from the SAME `resolved.refs.scope`, so even if `.stamp`'s
+  // wiring were silently dropped and it wrote noisy.md's real content hash
+  // into the sidecar, `.run`'s own correct `unitFor` call would still skip
+  // comparing it — masking the defect completely (reproduced: deleting only
+  // `.stamp`'s `scope: resolved.refs.scope` line left the ENTIRE suite,
+  // including the test above, green). This is the specific defect
+  // `resolveReferenceContent`'s own doc comment (CheckRefs.ts) calls out as
+  // required to prevent: an ignored target must never be read at all. Only
+  // inspecting the raw sidecar `.stamp` itself wrote — independent of
+  // `.run`'s masking — actually proves `.stamp`'s wiring.
+  effectIt.effect(
+    'refsPlugin.stamp itself never writes an "ignore"-scoped target into the sidecar (independent of .run\'s own masking recompute)',
+    () =>
+      Effect.gen(function* () {
+        const layer = makeTestDocsFs({
+          '/r/a.md': { content: '# A\n\n[noisy](./noisy.md)', mtimeMs: 1 },
+          '/r/noisy.md': { content: '# Noisy', mtimeMs: 1 },
+        })
+        const resolved = { ...DEFAULT_CONFIG, refs: { scope: [{ glob: 'noisy.md', unit: 'ignore' as const }] } }
+        const args = { base: '/r', cli: CLI, ignore: [], resolved, roots: ['/r'] }
+        yield* stamp(args).pipe(Effect.provide(layer))
+        const dfs = yield* DocsFs.pipe(Effect.provide(layer))
+        const sidecarExists = yield* dfs.exists('/r/.cairn/refs/a.md.json')
+        expect(sidecarExists).toBeFalsy() // a.md's ONLY reference is ignore-scoped — nothing to stamp at all
+      }),
+  )
 })
 
 describe('refsPlugin.stamp()', () => {
