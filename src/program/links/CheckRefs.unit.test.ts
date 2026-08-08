@@ -206,7 +206,31 @@ describe('formatRefsReport()', () => {
     })
     expect(lines[0]).toBe('⚠️  1 possibly stale reference(s):')
     expect(lines).toContain('  docs/index.md')
-    expect(lines.at(-1)).toBe('    ~ ../src/x.ts (abc123de → def456gh)')
+    expect(lines).toContain('    ~ ../src/x.ts (abc123de → def456gh)')
+  })
+
+  // Adversarial review finding: the hash-diff list alone never told a
+  // contributor HOW to fix it, unlike cli.ts's own `--explain` tip for
+  // stale summaries — this closes that gap.
+  it('appends a fix hint pointing at the stamp command', () => {
+    const lines = formatRefsReport({
+      checked: 1,
+      stale: [
+        {
+          file: 'docs/index.md',
+          kindGuidance: [],
+          refs: [
+            {
+              currentHash: 'def456ghijk',
+              recordedHash: 'abc123defgh',
+              target: '../src/x.ts',
+              targetKindGuidance: [],
+            },
+          ],
+        },
+      ],
+    })
+    expect(lines.at(-1)).toContain('cairn check --refs --stamp')
   })
 
   // Exercises the actual RENDER of kindGuidance/targetKindGuidance (not just
@@ -256,7 +280,7 @@ describe('formatRefsReport()', () => {
         },
       ],
     })
-    expect(lines.at(-1)).toContain('./guide.md#intro')
+    expect(lines).toContain('    ~ ./guide.md#intro (aa → bb)')
   })
 })
 
