@@ -31,10 +31,18 @@ import { CONVENTION_BODY, SKILL_BODY } from './content.ts'
 // the bare literal command as an exact substring anywhere — full stop, no
 // windowing, no sentence-splitting. This can't be fooled by co-occurrence or
 // punctuation, because it isn't looking at proximity or grammar at all.
+// A fourth adversarial pass found this exact-substring check itself gameable
+// by cosmetic mangling of the bare command that a human still reads as "the
+// same command" — extra/tab whitespace, a capitalized sentence-initial
+// "Npx", or a code span split across two backticks. Normalizing whitespace
+// runs and lowercasing before comparing closes the whitespace/case variants;
+// splitting the code span is a much rarer, deliberate-looking edit this test
+// doesn't chase further (diminishing returns past this point).
 const BARE_STAMP_COMMAND = 'npx cairn check --summaries-only --stamp'
+const normalize = (text: string): string => text.toLowerCase().replaceAll(/\s+/g, ' ')
 
 const referencesStampCommandWithoutTheBareLiteral = (text: string): boolean =>
-  text.includes('stampCommand') && !text.includes(BARE_STAMP_COMMAND)
+  text.includes('stampCommand') && !normalize(text).includes(normalize(BARE_STAMP_COMMAND))
 
 describe('scaffolded stamp-command guidance references stampCommand, not a bare literal', () => {
   it('CONVENTION_BODY\'s actionable "Workflow when you edit docs" step 3 references stampCommand, never the bare command', () => {
@@ -62,6 +70,11 @@ describe('scaffolded stamp-command guidance references stampCommand, not a bare 
     // dot able to fool a period-based sentence-boundary split.
     "Run this repo's configured stamp command (`stampCommand` in `.cairnrc.json`, " +
       'defaulting to `npx cairn check --summaries-only --stamp` if unset).',
+    // Pass 4: whitespace/case cosmetic mangling of the bare literal that a
+    // human still reads as the same command.
+    'stampCommand aside, run `npx cairn check  --summaries-only --stamp` (double space).',
+    'stampCommand aside, run `npx cairn check\t--summaries-only --stamp` (tab).',
+    'stampCommand aside, Npx Cairn Check --summaries-only --stamp is what you run.',
   ])('rejects decoy wording that mentions stampCommand while still containing the bare literal: %s', (decoy) => {
     expect(decoy).toContain('stampCommand')
     expect(referencesStampCommandWithoutTheBareLiteral(decoy)).toBeFalsy()
