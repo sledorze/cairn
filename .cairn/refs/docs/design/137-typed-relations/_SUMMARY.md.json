@@ -1,0 +1,36 @@
+{
+  "refs": [
+    {
+      "hash": "7f71da1bb0e327fbe682fa475956e82c0b8dd4939c730cdbb39e6984b54efdd1",
+      "target": "./solution-space.md"
+    },
+    {
+      "hash": "60d961e423df3d4b087c498368660625b3151a69eafb7b7dac0a8235feca6d70",
+      "target": "../../adr/0004-refs-scoped-hashing-granularity.md"
+    },
+    {
+      "hash": "8c13d98d38ee7cf2c471722ca87cd7dd5aac1009e6867e4f5b99b08d9acb5f50",
+      "target": "./problem-space.md"
+    },
+    {
+      "hash": "51969de6762732e8f8d8a4d0f11e4a0e771ea81dc513b4e8a5fc9998a189fe2a",
+      "target": "./spikes.md"
+    },
+    {
+      "hash": "bc8ea6de706065791f8858a3a6b923806153f263c53a2ece07daf37aa8bb814b",
+      "target": "./story-map.md"
+    },
+    {
+      "hash": "ecb45dc29eef5bfb15d59c125eda334766e1a5b34a50d8ee5f2100a78391d00b",
+      "target": "./roadmap.md"
+    },
+    {
+      "hash": "c7fb0d4ef562c5655865de4b3e7c3b64c3b548feb232dde5cdea74d5dd28a07a",
+      "target": "./implementation-details.md"
+    },
+    {
+      "hash": "917bef8eca8141ac4441da389ff14fe1f99450a9abcfef9f742a9d6bf8fa83db",
+      "target": "./knowledge.md"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "refs": [
+    {
+      "hash": "864b30023513fdc565fab7177e2bbfd78823832f8e51636b22f2fc7cd059ba43",
+      "target": "./problem-space.md"
+    },
+    {
+      "hash": "12b0f8493ab6b0de9027231ce1d657a04be3c1df60b8204255c90cf65a8269ee",
+      "target": "./solution-space.md"
+    },
+    {
+      "hash": "33a43573e86e2769f9c04c9c701557da9fdc3fdb14920526730d3817b53c4cdd",
+      "target": "./spikes.md"
+    },
+    {
+      "hash": "87c0227048b97e3baa5bc0e429ed29cf7b6a4f9c300786994f2344109c34ab5c",
+      "target": "./story-map.md"
+    },
+    {
+      "hash": "ec83d59369ba7fa31a2bddd7ea16aafc820f56c1448d08607c06e66a1b87178a",
+      "target": "./roadmap.md"
+    },
+    {
+      "hash": "3f936ac85f14ce3340085473bbe471400c387f1d2597f6cc8dd00e0bd46e6cb7",
+      "target": "./implementation-details.md"
+    },
+    {
+      "hash": "f8f8bf528c5cc34fccc6180f93d09f466fc4b47cd2125c68c4e087f453a2687a",
+      "target": "./knowledge.md"
+    }
+  ]
+}

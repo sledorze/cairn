@@ -628,9 +628,7 @@ const runInitCommand = Effect.fn('runInit')(function* ({ agent, config: configPa
   for (const file of result.skipped) {
     yield* Console.log(`•  kept  ${file} (already present)`)
   }
-  yield* Console.log(
-    '\nNext: author your summaries, then run `cairn check --summaries-only --stamp` and `cairn check`.',
-  )
+  yield* Console.log(`\nNext: author your summaries, then run \`${config.stampCommand}\` and \`cairn check\`.`)
 })
 
 const initCommand = Command.make(

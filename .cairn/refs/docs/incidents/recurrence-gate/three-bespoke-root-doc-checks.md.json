@@ -1,0 +1,20 @@
+{
+  "refs": [
+    {
+      "hash": "4f328f082cf0e3935f107b635809b8b6f4418e1d3e9c0bd2815ae5e2ef0b126f",
+      "target": "../../../src/jsonIncompatibility.readme.unit.test.ts"
+    },
+    {
+      "hash": "b0bea46ee535346cfc75c3da18da39f2fa38c1ae76d3759be871c9e9337fb656",
+      "target": "../../../src/flagReadme.unit.test.ts"
+    },
+    {
+      "hash": "bd7476c34ee8f3b6dbbc6049590504a5577490434725fe9da01ab986ea46fc7e",
+      "target": "../../../src/program/links/CheckLinks.ts"
+    },
+    {
+      "hash": "e94ff6c7f1314c82eecbc384276385c28a02c017048b39e0ae217ef260eec62a",
+      "target": "../../../src/core/Config.ts"
+    }
+  ]
+}
