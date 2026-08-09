@@ -154,11 +154,19 @@ summary links to every child") — is one-directional and real, not a cycle.
      pruning, plus issue #106's `--report-deletions` detection surface, plus
      issue #101's `checks.freshness` detection surface (`lastCommitDate`, the
      committer date — never mtime — of a path's most recent commit, or `null`
-     when it has no commit history yet):
+     when it has no commit history yet), plus issue #142/#154's `--explain`
+     line-count-delta surface (`historyForPath` + `diffStat`: since cairn's own
+     recorded hash is a plain sha256, not a git object id, there is no direct
+     git lookup from "this hash" to "which commit produced it" — a caller
+     walks `historyForPath`'s newest-first commit list, re-hashing each past
+     revision via `readFileAtRef`, until the recorded hash matches or a bound
+     is hit, then reads `diffStat` from that commit to the working tree):
      `GitFsLive.listTrackedFiles`/`listIgnoredDirs`/`listWorktreeDirs`/
-     `listDeletedSince`/`readFileAtRef`/`lastCommitDate` shell out to the real `git` binary
+     `listDeletedSince`/`readFileAtRef`/`lastCommitDate`/`historyForPath`/`diffStat`
+     shell out to the real `git` binary
      (`ls-files`, `worktree list`, `diff --name-status --diff-filter=D`,
-     `show <ref>:<path>`, `log -1 --format=%cI`) via
+     `show <ref>:<path>`, `log -1 --format=%cI`, `log --format=%H`,
+     `diff --numstat`) via
      `effect`'s own `ChildProcess`/`ChildProcessSpawner`
      (`effect/unstable/process`), not raw `node:child_process` — a typed
      `PlatformError`/exit-code contract instead of hand-wiring a `Promise`
@@ -193,7 +201,11 @@ summary links to every child") — is one-directional and real, not a cycle.
      - [`CheckSummaries.ts`](../src/program/summaries/CheckSummaries.ts) —
        compute the plan; read/write the `.cairn/**` sidecar tree; stamp
        existing summaries bottom-up; one-off `--migrate-stamps` off the
-       legacy in-content form.
+       legacy in-content form; `--explain` (issue #142/#154), best-effort
+       enriched with a real git line-count delta per stale file node via
+       `io/Git.ts`'s `historyForPath`/`diffStat` — never blocks or changes
+       `check`'s own exit code, degrades silently to today's plain text when
+       git is unavailable or no matching commit is found within the bound.
      - [`CheckDeletions.ts`](../src/program/summaries/CheckDeletions.ts) —
        opt-in (`--report-deletions`, issue #106), hand-wired like
        `CheckSummaries.ts` above rather than a `CheckPlugin` (needs live

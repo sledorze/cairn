@@ -12,6 +12,7 @@
 import { Effect } from 'effect'
 
 import { DEFAULT_STAMP_COMMAND } from '../../core/Config.ts'
+import { hashContent } from '../../core/hashing.ts'
 import type { Naming } from '../../core/summaries/DocSummaries.ts'
 import { countLines, isSummaryFile, stripSourceHash } from '../../core/summaries/DocSummaries.ts'
 import { parseStamp, serializeStamp, STAMP_VERSION } from '../../core/summaries/StampStore.ts'
@@ -20,6 +21,8 @@ import { isDirSummary, nodeExpectedHash, planSummaries } from '../../core/summar
 import type { MetaLayout } from '../../core/sidecar.ts'
 import { metaRootFor, nodePathForSidecar, sidecarPathFor } from '../../core/sidecar.ts'
 import { DocsFs, readMarkdownCorpus } from '../../io/DocsFs.ts'
+import type { GitFsService } from '../../io/Git.ts'
+import { GitFs } from '../../io/Git.ts'
 import type { Locale } from '../locale.ts'
 import { enOnly, pick } from '../locale.ts'
 
@@ -256,17 +259,31 @@ const headings = (content: string): string[] =>
     .filter((line) => /^#{1,6}\s/.test(line))
     .map((line) => line.trim())
 
+/** A stale file node's line-count delta since the commit its recorded hash
+ * last matched — see `diffSinceRecorded` below for how this is computed and
+ * why it can legitimately be absent. */
+export interface ExplainDiff {
+  readonly added: number
+  readonly removed: number
+  readonly sha: string
+}
+
 /**
  * Explain why each `todo` node is not ok. cairn stores only a content hash, not
  * prior source text, so this cannot diff against the previously-summarized
- * version — it surfaces what IS derivable: the expected/recorded hash pair, the
- * changed source's current outline (file summaries), or which stale/missing
- * child is driving a directory summary stale (dir summaries).
+ * version FROM THE HASH ALONE — it surfaces what IS derivable: the
+ * expected/recorded hash pair, the changed source's current outline (file
+ * summaries), or which stale/missing child is driving a directory summary
+ * stale (dir summaries). `diffs` (optional, keyed by summary path) adds a
+ * real line-count delta when `explainSummaries`'s git lookup found one —
+ * still best-effort, so this function stays pure and never assumes an entry
+ * is present.
  */
 const explainPlan = (
   plan: SummaryPlan,
   files: ReadonlyMap<string, string>,
   options: SummaryReportOptions,
+  diffs: ReadonlyMap<string, ExplainDiff> = new Map(),
 ): string[] => {
   const locale = options.locale ?? 'en'
   if (plan.todo.length === 0) {
@@ -283,6 +300,10 @@ const explainPlan = (
       const source = node.inputs[0]
       const content = source === undefined ? '' : (files.get(source) ?? '')
       lines.push(`  source: ${source} (${countLines(content)} lines)`, ...headings(content).map((h) => `    ${h}`))
+      const diff = diffs.get(node.path)
+      if (diff !== undefined) {
+        lines.push(`  changed since ${diff.sha.slice(0, 8)}…: +${diff.added}/-${diff.removed} lines`)
+      }
     } else {
       const staleInputs = node.inputs.filter((input) => byPath.get(input)?.status !== 'ok')
       if (staleInputs.length > 0) {
@@ -304,16 +325,84 @@ export const checkSummaries = (args: CheckSummariesArgs): Effect.Effect<SummaryP
     return planSummaries(toPlanArgs(files, args, stamps))
   })
 
+// cairn's own recorded hash is a plain sha256 of content, not any git object
+// id — there is no direct git lookup from "this hash" to "which commit
+// produced it". Walk the file's own commit history, newest-first, re-hashing
+// each past revision with the SAME `hashContent` the sidecar was stamped
+// with, until a match or this bound is hit. Bounded (not "walk forever") so
+// one huge-history doc can't make `--explain` slow; a caller past the bound
+// simply gets no diff line, same as git being unavailable — this only ever
+// enriches output, never blocks or changes `check`'s own exit code.
+const MAX_HISTORY_DEPTH = 50
+
+// `MAX_HISTORY_DEPTH` bounds the cost PER stale doc; this bounds the cost
+// ACROSS a whole `--explain` run — a repo with many stale, deep-history docs
+// otherwise spawns `MAX_HISTORY_DEPTH + 1` git processes for EVERY one of
+// them, serially (found via adversarial review of this feature's first cut:
+// no existing bound covered the many-stale-docs case, only the single-doc
+// one). Past this many enriched nodes, later stale file nodes simply show
+// without a diff line — the same graceful degradation as git being
+// unavailable, never a crash or a truncated/wrong report.
+const MAX_DIFF_ENRICHED_NODES = 20
+
+/**
+ * Best-effort: the most recent commit whose content hashed to `recordedHash`
+ * for `absPath`, and the line-count delta from there to the working tree.
+ * Every git failure along the way (no repo, no match within the bound, a
+ * binary file `diffStat` can't express as line counts) degrades to `null` —
+ * never propagated, this is purely additive `--explain` context.
+ */
+const diffSinceRecorded = (
+  gitFs: GitFsService,
+  base: string,
+  absPath: string,
+  recordedHash: string,
+): Effect.Effect<ExplainDiff | null> =>
+  Effect.gen(function* () {
+    const history = yield* gitFs.historyForPath(base, absPath)
+    for (const sha of history.slice(0, MAX_HISTORY_DEPTH)) {
+      const content = yield* gitFs.readFileAtRef(base, sha, absPath).pipe(Effect.catch(() => Effect.succeed(null)))
+      if (content !== null && hashContent(content) === recordedHash) {
+        const stat = yield* gitFs.diffStat(base, sha, absPath).pipe(Effect.catch(() => Effect.succeed(null)))
+        return stat === null ? null : { ...stat, sha }
+      }
+    }
+    return null
+  }).pipe(Effect.catch(() => Effect.succeed(null)))
+
 /** `--explain`: why each todo node is not ok (see `explainPlan` for what this can and cannot show). */
 export const explainSummaries = (
   args: CheckSummariesArgs,
   options: SummaryReportOptions = {},
-): Effect.Effect<string[], never, DocsFs> =>
+): Effect.Effect<string[], never, DocsFs | GitFs> =>
   Effect.gen(function* () {
     const files = yield* readMarkdown(args.roots, args.ignore ?? [], args.trackedFiles)
     const stamps = yield* readStamps(layoutFor(args.base))
     const plan = planSummaries(toPlanArgs(files, args, stamps))
-    return explainPlan(plan, files, options)
+    const gitFs = yield* GitFs
+    const diffs = new Map<string, ExplainDiff>()
+    // Counts every ATTEMPT (a real `historyForPath` call, up to
+    // `MAX_HISTORY_DEPTH + 1` subprocess spawns each), not just successful
+    // matches — a repo where many stale nodes have no match at all (the real
+    // worst case: EVERY attempt pays the full bound with nothing to show for
+    // it) must still stop, or `diffs.size` alone would never trip the cap.
+    let attempted = 0
+    for (const node of plan.todo) {
+      if (attempted >= MAX_DIFF_ENRICHED_NODES) {
+        break
+      }
+      if (node.kind === 'file' && node.status === 'stale' && node.recordedHash !== null) {
+        const source = node.inputs[0]
+        if (source !== undefined) {
+          attempted += 1
+          const diff = yield* diffSinceRecorded(gitFs, args.base, source, node.recordedHash)
+          if (diff !== null) {
+            diffs.set(node.path, diff)
+          }
+        }
+      }
+    }
+    return explainPlan(plan, files, options, diffs)
   })
 
 /**

@@ -711,3 +711,120 @@ it.layer(GitFsTestLive)('GitFsLive().lastCommitDate()', (layerIt) => {
     }),
   )
 })
+
+interface HistoryRepo {
+  readonly firstSha: string
+  readonly root: string
+  readonly secondSha: string
+}
+
+/** A fresh repo with two real commits touching `docs/a.md` (+2 lines, no
+ * removals), a third commit adding a genuine binary file, and an
+ * untouched/never-committed doc — acquired/released as a per-test `Effect`
+ * resource (this file's own established convention: `Effect.acquireRelease`,
+ * never a `beforeAll`/`afterAll` lifecycle hook, so teardown stays tied to
+ * the exact test that set it up). */
+const acquireHistoryRepo = (): Effect.Effect<HistoryRepo, never, Scope.Scope> =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gitfs-history-'))
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@example.com')
+      git(root, 'config', 'user.name', 'Test')
+
+      fs.mkdirSync(path.join(root, 'docs'), { recursive: true })
+      fs.writeFileSync(path.join(root, 'docs', 'a.md'), 'line 1\nline 2\n')
+      git(root, 'add', 'docs/a.md')
+      git(root, 'commit', '-q', '-m', 'first')
+      const firstSha = git(root, 'rev-parse', 'HEAD').trim()
+
+      fs.writeFileSync(path.join(root, 'docs', 'a.md'), 'line 1\nline 2\nline 3\nline 4\n')
+      git(root, 'add', 'docs/a.md')
+      git(root, 'commit', '-q', '-m', 'second')
+      const secondSha = git(root, 'rev-parse', 'HEAD').trim()
+
+      fs.writeFileSync(path.join(root, 'docs', 'binary.md'), Buffer.from([0, 1, 2, 255]))
+      git(root, 'add', 'docs/binary.md')
+      git(root, 'commit', '-q', '-m', 'binary')
+
+      fs.writeFileSync(path.join(root, 'docs', 'untouched.md'), '# never committed\n')
+      return { firstSha, root, secondSha }
+    }),
+    ({ root }) => Effect.sync(() => fs.rmSync(root, { force: true, recursive: true })),
+  )
+
+// Issue #142/#154's "reflexive re-stamping" gap: `historyForPath`/`diffStat`
+// are what let `--explain` show a REAL line-count delta since the recorded
+// hash last matched, instead of a bare "stale (source changed)" — real git,
+// real multi-commit history, matching this file's own established discipline.
+it.layer(GitFsTestLive)('GitFsLive().historyForPath() / diffStat()', (layerIt) => {
+  layerIt.effect('historyForPath returns every commit SHA for the path, newest-first', () =>
+    Effect.gen(function* () {
+      const { firstSha, root, secondSha } = yield* acquireHistoryRepo()
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(root, 'docs', 'a.md'))
+      const history = yield* gitFs.historyForPath(root, absPath)
+      expect(history).toEqual([secondSha, firstSha])
+    }),
+  )
+
+  layerIt.effect('historyForPath returns [] for a path with no commit history yet', () =>
+    Effect.gen(function* () {
+      const { root } = yield* acquireHistoryRepo()
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(root, 'docs', 'untouched.md'))
+      const history = yield* gitFs.historyForPath(root, absPath)
+      expect(history).toEqual([])
+    }),
+  )
+
+  layerIt.effect('historyForPath fails with a named GitUnavailableError when `base` is not a git repository', () =>
+    Effect.gen(function* () {
+      const nonRepo = yield* acquireTempDir('not-a-repo-history-')
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(nonRepo, 'docs', 'a.md'))
+      const error = yield* Effect.flip(gitFs.historyForPath(nonRepo, absPath))
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    }),
+  )
+
+  layerIt.effect('diffStat reports the real line-count delta from an older commit to the working tree', () =>
+    Effect.gen(function* () {
+      const { firstSha, root } = yield* acquireHistoryRepo()
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(root, 'docs', 'a.md'))
+      const stat = yield* gitFs.diffStat(root, firstSha, absPath)
+      expect(stat).toEqual({ added: 2, removed: 0 })
+    }),
+  )
+
+  layerIt.effect('diffStat reports {added: 0, removed: 0} when content is identical at both ends', () =>
+    Effect.gen(function* () {
+      const { root, secondSha } = yield* acquireHistoryRepo()
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(root, 'docs', 'a.md'))
+      const stat = yield* gitFs.diffStat(root, secondSha, absPath)
+      expect(stat).toEqual({ added: 0, removed: 0 })
+    }),
+  )
+
+  layerIt.effect('diffStat returns null for a binary file, never a fabricated 0/0', () =>
+    Effect.gen(function* () {
+      const { firstSha, root } = yield* acquireHistoryRepo()
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(root, 'docs', 'binary.md'))
+      const stat = yield* gitFs.diffStat(root, firstSha, absPath)
+      expect(stat).toBeNull()
+    }),
+  )
+
+  layerIt.effect('diffStat fails with a named GitUnavailableError when `base` is not a git repository', () =>
+    Effect.gen(function* () {
+      const nonRepo = yield* acquireTempDir('not-a-repo-diffstat-')
+      const gitFs = yield* GitFs
+      const absPath = toPosix(path.join(nonRepo, 'docs', 'a.md'))
+      const error = yield* Effect.flip(gitFs.diffStat(nonRepo, 'HEAD', absPath))
+      expect(error).toBeInstanceOf(GitUnavailableError)
+    }),
+  )
+})
