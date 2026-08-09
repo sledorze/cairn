@@ -1,0 +1,24 @@
+{
+  "refs": [
+    {
+      "hash": "9f8d79407832f12a715e215c313663b272e9341fe3acbc06457354db89462e34",
+      "target": "../../../src/core/links/MarkdownLinks.ts"
+    },
+    {
+      "hash": "313e94fa17add2642380c1ae0eef34ace377bc901d763536f685bb89697841aa",
+      "target": "../../../src/core/links/RefStore.ts"
+    },
+    {
+      "hash": "60d961e423df3d4b087c498368660625b3151a69eafb7b7dac0a8235feca6d70",
+      "target": "../../adr/0004-refs-scoped-hashing-granularity.md"
+    },
+    {
+      "hash": "51969de6762732e8f8d8a4d0f11e4a0e771ea81dc513b4e8a5fc9998a189fe2a",
+      "target": "./spikes.md"
+    },
+    {
+      "hash": "5e24613c5f5caf0e544bd0fd5adc0abc29674bfad4a748404263872e3f3549cc",
+      "target": "../101-refs-symbol-scoping/problem-space.md"
+    }
+  ]
+}
