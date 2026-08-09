@@ -9,3 +9,4 @@ mistake is the only thing that should ever need a new `AGENTS.md` link.
 - [adversarial-review](./adversarial-review) — what counts as "trivial enough to skip review."
 - [verify-before-push](./verify-before-push) — local-verify gaps a passing gate can still hide.
 - [branch-hygiene](./branch-hygiene) — picking the right parent branch for new work.
+- [recurrence-gate](./recurrence-gate) — real recurrences the recurrence-gate rule catches.
