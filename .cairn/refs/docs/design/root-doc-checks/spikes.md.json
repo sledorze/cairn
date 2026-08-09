@@ -1,0 +1,8 @@
+{
+  "refs": [
+    {
+      "hash": "20a76c98c941cdc5e735a6df1b36ebcb5e15a16eef6fa8fea82b9b1e19830435",
+      "target": "../../../src/config.ts"
+    }
+  ]
+}

@@ -15,6 +15,10 @@
     {
       "hash": "3f9ece61c2c7b85cc845c9ae3b31efa4d9e5e5496231d79fe53cf33b9c7acd0c",
       "target": "./101-refs-symbol-scoping/_SUMMARY.md"
+    },
+    {
+      "hash": "b8fa2c4fe72a79cc002d89a9502bad043ead4e1fc3cbd8bcb49a7eb479c33da2",
+      "target": "./root-doc-checks/_SUMMARY.md"
     }
   ]
 }

@@ -1,0 +1,28 @@
+{
+  "refs": [
+    {
+      "hash": "20a76c98c941cdc5e735a6df1b36ebcb5e15a16eef6fa8fea82b9b1e19830435",
+      "target": "../../../src/config.ts"
+    },
+    {
+      "hash": "4f328f082cf0e3935f107b635809b8b6f4418e1d3e9c0bd2815ae5e2ef0b126f",
+      "target": "../../../src/jsonIncompatibility.readme.unit.test.ts"
+    },
+    {
+      "hash": "b0bea46ee535346cfc75c3da18da39f2fa38c1ae76d3759be871c9e9337fb656",
+      "target": "../../../src/flagReadme.unit.test.ts"
+    },
+    {
+      "hash": "fb86c88a2f7934d70ba89b7bbda87da86ee06aba88c844dfe9f046f7546b2792",
+      "target": "../../incidents/recurrence-gate/three-bespoke-root-doc-checks.md"
+    },
+    {
+      "hash": "dd3f938ee16a56d75e161a800edc4228f3e5972fe541dcb6638517aafd93c681",
+      "target": "../../../src/io/DocsFs.ts"
+    },
+    {
+      "hash": "33a43573e86e2769f9c04c9c701557da9fdc3fdb14920526730d3817b53c4cdd",
+      "target": "./spikes.md"
+    }
+  ]
+}
