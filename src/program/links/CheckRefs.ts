@@ -95,6 +95,14 @@ export interface FileStaleRefs {
 
 export interface RefsCheckResult {
   readonly checked: number
+  /** Whether `checks.coverage.kinds` was configured for this run — distinct
+   * from whether any stale doc happened to MATCH a kind (`kindGuidance`
+   * empty either way). Carried on the result, not a separate `format()`
+   * option: `FormatOptions` (`checks/CheckPlugin.ts`) is shared across
+   * every plugin and has no config access, only `locale` — this is refs-
+   * specific, so it lives where refs-specific data already flows to
+   * `formatRefsReport`. */
+  readonly kindsConfigured: boolean
   readonly stale: readonly FileStaleRefs[]
 }
 
@@ -324,7 +332,7 @@ export const checkRefs = ({
         stale.push({ file, kindGuidance, refs: drifted })
       }
     }
-    return { checked, stale }
+    return { checked, kindsConfigured: kinds.length > 0, stale }
   })
 
 export interface RefsReportOptions {
@@ -382,6 +390,20 @@ export const formatRefsReport = (result: RefsCheckResult, options: RefsReportOpt
       fr: '\nCorrection : re-tamponnez avec `cairn check --refs --stamp` (ou `pnpm run stamp:refs` si ce dépôt a ce script), puis relancez.',
     }),
   )
+  // Discoverability gap found adversarially: with no `checks.coverage.kinds`
+  // configured, this report gives ZERO signal that richer, WHY-it-matters
+  // guidance is even possible — invisible unless the reader has already read
+  // the README. One-time tip, only when it's actually relevant (real stale
+  // refs AND no kinds configured) — never per-file, matching the existing
+  // fix-hint's own "once per report" discipline above.
+  if (!result.kindsConfigured) {
+    lines.push(
+      pick(locale, {
+        en: 'Tip: configure checks.coverage.kinds to show WHY a citation matters here, not just that it changed.',
+        fr: "Astuce : configurez checks.coverage.kinds pour indiquer POURQUOI une citation compte ici, pas seulement qu'elle a changé.",
+      }),
+    )
+  }
   return lines
 }
 
