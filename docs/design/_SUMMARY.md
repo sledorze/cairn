@@ -14,3 +14,4 @@ DECISION concisely; these packages carry the full reasoning and evidence behind 
   actually running those prompts against this repo's own `checks.coverage` schema and
   config, split out from `review-prompts.md` once it grew past a lean reference.
 - [101 — `--refs` symbol/export-scoped hashing](./101-refs-symbol-scoping/_SUMMARY.md)
+- [151 — root-level docs reachable by cairn](./root-doc-checks/_SUMMARY.md)
