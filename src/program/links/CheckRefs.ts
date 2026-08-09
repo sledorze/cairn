@@ -17,6 +17,7 @@ import * as nodePath from 'node:path'
 
 import { Effect } from 'effect'
 
+import { DEFAULT_REFS_STAMP_COMMAND } from '../../core/Config.ts'
 import { extractDeclaredRefs } from '../../core/links/DeclaredRefs.ts'
 import type { Reference } from '../../core/links/MarkdownLinks.ts'
 import { extractReferences } from '../../core/links/MarkdownLinks.ts'
@@ -337,11 +338,20 @@ export const checkRefs = ({
 
 export interface RefsReportOptions {
   readonly locale?: Locale
+  /** Issue #162 item 1: the report's own "Fix:" hint used to hardcode a
+   * guessed `pnpm run stamp:refs` fallback — a script that may not exist —
+   * instead of reading the repo's actual configured command. `undefined`
+   * (the default) falls back to `DEFAULT_REFS_STAMP_COMMAND`, NOT
+   * `stampCommand`: that field is conventionally scoped to `--summaries-only`
+   * (see `core/Config.ts`'s `refsStampCommand` schema comment) and would
+   * suggest a command that doesn't actually stamp refs. */
+  readonly refsStampCommand?: string
 }
 
 /** Human-readable report lines (pure, so it can be unit-tested). */
 export const formatRefsReport = (result: RefsCheckResult, options: RefsReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
+  const refsStampCommand = options.refsStampCommand ?? DEFAULT_REFS_STAMP_COMMAND
   const lines: string[] = []
   if (result.stale.length === 0) {
     lines.push(
@@ -384,10 +394,21 @@ export const formatRefsReport = (result: RefsCheckResult, options: RefsReportOpt
   // `--explain` tip), this report named WHAT drifted but never HOW to fix it
   // — a contributor who's never touched `--refs` before has no way to guess
   // the fix command from a bare hash diff.
+  //
+  // Issue #162 item 1: this used to hardcode `cairn check --refs --stamp`
+  // plus a guessed `pnpm run stamp:refs` fallback, ignoring whatever the
+  // repo actually configured — reproduced live in a repo where that guessed
+  // script name didn't exist AND the real command needed a formatter step
+  // first (prettier reflows tables the un-formatted stamp would immediately
+  // go stale against). Now reads `refsStampCommand` the same way the
+  // summaries report already reads `stampCommand` (`CheckSummaries.ts`'s
+  // `formatSummaryReport`) — a distinct config field, not a reuse of
+  // `stampCommand` itself, since that one is conventionally
+  // `--summaries-only`-scoped and does not stamp refs at all.
   lines.push(
     pick(locale, {
-      en: '\nFix: re-stamp with `cairn check --refs --stamp` (or `pnpm run stamp:refs` if this repo has that script), then re-run.',
-      fr: '\nCorrection : re-tamponnez avec `cairn check --refs --stamp` (ou `pnpm run stamp:refs` si ce dépôt a ce script), puis relancez.',
+      en: `\nFix: re-stamp with \`${refsStampCommand}\`, then re-run.`,
+      fr: `\nCorrection : re-tamponnez avec \`${refsStampCommand}\`, puis relancez.`,
     }),
   )
   // Discoverability gap found adversarially: with no `checks.coverage.kinds`

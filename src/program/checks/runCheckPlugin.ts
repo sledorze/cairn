@@ -41,7 +41,9 @@ export const runCheckPlugin = <Result, Env = DocsFs>(
       return { ran: false }
     }
     const result = yield* plugin.run(args)
-    const lines = args.cli.json ? [] : plugin.format(result, { locale: args.resolved.locale })
+    const lines = args.cli.json
+      ? []
+      : plugin.format(result, { locale: args.resolved.locale, refsStampCommand: args.resolved.refsStampCommand })
     return { code: plugin.exitCode(result), lines, ran: true, result }
   })
 
