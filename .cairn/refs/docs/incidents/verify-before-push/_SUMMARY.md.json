@@ -1,0 +1,8 @@
+{
+  "refs": [
+    {
+      "hash": "4e6edcf0679cba4e1654d60a821520c919c21ade33d5907fb24a65806fc7d33b",
+      "target": "./coverage-thresholds-left-uncommitted-twice.md"
+    }
+  ]
+}

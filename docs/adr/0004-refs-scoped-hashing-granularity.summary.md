@@ -1,5 +1,9 @@
 # ADR 0004 — `--refs` hashing granularity — summary
 
+**Status: accepted. Release 1 (`refs.scope`) has shipped** — the config, `stampRefs`/
+`checkRefs` wiring, and tests described below are real, not just decided. Releases 2/3
+remain provisional.
+
 Issue #101: whole-file `--refs` hashing makes any edit to a cited
 file fail the check, even unrelated ones — reported for real (a doc
 citing 14 files failed on every unrelated edit to any of them, until

@@ -23,7 +23,11 @@ import { extractReferences } from '../../core/links/MarkdownLinks.ts'
 import type { RefRecord } from '../../core/links/RefStore.ts'
 import { parseRefs, refsSidecarPathFor, serializeRefs } from '../../core/links/RefStore.ts'
 import { hashContent } from '../../core/hashing.ts'
+import { matchesGlobNearBase } from '../../core/paths.ts'
+import type { RefsScopeGroup } from '../../core/Config.ts'
 import { metaRootFor } from '../../core/sidecar.ts'
+import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
+import type { KindDef } from '../../core/structure/DocMetadata.ts'
 import { DocsFs, isSafelyWithinBase, listMarkdownFiles, readMarkdownCorpus } from '../../io/DocsFs.ts'
 import type { CheckPlugin } from '../checks/CheckPlugin.ts'
 import type { Locale } from '../locale.ts'
@@ -47,6 +51,20 @@ export interface CheckRefsArgs {
    * defeating the CI-parity guarantee `onlyGitTracked` makes everywhere
    * else. `undefined` (the default) preserves today's behavior unchanged. */
   readonly trackedFiles?: ReadonlySet<string> | undefined
+  /** ADR 0004 Release 1 (`refs.scope`): first-match-wins glob groups deciding
+   * a target's hashing granularity. `[]` (the default) preserves today's
+   * only behavior — every target hashed `whole-file`. */
+  readonly scope?: readonly RefsScopeGroup[]
+  /** Design proposal (kind-aware stale-ref guidance): declared doc `kinds`
+   * (normally `resolved.checks.coverage?.kinds`) used ONLY to look up which
+   * kind(s) a STALE doc matches and surface that kind's own `description` as
+   * review context — reusing `checks.coverage`'s existing, already-mandatory
+   * field rather than inventing a new one. `undefined`/`[]` (the default)
+   * preserves today's behavior unchanged: no guidance line, no doc-content
+   * read for a doc with no stale refs. Deliberately NOT threaded into
+   * `stampRefs` — kind guidance is a check-time-only concern, nothing to
+   * stamp. */
+  readonly kinds?: readonly KindDef[]
 }
 
 export interface StaleRef {
@@ -54,15 +72,37 @@ export interface StaleRef {
   readonly currentHash: string
   readonly recordedHash: string
   readonly target: string
+  /** The TARGET's own matching kind description(s), when the target is
+   * itself a `.md` file classified by a declared kind — the symmetric
+   * counterpart to `FileStaleRefs.kindGuidance` (the CITING doc's kind).
+   * `[]` when `kinds` wasn't supplied, the target isn't `.md`, or it
+   * matches no declared kind. Costs no extra IO: the target's content is
+   * already read to compute `currentHash` above. */
+  readonly targetKindGuidance: readonly string[]
 }
 
 export interface FileStaleRefs {
   readonly file: string
+  /** Each matching declared kind's own `description`, verbatim — e.g. a doc
+   * classified `spec` surfaces its `spec` kind's description as review
+   * context for the drift below it. `[]` when `kinds` wasn't supplied, the
+   * doc matches no declared kind, or every matching kind has no meaningful
+   * text (schema requires `description`, so this is really "no kinds
+   * configured/matched" in practice). */
+  readonly kindGuidance: readonly string[]
   readonly refs: readonly StaleRef[]
 }
 
 export interface RefsCheckResult {
   readonly checked: number
+  /** Whether `checks.coverage.kinds` was configured for this run — distinct
+   * from whether any stale doc happened to MATCH a kind (`kindGuidance`
+   * empty either way). Carried on the result, not a separate `format()`
+   * option: `FormatOptions` (`checks/CheckPlugin.ts`) is shared across
+   * every plugin and has no config access, only `locale` — this is refs-
+   * specific, so it lives where refs-specific data already flows to
+   * `formatRefsReport`. */
+  readonly kindsConfigured: boolean
   readonly stale: readonly FileStaleRefs[]
 }
 
@@ -74,6 +114,17 @@ export interface StampRefsResult {
 export const refsExitCode = (result: RefsCheckResult): number => (result.stale.length > 0 ? 1 : 0)
 
 /**
+ * First matching `scope` group (array order) decides `targetAbs`'s hashing
+ * granularity; no match keeps today's only behavior, `whole-file` — see
+ * `RefsScopeGroupInputSchema`'s own comment (`core/Config.ts`) for the
+ * first-match-wins semantics. Matched via `matchesGlobNearBase`, the same
+ * helper `CheckDocCoverage.ts`'s own glob groups already use, so a glob
+ * written root-relative (the form anyone writes) matches as expected.
+ */
+const unitFor = (targetAbs: string, base: string, scope: readonly RefsScopeGroup[]): 'whole-file' | 'ignore' =>
+  scope.find((group) => matchesGlobNearBase(targetAbs, base, [group.glob]))?.unit ?? 'whole-file'
+
+/**
  * Resolve one reference target to its real, CURRENT content — bounded by
  * `base` exactly like `CheckLinks.ts`'s `resolvePendingCheck` (nothing
  * outside the checkout root is ever stat'd/read). `null` if the target
@@ -81,11 +132,18 @@ export const refsExitCode = (result: RefsCheckResult): number => (result.stale.l
  * that no longer resolves is `CheckLinks.ts`'s "broken" concern, not this
  * file's "stale" concern, so it's silently skipped here rather than
  * double-reported.
+ *
+ * `unit === 'ignore'` (ADR 0004 Release 1) short-circuits to `null` BEFORE
+ * `isSafelyWithinBase` even runs — an ignored glob is never read at all, not
+ * read-then-discarded, matching this repo's own "don't touch the filesystem
+ * for something structurally excluded" discipline (e.g. `DocsFs.ts`'s
+ * `isPrunedDir` pruning before `readDirectory`, not after).
  */
 const resolveReferenceContent = ({
   base,
   dfs,
   targetAbs,
+  unit,
 }: {
   readonly base: string
   readonly dfs: {
@@ -93,8 +151,12 @@ const resolveReferenceContent = ({
     realPath: (p: string) => Effect.Effect<string | null>
   }
   readonly targetAbs: string
+  readonly unit: 'whole-file' | 'ignore'
 }): Effect.Effect<string | null> =>
   Effect.gen(function* () {
+    if (unit === 'ignore') {
+      return null
+    }
     // `isSafelyWithinBase` (../../io/DocsFs.ts): a symlink physically
     // located INSIDE `base` can still point OUTSIDE it. Without this, a
     // symlink escaping `base` had its CONTENT hashed and the hash
@@ -145,6 +207,7 @@ export const stampRefs = ({
   base,
   roots,
   ignore = [],
+  scope = [],
   trackedFiles,
 }: CheckRefsArgs): Effect.Effect<StampRefsResult, never, DocsFs> =>
   Effect.gen(function* () {
@@ -160,7 +223,8 @@ export const stampRefs = ({
       const records: RefRecord[] = []
       for (const ref of allReferenceTargets(content)) {
         const targetAbs = path.resolve(fromDir, ref.target)
-        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs })
+        const unit = unitFor(targetAbs, base, scope)
+        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs, unit })
         if (targetContent !== null) {
           records.push(toRecord(ref, hashContent(targetContent)))
         }
@@ -183,6 +247,8 @@ export const checkRefs = ({
   base,
   roots,
   ignore = [],
+  kinds = [],
+  scope = [],
   trackedFiles,
 }: CheckRefsArgs): Effect.Effect<RefsCheckResult, never, DocsFs> =>
   Effect.gen(function* () {
@@ -211,24 +277,62 @@ export const checkRefs = ({
       const drifted: StaleRef[] = []
       for (const record of recorded.refs) {
         const targetAbs = path.resolve(fromDir, record.target)
-        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs })
+        const unit = unitFor(targetAbs, base, scope)
+        const targetContent = yield* resolveReferenceContent({ base, dfs, targetAbs, unit })
         if (targetContent === null) {
           continue
         }
         const currentHash = hashContent(targetContent)
         if (currentHash !== record.hash) {
+          // Generalizes kind guidance to the TARGET side too — a citation
+          // is `.md`-to-code just as often as `.md`-to-`.md` (this repo's
+          // own docs/adr + docs/design cross-reference each other far more
+          // than they cite src/ directly), and `targetContent` is ALREADY
+          // in memory from the hash check above, so classifying it costs
+          // nothing extra — no new IO, unlike the citing-doc side below.
+          const targetKindGuidance =
+            kinds.length === 0 || !targetAbs.endsWith('.md')
+              ? []
+              : extractDocMetadata({ content: targetContent, kinds, path: targetAbs })
+                  .kinds.map((id) => kinds.find((k) => k.id === id)?.description)
+                  .filter((d) => d !== undefined)
           drifted.push(
             record.anchor === undefined
-              ? { currentHash, recordedHash: record.hash, target: record.target }
-              : { anchor: record.anchor, currentHash, recordedHash: record.hash, target: record.target },
+              ? { currentHash, recordedHash: record.hash, target: record.target, targetKindGuidance }
+              : {
+                  anchor: record.anchor,
+                  currentHash,
+                  recordedHash: record.hash,
+                  target: record.target,
+                  targetKindGuidance,
+                },
           )
         }
       }
       if (drifted.length > 0) {
-        stale.push({ file, refs: drifted })
+        // Content read ONLY for a file that's already stale — not added to
+        // the corpus-wide scan above — so a run with zero/few drifted docs
+        // pays zero/near-zero extra IO for this, and a run with `kinds: []`
+        // (no `checks.coverage` configured, the common case) pays none at
+        // all (the `kinds.length === 0` check below short-circuits first).
+        const kindGuidance =
+          kinds.length === 0
+            ? []
+            : yield* Effect.gen(function* () {
+                const content = yield* dfs.readFile(file).pipe(Effect.catchDefect(() => Effect.succeed(null)))
+                if (content === null) {
+                  return []
+                }
+                const matched = extractDocMetadata({ content, kinds, path: file }).kinds
+                return kinds
+                  .filter((k) => matched.includes(k.id))
+                  .map((k) => k.description)
+                  .filter((d) => d !== undefined)
+              })
+        stale.push({ file, kindGuidance, refs: drifted })
       }
     }
-    return { checked, stale }
+    return { checked, kindsConfigured: kinds.length > 0, stale }
   })
 
 export interface RefsReportOptions {
@@ -255,14 +359,50 @@ export const formatRefsReport = (result: RefsCheckResult, options: RefsReportOpt
       fr: `⚠️  ${total} référence(s) possiblement obsolète(s) :`,
     }),
   )
-  for (const { file, refs } of result.stale) {
+  for (const { file, kindGuidance, refs } of result.stale) {
     lines.push(`  ${file}`)
+    // Shown once per matching kind, under the file — not per drifted ref,
+    // avoiding the spam a doc with several drifted refs would otherwise get
+    // from repeating the same paragraph per ref.
+    for (const guidance of kindGuidance) {
+      lines.push(`    [kind] ${guidance}`)
+    }
     for (const ref of refs) {
       const anchorSuffix = ref.anchor !== undefined ? `#${ref.anchor}` : ''
       lines.push(
         `    ~ ${ref.target}${anchorSuffix} (${ref.recordedHash.slice(0, 8)} → ${ref.currentHash.slice(0, 8)})`,
       )
+      // Per-ref, not per-file (unlike the citing doc's own kindGuidance
+      // above) — different refs in the same file can point at .md targets
+      // of different kinds.
+      for (const guidance of ref.targetKindGuidance) {
+        lines.push(`      [target kind] ${guidance}`)
+      }
     }
+  }
+  // Adversarial review finding: unlike the stale-summaries path (cli.ts's own
+  // `--explain` tip), this report named WHAT drifted but never HOW to fix it
+  // — a contributor who's never touched `--refs` before has no way to guess
+  // the fix command from a bare hash diff.
+  lines.push(
+    pick(locale, {
+      en: '\nFix: re-stamp with `cairn check --refs --stamp` (or `pnpm run stamp:refs` if this repo has that script), then re-run.',
+      fr: '\nCorrection : re-tamponnez avec `cairn check --refs --stamp` (ou `pnpm run stamp:refs` si ce dépôt a ce script), puis relancez.',
+    }),
+  )
+  // Discoverability gap found adversarially: with no `checks.coverage.kinds`
+  // configured, this report gives ZERO signal that richer, WHY-it-matters
+  // guidance is even possible — invisible unless the reader has already read
+  // the README. One-time tip, only when it's actually relevant (real stale
+  // refs AND no kinds configured) — never per-file, matching the existing
+  // fix-hint's own "once per report" discipline above.
+  if (!result.kindsConfigured) {
+    lines.push(
+      pick(locale, {
+        en: 'Tip: configure checks.coverage.kinds to show WHY a citation matters here, not just that it changed.',
+        fr: "Astuce : configurez checks.coverage.kinds pour indiquer POURQUOI une citation compte ici, pas seulement qu'elle a changé.",
+      }),
+    )
   }
   return lines
 }
@@ -279,11 +419,24 @@ export const refsPlugin: CheckPlugin<RefsCheckResult> = {
   isEnabled: (_resolved, cli) => cli.refs,
   jsonUnsupportedMessage: '--json cannot be combined with --refs yet',
   name: 'refs',
-  run: ({ base, ignore, roots, trackedFiles }) =>
-    checkRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) }),
+  run: ({ base, ignore, resolved, roots, trackedFiles }) =>
+    checkRefs({
+      base,
+      ignore,
+      kinds: resolved.checks.coverage?.kinds ?? [],
+      roots,
+      scope: resolved.refs.scope,
+      ...(trackedFiles === undefined ? {} : { trackedFiles }),
+    }),
   stamp: ({ base, ignore, resolved, roots, trackedFiles }) =>
     Effect.gen(function* () {
-      const result = yield* stampRefs({ base, ignore, roots, ...(trackedFiles === undefined ? {} : { trackedFiles }) })
+      const result = yield* stampRefs({
+        base,
+        ignore,
+        roots,
+        scope: resolved.refs.scope,
+        ...(trackedFiles === undefined ? {} : { trackedFiles }),
+      })
       return [
         pick(resolved.locale, {
           en: `🔗 Stamped ${result.stamped} doc(s)' reference hash(es) (.cairn/** sidecar).`,

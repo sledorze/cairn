@@ -1,8 +1,13 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # `--refs` hashing granularity: scope config first, export-surface hashing second, symbol citations only if still needed
+
+**Release 1 (`refs.scope`, below) has shipped** — `refs.scope: [{ glob, unit: "whole-file" |
+"ignore" }]`, first-match-wins, threaded through `CheckRefs.ts`'s `stampRefs`/`checkRefs`.
+Releases 2/3 remain provisional, gated on real usage evidence as this ADR's Decision section
+already states.
 
 ## Context
 

@@ -61,6 +61,7 @@ describe('stampRefs() / checkRefs() against the real filesystem (DocsFsLive)', (
         currentHash: expect.any(String),
         recordedHash: expect.any(String),
         target: '../src/engine.ts',
+        targetKindGuidance: [],
       },
     ])
     expect(after.stale[0]?.refs[0]?.currentHash).not.toBe(after.stale[0]?.refs[0]?.recordedHash)
@@ -240,7 +241,12 @@ describe('stampRefs() / checkRefs() with a declared `cairn-refs` target (issue #
     expect(after.stale).toHaveLength(1)
     expect(after.stale[0]?.file).toBe(path.join(p.root, 'docs', 'README.summary.md'))
     expect(after.stale[0]?.refs).toEqual([
-      { currentHash: expect.any(String), recordedHash: expect.any(String), target: '../package.json' },
+      {
+        currentHash: expect.any(String),
+        recordedHash: expect.any(String),
+        target: '../package.json',
+        targetKindGuidance: [],
+      },
     ])
     expect(after.stale[0]?.refs[0]?.currentHash).not.toBe(after.stale[0]?.refs[0]?.recordedHash)
 
@@ -280,7 +286,55 @@ describe('stampRefs() / checkRefs() with a declared `cairn-refs` target (issue #
     p.write('package.json', '{"changed": true}\n')
     const after = await run(checkRefs(args))
     expect(after.stale).toEqual([
-      { file: path.join(p.root, 'docs', 'index.md'), refs: [expect.objectContaining({ target: '../package.json' })] },
+      {
+        file: path.join(p.root, 'docs', 'index.md'),
+        kindGuidance: [],
+        refs: [expect.objectContaining({ target: '../package.json' })],
+      },
     ])
+  })
+})
+
+// ADR 0004 Release 1 (issue #101), Real CLI dogfood: reconstructs the
+// reporter's actual repro (issue #101 — cairn 0.6.0 on sledorze/falsestart,
+// a doc citing 14 implementation files failing on every unrelated edit to
+// any of them) at a smaller, real scale — many leaf files cited, one
+// exempted via `refs.scope`'s `ignore` unit — confirming editing the
+// exempted leaf stays green while editing a NON-exempted cited file still
+// fails, without the facade-layer restructure the reporter had to resort to.
+describe('stampRefs() / checkRefs() with `refs.scope` (ADR 0004 Release 1, issue #101)', () => {
+  it('an "ignore"-scoped leaf never fails on its own edits; a non-exempted leaf still does', async () => {
+    const p = project('checkrefs-scope-dogfood', {
+      'docs/index.md': [
+        '[a](../src/a.ts)',
+        '[b](../src/b.ts)',
+        '[noisy](../src/noisy.ts)', // the exempted leaf — edited constantly, no claim depends on it
+      ].join('\n'),
+      'src/a.ts': 'export const a = 1\n',
+      'src/b.ts': 'export const b = 1\n',
+      'src/noisy.ts': 'export const noisy = 1\n',
+    })
+    const args = {
+      base: p.root,
+      roots: [path.join(p.root, 'docs')],
+      scope: [{ glob: 'src/noisy.ts', unit: 'ignore' as const }],
+    }
+
+    await run(stampRefs(args))
+    const before = await run(checkRefs(args))
+    expect(before.stale).toEqual([])
+
+    // The reporter's own repro shape: an unrelated edit to the exempted leaf
+    // — stays green.
+    p.write('src/noisy.ts', 'export const noisy = 2 // constant noisy churn\n')
+    const afterNoisy = await run(checkRefs(args))
+    expect(afterNoisy.stale).toEqual([])
+
+    // A real, claim-relevant edit to a NON-exempted leaf still fails —
+    // `refs.scope` narrows the noise, it doesn't disable the mechanism.
+    p.write('src/b.ts', 'export const b = 2 // real change\n')
+    const afterB = await run(checkRefs(args))
+    expect(afterB.stale).toHaveLength(1)
+    expect(afterB.stale[0]?.refs.map((r) => r.target)).toEqual(['../src/b.ts'])
   })
 })

@@ -150,6 +150,42 @@ links, one path (optionally `path#anchor`) per line:
 
 Tracked exactly like a real link's target — same hash, same drift report, same `--stamp`.
 
+A target that's whole-file-hashed can be noisy: a doc that merely mentions a large or
+frequently-churned file fails `--refs` on every unrelated edit to it. `refs.scope` (config
+only, no CLI flag) exempts specific globs from hashing entirely:
+
+```json
+{
+  "refs": {
+    "scope": [{ "glob": "src/generated/**", "unit": "ignore" }]
+  }
+}
+```
+
+First matching glob (array order) decides a target's `unit`; no match keeps the default,
+`"whole-file"`. `"ignore"` means that target is never read or hashed at all — edits to it
+never register as drift. Absent by default, same as `--refs` itself.
+
+A "possibly stale reference" report line only ever says WHAT changed, not why it matters —
+identical wording whether a doc cites a security-sensitive file or an unrelated one. If
+`checks.coverage.kinds` is also configured, `--refs` reuses each kind's own `description`
+(already required for coverage reporting) as review context, on BOTH sides of a citation —
+the citing doc's kind and, when the target is itself a `.md` file, the target's kind too:
+
+```
+⚠️  1 possibly stale reference(s):
+  docs/spec/checkout.md
+    [kind] States a behavioral contract for checkout.
+    ~ ../perf/budget.md (a1b2c3d4 → e5f6a7b8)
+      [target kind] Perf-critical; re-benchmark before accepting drift.
+```
+
+No new config surface — reuses `checks.coverage.kinds`' existing, already-mandatory field.
+Absent when `checks.coverage` isn't configured (the common case), same as every other
+opt-in-widening feature here — and when it's absent, a real stale-reference report ends with
+a one-time tip naming this feature, so its existence isn't only discoverable by having
+already read this section.
+
 ### Prose file citations: `--prose-refs`
 
 Docs often cite a source file inline in backticks, with no `[text](path)` syntax at all — e.g.
@@ -553,6 +589,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                                                                                                                                                                                                                                                                                                                  |
 | `ignore`                   | Globs to exclude from scanning, matched against both the absolute path and the path relative to its containing root (issue #102) — a directory-shaped match is pruned before it's ever walked, not just filtered out afterward (issue #63). `.gitignore` is also consulted automatically for the same directory-level pruning, with no config needed, regardless of `onlyGitTracked` |
 | `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`                                                                                                                                                                                                                                                                                                |
+| `refs.scope`               | Tuning for `--refs` (see above): per-glob hashing granularity, `[{ glob, unit: "whole-file" \| "ignore" }]`. First match (array order) wins; no match keeps `"whole-file"`. Absent by default — `--refs` itself stays a CLI-flag opt-in, this only tunes it                                                                                                                          |
 | `stampCommand`             | Command agents should run to stamp hashes                                                                                                                                                                                                                                                                                                                                            |
 | `locale`                   | Prose locale for generated guidance: `en` or `fr`                                                                                                                                                                                                                                                                                                                                    |
 

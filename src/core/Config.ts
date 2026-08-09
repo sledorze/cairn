@@ -697,6 +697,28 @@ const ProseRefsInputSchema = Schema.Struct({
   identifier: 'CairnProseRefsConfig',
 })
 
+// Issue #101 / ADR 0004 Release 1: first-match-wins (array order), same
+// semantics `docCoverage.sources`/`coveredBy` glob matching already uses via
+// `matchesGlobNearBase` — "which ONE group does this target belong to," not
+// `checks.docCoverage`'s OR-across-all-groups question. No match keeps
+// today's only behavior: `whole-file`.
+const RefsScopeGroupInputSchema = Schema.Struct({
+  glob: Schema.String,
+  unit: Schema.Literals(['whole-file', 'ignore']), // Release 2 adds 'exports-only' here
+}).annotate({
+  description: 'One glob and the granularity `--refs` uses for content matching it.',
+  identifier: 'CairnRefsScopeGroup',
+})
+
+const RefsInputSchema = Schema.Struct({
+  scope: Schema.optionalKey(Schema.Array(RefsScopeGroupInputSchema)),
+}).annotate({
+  description:
+    'Tuning for `--refs` (a CLI-flag opt-in check; this config section only tunes it, it does not enable it — ' +
+    'absent means no scope overrides, every target hashed whole-file).',
+  identifier: 'CairnRefsConfig',
+})
+
 const ChecksInputSchema = Schema.Struct({
   coverage: Schema.optionalKey(CoverageOrDisabledSchema),
   docCoverage: Schema.optionalKey(DocCoverageOrDisabledSchema),
@@ -772,6 +794,7 @@ export const CairnConfigSchema = Schema.Struct({
         'Restrict the scanned file universe to files `git ls-files` reports as tracked/staged (issue #48) — so a local run sees the same files a fresh CI checkout would, ignoring untracked scratch docs and links to them. Default false (unchanged, glob-only behavior).',
     }),
   ),
+  refs: Schema.optionalKey(RefsInputSchema),
   requireDirSummaries: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Require a directory summary in every in-scope directory. Default true.',
@@ -974,6 +997,18 @@ export interface ProseRefsConfig {
   readonly ignore: readonly string[]
 }
 
+/** One glob and the granularity `--refs` uses for a target matching it — see
+ * `RefsScopeGroupInputSchema`'s own comment for the first-match-wins
+ * semantics. */
+export interface RefsScopeGroup {
+  readonly glob: string
+  readonly unit: 'whole-file' | 'ignore'
+}
+
+export interface RefsConfig {
+  readonly scope: readonly RefsScopeGroup[]
+}
+
 export interface ChecksConfig {
   /** `null` = disabled (the default) — presence of `checks.coverage` in a
    * config file is itself the opt-in, not a separate boolean flag. */
@@ -1015,6 +1050,7 @@ export interface ResolvedConfig {
   readonly locale: Locale
   readonly naming: Naming
   readonly onlyGitTracked: boolean
+  readonly refs: RefsConfig
   readonly requireDirSummaries: boolean
   readonly roots: readonly string[]
   readonly stampCommand: string
@@ -1040,6 +1076,7 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
   locale: 'en',
   naming: DEFAULT_NAMING,
   onlyGitTracked: false,
+  refs: { scope: [] },
   requireDirSummaries: true,
   roots: ['docs'],
   stampCommand: DEFAULT_STAMP_COMMAND,
@@ -1135,4 +1172,8 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
     dirSummary: layer.naming?.dirSummary ?? base.naming.dirSummary,
     fileSummarySuffix: layer.naming?.fileSummarySuffix ?? base.naming.fileSummarySuffix,
   },
+  // Wholesale replace when present, same as `roots`/top-level `ignore` above
+  // (and `proseRefs.ignore`) — not merged group-by-group with the base's
+  // list; absent inherits `base` unchanged.
+  refs: { scope: layer.refs?.scope ?? base.refs.scope },
 })
