@@ -1,5 +1,31 @@
 # @sledorze/cairn
 
+## 0.11.1
+
+### Patch Changes
+
+- d3e2c10: `cairn check --summaries-only --explain`'s real git line-count delta (added in a prior
+  minor) now prints immediately below the expected/recorded hash pair for a stale file
+  summary, instead of below the source's full heading outline. On a large doc the delta
+  — the actual answer to "is this a real content change or a reflex re-stamp?" — used to
+  land 20+ lines below the question; it's now adjacent to it. Pure reordering: the
+  outline itself still always prints in full, for both `missing` and `stale` nodes — a
+  stale summary has to be rewritten, and the outline is exactly the source's current
+  section shape that a rewrite is done against (issue #162, item #2; the outline was
+  suppressed for stale nodes in an earlier version of this fix, then withdrawn after
+  further review of that issue for that same reason).
+- d33c963: `cairn check --refs`'s stale-reference report now points its "Fix:" hint at a new,
+  dedicated `refsStampCommand` config field (default `npx cairn check --refs --stamp`)
+  instead of a hardcoded guess. Previously the hint always suggested `pnpm run stamp:refs`
+  as a fallback regardless of whether that script actually existed in the repo, and never
+  read the repo's own configured stamp command the way the summaries report already reads
+  `stampCommand` — so a repo whose real ref-stamping command needed a formatter step first
+  (or used a different script name) got a hint that either didn't work or reproduced a
+  stale-summary trap it had already configured its way out of. `refsStampCommand` is
+  deliberately a separate field from `stampCommand`, not a reuse of it: `stampCommand` is
+  conventionally scoped to summary freshness (commonly `--summaries-only`, as this repo's
+  own config does) and does not stamp `--refs` sidecars at all (issue #162, item #1).
+
 ## 0.11.0
 
 ### Minor Changes
