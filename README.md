@@ -182,7 +182,9 @@ the citing doc's kind and, when the target is itself a `.md` file, the target's 
 
 No new config surface — reuses `checks.coverage.kinds`' existing, already-mandatory field.
 Absent when `checks.coverage` isn't configured (the common case), same as every other
-opt-in-widening feature here.
+opt-in-widening feature here — and when it's absent, a real stale-reference report ends with
+a one-time tip naming this feature, so its existence isn't only discoverable by having
+already read this section.
 
 ### Prose file citations: `--prose-refs`
 

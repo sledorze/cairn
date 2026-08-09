@@ -183,12 +183,15 @@ describe('stampRefs() / checkRefs()', () => {
 
 describe('formatRefsReport()', () => {
   it('reports success with the checked count', () => {
-    expect(formatRefsReport({ checked: 3, stale: [] })).toEqual(['✅ References OK (3 tracked doc(s)).'])
+    expect(formatRefsReport({ checked: 3, kindsConfigured: false, stale: [] })).toEqual([
+      '✅ References OK (3 tracked doc(s)).',
+    ])
   })
 
   it('lists stale references with a short hash diff', () => {
     const lines = formatRefsReport({
       checked: 1,
+      kindsConfigured: false,
       stale: [
         {
           file: 'docs/index.md',
@@ -215,6 +218,7 @@ describe('formatRefsReport()', () => {
   it('appends a fix hint pointing at the stamp command', () => {
     const lines = formatRefsReport({
       checked: 1,
+      kindsConfigured: false,
       stale: [
         {
           file: 'docs/index.md',
@@ -230,7 +234,56 @@ describe('formatRefsReport()', () => {
         },
       ],
     })
-    expect(lines.at(-1)).toContain('cairn check --refs --stamp')
+    expect(lines.some((l) => l.includes('cairn check --refs --stamp'))).toBeTruthy()
+  })
+
+  it('appends the kind-guidance discoverability tip when checks.coverage.kinds is not configured', () => {
+    const lines = formatRefsReport({
+      checked: 1,
+      kindsConfigured: false,
+      stale: [
+        {
+          file: 'docs/index.md',
+          kindGuidance: [],
+          refs: [
+            {
+              currentHash: 'def456ghijk',
+              recordedHash: 'abc123defgh',
+              target: '../src/x.ts',
+              targetKindGuidance: [],
+            },
+          ],
+        },
+      ],
+    })
+    expect(lines.at(-1)).toContain('checks.coverage.kinds')
+  })
+
+  it('omits the discoverability tip when checks.coverage.kinds IS configured — no nagging once already opted in', () => {
+    const lines = formatRefsReport({
+      checked: 1,
+      kindsConfigured: true,
+      stale: [
+        {
+          file: 'docs/index.md',
+          kindGuidance: [],
+          refs: [
+            {
+              currentHash: 'def456ghijk',
+              recordedHash: 'abc123defgh',
+              target: '../src/x.ts',
+              targetKindGuidance: [],
+            },
+          ],
+        },
+      ],
+    })
+    expect(lines.some((l) => l.includes('checks.coverage.kinds'))).toBeFalsy()
+  })
+
+  it('never shows the discoverability tip on a clean run, even with kinds unconfigured — nothing to gain guidance about', () => {
+    const lines = formatRefsReport({ checked: 3, kindsConfigured: false, stale: [] })
+    expect(lines.some((l) => l.includes('checks.coverage.kinds'))).toBeFalsy()
   })
 
   // Exercises the actual RENDER of kindGuidance/targetKindGuidance (not just
@@ -240,6 +293,7 @@ describe('formatRefsReport()', () => {
   it("renders both the citing doc's kindGuidance and a ref's targetKindGuidance", () => {
     const lines = formatRefsReport({
       checked: 1,
+      kindsConfigured: true,
       stale: [
         {
           file: 'docs/spec/checkout.md',
@@ -270,6 +324,7 @@ describe('formatRefsReport()', () => {
   it('includes the anchor when present', () => {
     const lines = formatRefsReport({
       checked: 1,
+      kindsConfigured: false,
       stale: [
         {
           file: 'docs/index.md',
@@ -527,6 +582,41 @@ describe('kind-aware stale-ref guidance', () => {
     id: 'perf',
     select: { by: 'path' as const, glob: '**/perf/**' },
   }
+
+  // Adversarial review finding: the tip-discoverability feature's own
+  // RED/GREEN proof only covered `formatRefsReport`'s presentation logic —
+  // NEITHER of `checkRefs`'s own `kindsConfigured: kinds.length > 0` line
+  // NOR `refsPlugin.run`'s `kinds: resolved.checks.coverage?.kinds ?? []`
+  // wiring had any test asserting `kindsConfigured` at all; mutating either
+  // to a hardcoded wrong value left every existing test green.
+  effectIt.effect('kindsConfigured is true whenever real kinds are supplied, independent of whether any matched', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/index.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+        '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      // Note: index.md matches NO declared kind (SPEC_KIND's glob is
+      // **/spec/**) — kindsConfigured must still be true, since it reflects
+      // whether kinds were SUPPLIED, not whether any matched this run.
+      const result = yield* checkRefs({ base: '/r', kinds: [SPEC_KIND], roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      expect(result.kindsConfigured).toBeTruthy()
+    }),
+  )
+
+  effectIt.effect('kindsConfigured is false when no kinds are supplied at all', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/index.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+        '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const result = yield* checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      expect(result.kindsConfigured).toBeFalsy()
+    }),
+  )
 
   effectIt.effect("surfaces a matching kind's description as guidance on a stale doc", () =>
     Effect.gen(function* () {
