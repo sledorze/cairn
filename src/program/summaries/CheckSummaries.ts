@@ -210,7 +210,12 @@ export const formatSummaryReport = (plan: SummaryPlan, options: SummaryReportOpt
     let reason =
       node.status === 'missing'
         ? pick(locale, { en: 'missing', fr: 'manquant' })
-        : pick(locale, { en: 'stale (source changed)', fr: 'périmé (source modifiée)' })
+        : node.legacyStamp
+          ? pick(locale, {
+              en: 'legacy inline stamp (format migration, not drift)',
+              fr: 'tampon intégré hérité (migration de format, pas une dérive)',
+            })
+          : pick(locale, { en: 'stale (source changed)', fr: 'périmé (source modifiée)' })
     if (node.missingLinks.length > 0) {
       reason = pick(locale, {
         en: `missing child links (${node.missingLinks.length})`,
@@ -218,6 +223,15 @@ export const formatSummaryReport = (plan: SummaryPlan, options: SummaryReportOpt
       })
     }
     lines.push(`  - [${tag}] ${node.path} : ${reason}`)
+  }
+  if (plan.todo.some((node) => node.legacyStamp)) {
+    lines.push(
+      '',
+      pick(locale, {
+        en: 'Legacy in-content stamp(s) detected above — this is a one-time format migration, not content drift. Run `cairn check --summaries-only --migrate-stamps` (an ordinary `--stamp` self-heals it too).',
+        fr: "Tampon(s) intégré(s) hérité(s) détecté(s) ci-dessus — c'est une migration de format ponctuelle, pas une dérive de contenu. Lancez `cairn check --summaries-only --migrate-stamps` (un `--stamp` ordinaire s'auto-répare aussi).",
+      }),
+    )
   }
   if (totalOrphans > 0) {
     lines.push(

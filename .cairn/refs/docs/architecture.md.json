@@ -9,7 +9,7 @@
       "target": "../src/core/summaries/StampStore.ts"
     },
     {
-      "hash": "2b49cd28837fbb0e9b4eaf439b203f6f8123e8f8e5de4bd1d43c49627a0527ae",
+      "hash": "8d6b6fba2df9f136bb630f8e80a9beafa18e09c0017601dbe8de8130bc0ce897",
       "target": "../src/core/summaries/SummaryTree.ts"
     },
     {
@@ -105,7 +105,7 @@
       "target": "../src/program/checks/runCheckPlugin.ts"
     },
     {
-      "hash": "514b361e5ba63c83cb900991099a0eb2396ab92b9fb25f4cd2fce9bbb88a1e8c",
+      "hash": "e60d1d2185d950639c056a3183ed6d9c6d914fcef105baba8ea9ab0cd10e7bd6",
       "target": "../src/program/summaries/CheckSummaries.ts"
     },
     {

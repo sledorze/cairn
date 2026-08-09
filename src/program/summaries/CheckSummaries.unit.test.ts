@@ -53,6 +53,7 @@ describe('formatSummaryReport()', () => {
             expectedHash: 'x',
             inputs: [],
             kind: 'file',
+            legacyStamp: false,
             missingLinks: [],
             path: '/r/docs/sub/b.summary.md',
             recordedHash: null,
@@ -62,6 +63,7 @@ describe('formatSummaryReport()', () => {
             expectedHash: 'y',
             inputs: [],
             kind: 'dir',
+            legacyStamp: false,
             missingLinks: [],
             path: '/r/docs/sub/_SUMMARY.md',
             recordedHash: null,
@@ -76,6 +78,30 @@ describe('formatSummaryReport()', () => {
     expect(lines.some((l) => l.includes('pnpm stamp'))).toBeTruthy()
     expect(lines.at(-2)).toContain('/r/docs/sub/b.summary.md')
     expect(lines.at(-1)).toContain('/r/docs/sub/_SUMMARY.md')
+  })
+
+  it('reports a legacy in-content stamp distinctly from genuine content drift (#142)', () => {
+    const lines = formatSummaryReport({
+      nodes: [],
+      orphanStamps: [],
+      orphans: [],
+      todo: [
+        {
+          expectedHash: 'x',
+          inputs: [],
+          kind: 'file',
+          legacyStamp: true,
+          missingLinks: [],
+          path: '/r/docs/a.summary.md',
+          recordedHash: null,
+          status: 'stale',
+        },
+      ],
+    })
+    expect(lines.some((l) => l.includes('legacy inline stamp'))).toBeTruthy()
+    expect(lines.some((l) => l.includes('/r/docs/a.summary.md'))).toBeTruthy()
+    expect(lines.some((l) => l.includes('stale (source changed)'))).toBeFalsy()
+    expect(lines.some((l) => l.includes('--migrate-stamps'))).toBeTruthy()
   })
 
   it('reports a deleted-source stamp distinctly from an orphan summary file (S3)', () => {

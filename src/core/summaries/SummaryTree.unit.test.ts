@@ -161,6 +161,59 @@ describe('planSummaries() — stamp/source lifecycle (S2, S3, S4)', () => {
     expect(plan.nodes.find((n) => n.path === '/r/docs/a.summary.md')?.status).toBe('stale')
   })
 
+  it('flags a summary carrying the legacy in-content stamp distinctly, without needing a sidecar (#142)', () => {
+    const files = tree()
+    // No `.cairn/` sidecar at all (as in a real upgrade from the pre-0.9
+    // inline-stamp format) — the summary itself still carries the old tag,
+    // and that tag's embedded hash matches the source's CURRENT hash: the
+    // source hasn't changed since the tag was written, only the sidecar
+    // entry is missing — a pure format migration.
+    const legacyTagged = new Map(files).set(
+      '/r/docs/a.summary.md',
+      `${freshFileSummary}\n\n<!-- source-sha256: ${hashContent(big)} -->`,
+    )
+    const plan = planSummaries({ files: legacyTagged, roots: ['/r/docs'], thresholdLines: 30 })
+    const node = plan.nodes.find((n) => n.path === '/r/docs/a.summary.md')
+    expect(node?.legacyStamp).toBeTruthy()
+    expect(node?.status).toBe('stale')
+  })
+
+  it('does not flag legacyStamp for an ordinary, un-tagged stale summary', () => {
+    const files = tree()
+    const plan = planSummaries({ files, roots: ['/r/docs'], thresholdLines: 30 })
+    const node = plan.nodes.find((n) => n.path === '/r/docs/a.summary.md')
+    expect(node?.legacyStamp).toBeFalsy()
+    expect(node?.status).toBe('stale')
+  })
+
+  it('does not flag legacyStamp when the tag is present but the SOURCE has genuinely drifted since it was written', () => {
+    const files = tree()
+    // Tag embeds the hash of the OLD `a.md` content — the doc has since
+    // changed for real, not just a format gap. Reported as plain "stale",
+    // never the softer "format migration" message, or a real drift would
+    // silently disappear behind `--migrate-stamps`/self-healing `--stamp`.
+    const legacyTaggedButDrifted = new Map(files)
+      .set('/r/docs/a.md', `${big}\nmore`)
+      .set('/r/docs/a.summary.md', `${freshFileSummary}\n\n<!-- source-sha256: ${hashContent(big)} -->`)
+    const plan = planSummaries({ files: legacyTaggedButDrifted, roots: ['/r/docs'], thresholdLines: 30 })
+    const node = plan.nodes.find((n) => n.path === '/r/docs/a.summary.md')
+    expect(node?.legacyStamp).toBeFalsy()
+    expect(node?.status).toBe('stale')
+  })
+
+  it('never flags legacyStamp on an ok node, even if its content coincidentally still carries a (now-irrelevant) tag', () => {
+    const files = tree()
+    const tagged = new Map(files).set(
+      '/r/docs/a.summary.md',
+      `${freshFileSummary}\n\n<!-- source-sha256: ${hashContent(big)} -->`,
+    )
+    const stamps = stampsFor(tagged, ['/r/docs'])
+    const plan = planSummaries({ files: tagged, roots: ['/r/docs'], stamps, thresholdLines: 30 })
+    const node = plan.nodes.find((n) => n.path === '/r/docs/a.summary.md')
+    expect(node?.status).toBe('ok')
+    expect(node?.legacyStamp).toBeFalsy()
+  })
+
   it('S3: a sidecar stamp with no corresponding source is reported as an orphan stamp', () => {
     const files = tree()
     const stamps = stampsFor(files, ['/r/docs'])
