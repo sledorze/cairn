@@ -127,6 +127,35 @@ export interface GitFsService {
    * an age from, which isn't the same as git being broken.
    */
   readonly lastCommitDate: (base: string, absPath: string) => Effect.Effect<Date | null, GitUnavailableError>
+  /**
+   * Every commit SHA that touched `absPath`, newest-first (`git log
+   * --format=%H -- <path>`) — issue #142/#154's "show what actually
+   * changed, not just that the hash differs" gap: cairn's own recorded hash
+   * is our sha256, not any git object id, so there is no direct git lookup
+   * from "this content hash" to "which commit produced it"; a caller walks
+   * this list, re-hashing `readFileAtRef` at each SHA with `hashContent`,
+   * until a match or the caller's own bound is hit. Returns `[]` when `path`
+   * has no commit history yet — the same "no history, not an error"
+   * contract `lastCommitDate` already establishes, not conflated with
+   * `GitUnavailableError`.
+   */
+  readonly historyForPath: (base: string, absPath: string) => Effect.Effect<readonly string[], GitUnavailableError>
+  /**
+   * Line-count delta for `absPath` between `ref` and the current working
+   * tree (`git diff --numstat <ref> -- <path>`) — issue #142/#154's own
+   * "reflexive re-stamping" gap: a bare hash mismatch says nothing about
+   * WHAT changed, so a human/agent re-stamps without looking. `null` for a
+   * binary file (git reports `-\t-` for `added`/`removed` — unrepresentable
+   * as a line count, deliberately not coerced to `0/0`, which would read as
+   * "no change") or when `ref`/`path` doesn't resolve to a comparable diff.
+   * `{added: 0, removed: 0}` is a real, valid answer (content identical at
+   * both ends) — distinct from `null`, never conflated.
+   */
+  readonly diffStat: (
+    base: string,
+    ref: string,
+    absPath: string,
+  ) => Effect.Effect<{ readonly added: number; readonly removed: number } | null, GitUnavailableError>
 }
 
 export class GitFs extends Context.Service<GitFs, GitFsService>()('GitFs') {}
@@ -178,6 +207,19 @@ const runGit = (
     Effect.catchTag('PlatformError', (error) => Effect.fail(new GitUnavailableError({ base, message: error.message }))),
   )
 
+/** Decode-at-the-boundary for one `--numstat` field: `null` for anything that
+ * isn't a plain non-negative integer (git's literal `-` for a binary file,
+ * or any other unexpected shape) — never a raw `Number()` coercion, which
+ * would silently turn `-` into `NaN` instead of a caller-visible failure. */
+const parseDigits = (raw: string | undefined): number | null => {
+  if (raw === undefined || !/^\d+$/.test(raw)) {
+    return null
+  }
+  // Digit-by-digit, not `Number(...)`/`parseInt` — the regex above is the
+  // decode-at-the-boundary check that can fail; this arithmetic can't.
+  return [...raw].reduce((acc, digit) => acc * 10 + (digit.codePointAt(0) ?? 48) - 48, 0)
+}
+
 const toAbsPosix = (base: string, relOrAbs: string): string =>
   toPosix(nodePath.isAbsolute(relOrAbs) ? relOrAbs : nodePath.join(base, relOrAbs))
 
@@ -203,6 +245,40 @@ export const GitFsLive = Layer.effect(
     const realpathOrSelf = (p: string): Effect.Effect<string> =>
       fs.realPath(p).pipe(Effect.catch(() => Effect.succeed(p)))
     return GitFs.of({
+      diffStat: (base, ref, absPath) => {
+        const rel = toPosix(nodePath.relative(base, absPath))
+        return Effect.provideService(
+          runGit(base, ['diff', '--numstat', ref, '--', rel]),
+          ChildProcessSpawner.ChildProcessSpawner,
+          spawner,
+        ).pipe(
+          Effect.map((stdout) => {
+            // `--numstat` emits one line "<added>\t<removed>\t<path>"; empty
+            // stdout means the content is identical at both ends (a real,
+            // valid "no change" answer, not an absence). A binary file
+            // reports literal `-` for both counts, which `parseDigits`
+            // rejects (not a raw `Number()` coercion into `NaN`) — the
+            // deliberate signal to return `null` rather than a fabricated
+            // `0/0` that would misrepresent "can't tell" as "no change".
+            const line = stdout.split('\n').find((l) => l.trim().length > 0)
+            if (line === undefined) {
+              return { added: 0, removed: 0 }
+            }
+            const [addedRaw, removedRaw] = line.split('\t')
+            const added = parseDigits(addedRaw)
+            const removed = parseDigits(removedRaw)
+            return added === null || removed === null ? null : { added, removed }
+          }),
+        )
+      },
+      historyForPath: (base, absPath) => {
+        const rel = toPosix(nodePath.relative(base, absPath))
+        return Effect.provideService(
+          runGit(base, ['log', '--format=%H', '--', rel]),
+          ChildProcessSpawner.ChildProcessSpawner,
+          spawner,
+        ).pipe(Effect.map((stdout) => stdout.split('\n').filter((line) => line.trim().length > 0)))
+      },
       lastCommitDate: (base, absPath) => {
         const rel = toPosix(nodePath.relative(base, absPath))
         return Effect.provideService(
@@ -346,8 +422,24 @@ export const makeTestGitFs = (
   // means "no commit history yet" — the real implementation's own `null`
   // case, not a test-double gap — so it defaults to `null`, not a failure.
   lastCommitDates: ReadonlyMap<string, Date> | GitUnavailableError = new Map(),
+  // `historyForPath`'s own double: a path absent from `history` legitimately
+  // means "no commit history yet" (real impl's `[]`), same non-failure
+  // default as `lastCommitDates` above.
+  history: ReadonlyMap<string, readonly string[]> | GitUnavailableError = new Map(),
+  // `diffStat`'s own double — keyed by `absPath` alone (like `atRef` above),
+  // since no test built on this double needs to distinguish by `ref`. A path
+  // absent defaults to `null` (real impl's "can't tell" answer), not a
+  // failure — a caller-supplied bad `ref` failing outright is a real,
+  // separate case this double doesn't need to simulate.
+  diffStats: ReadonlyMap<string, { added: number; removed: number } | null> | GitUnavailableError = new Map(),
 ): Layer.Layer<GitFs> =>
   Layer.succeed(GitFs, {
+    diffStat: (_base, _ref, absPath) =>
+      diffStats instanceof GitUnavailableError
+        ? Effect.fail(diffStats)
+        : Effect.succeed(diffStats.get(absPath) ?? null),
+    historyForPath: (_base, absPath) =>
+      history instanceof GitUnavailableError ? Effect.fail(history) : Effect.succeed(history.get(absPath) ?? []),
     lastCommitDate: (_base, absPath) =>
       lastCommitDates instanceof GitUnavailableError
         ? Effect.fail(lastCommitDates)

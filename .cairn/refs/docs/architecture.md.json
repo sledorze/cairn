@@ -9,7 +9,7 @@
       "target": "../src/core/summaries/StampStore.ts"
     },
     {
-      "hash": "2b49cd28837fbb0e9b4eaf439b203f6f8123e8f8e5de4bd1d43c49627a0527ae",
+      "hash": "8d6b6fba2df9f136bb630f8e80a9beafa18e09c0017601dbe8de8130bc0ce897",
       "target": "../src/core/summaries/SummaryTree.ts"
     },
     {
@@ -89,7 +89,7 @@
       "target": "../src/io/DocsFs.ts"
     },
     {
-      "hash": "442664bc8c5c97822506b950c42b9ceb42e1ee4155ddc41a868b3db3f4ce79cd",
+      "hash": "476c805db39b83768162fcddb0ed9fd7e7ff8b5ebe34f3635fdad417580a4150",
       "target": "../src/io/Git.ts"
     },
     {
@@ -105,7 +105,7 @@
       "target": "../src/program/checks/runCheckPlugin.ts"
     },
     {
-      "hash": "514b361e5ba63c83cb900991099a0eb2396ab92b9fb25f4cd2fce9bbb88a1e8c",
+      "hash": "58b2a7890ac680dc35af33578583f6a9c2ae3d425ff1d4849d7addee43368668",
       "target": "../src/program/summaries/CheckSummaries.ts"
     },
     {
