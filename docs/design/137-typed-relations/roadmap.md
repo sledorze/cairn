@@ -1,5 +1,15 @@
 # Roadmap: issue #137 (typed relations)
 
+**Status update, added after the fact — the Release 0 verdict below is kept UNCHANGED as
+the historical record it explicitly says it is; this note sits above it, not inside it.**
+Finding 4's "ADR 0004's own Release 1 (`refs.scope`) is ... still unbuilt in `src/`" was
+true when that checkpoint ran. It no longer is: `refs.scope` shipped, followed by real
+`--refs` enforcement, kind-aware stale-reference guidance, and a discoverability tip for it
+— all real, merged, dogfooded. The opportunity-cost argument that finding made ("that should
+ship first") is resolved, not open. Nothing else in this checkpoint's six findings depended
+on that one being current, so the overall verdict (option B only, not the fuller vocabulary)
+stands unchanged — only that one finding's premise did.
+
 Four releases, each independently shippable and each independently valuable — not a
 big-bang vocabulary rollout. Mirrors `101-refs-symbol-scoping/roadmap.md`'s own discipline:
 a real repro, a real fix, a real before/after check, per release.

@@ -6,10 +6,12 @@ vocabulary.** Six findings: evidence base (one maintainer, no outside corroborat
 doesn't support the investment size versus option B's much smaller cost; the recurrence
 evidence (`falsestart`'s 12 checkers) is from a different repo, not a second recurrence
 inside cairn itself; a closed predicate registry is a many-contributor governance defense
-cairn's one maintainer doesn't need; ADR 0004's own Release 1 is already accepted, cheaper,
-and still unbuilt — real opportunity cost; a cheaper "just write more careful prose"
-alternative was never given a fair hearing; and two full design efforts landing on the same
-"don't build the big version" conclusion is itself a process signal.
+cairn's one maintainer doesn't need; ADR 0004's own Release 1 was, at that checkpoint,
+already accepted, cheaper, and still unbuilt — real opportunity cost then, since resolved
+(Release 1 shipped); a cheaper "just write more careful prose" alternative was never given
+a fair hearing; and two full design efforts landing on the same "don't build the big
+version" conclusion is itself a process signal. The overall verdict (option B only) stands
+unchanged — only that one finding's premise did.
 
 **What actually ships — Release 1 (accepted): solution-space option B only.** Declared
 extra `--refs` targets, no predicate vocabulary. One small extraction function plus a
