@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { hashContent } from '../../core/hashing.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
-import { GitFs, makeTestGitFs } from '../../io/Git.ts'
+import { GitFs, GitUnavailableError, makeTestGitFs } from '../../io/Git.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -428,6 +428,87 @@ describe('explainSummaries()', () => {
       )
     },
   )
+
+  // Three distinct real failure points inside `diffSinceRecorded`, each
+  // proven to degrade to "no diff line, no crash" rather than propagate —
+  // the actual claim this feature makes, not just its happy path.
+  const staleDocsFixture = makeTestDocsFs({
+    '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${hashContent(big)}","version":1}`),
+    '/r/docs/a.md': tf(`${big}\nmore`),
+    '/r/docs/a.summary.md': tf('# résumé de a'),
+  })
+
+  // `historyForPath` reports a candidate SHA, but `atRef` has no entry for
+  // it — the real implementation's `readFileAtRef` failure mode.
+  const unreadableCandidateGit = makeTestGitFs(
+    new Set(),
+    [],
+    [],
+    new Map(),
+    [],
+    new Map(),
+    new Map([['/r/docs/a.md', ['sha-unreadable']]]),
+  )
+  const readFileAtRefFailureLayer = Layer.merge(staleDocsFixture, unreadableCandidateGit)
+  effectIt.layer(readFileAtRefFailureLayer)(
+    'degrades cleanly when readFileAtRef fails for a candidate commit',
+    (layerIt) => {
+      layerIt.effect('shows no diff line, no crash', () =>
+        Effect.gen(function* () {
+          const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+          const text = lines.join('\n')
+          expect(text).toContain('file /r/docs/a.summary.md (stale):')
+          expect(text).not.toContain('changed since')
+        }),
+      )
+    },
+  )
+
+  // A real match (content hashes to the recorded hash), but `diffStat`
+  // itself fails — the real implementation's `diffStat` failure mode.
+  const matchedButDiffStatFailsGit = makeTestGitFs(
+    new Set(),
+    [],
+    [],
+    new Map([['/r/docs/a.md', big]]),
+    [],
+    new Map(),
+    new Map([['/r/docs/a.md', ['sha-matched']]]),
+    new GitUnavailableError({ base: '/r', message: 'diff unavailable' }),
+  )
+  const diffStatFailureLayer = Layer.merge(staleDocsFixture, matchedButDiffStatFailsGit)
+  effectIt.layer(diffStatFailureLayer)('degrades cleanly when diffStat fails after a real match', (layerIt) => {
+    layerIt.effect('shows no diff line, no crash', () =>
+      Effect.gen(function* () {
+        const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+        const text = lines.join('\n')
+        expect(text).toContain('file /r/docs/a.summary.md (stale):')
+        expect(text).not.toContain('changed since')
+      }),
+    )
+  })
+
+  // `historyForPath` itself fails outright — the outermost catch.
+  const historyForPathFailsGit = makeTestGitFs(
+    new Set(),
+    [],
+    [],
+    new Map(),
+    [],
+    new Map(),
+    new GitUnavailableError({ base: '/r', message: 'no git here' }),
+  )
+  const historyForPathFailureLayer = Layer.merge(staleDocsFixture, historyForPathFailsGit)
+  effectIt.layer(historyForPathFailureLayer)('degrades cleanly when historyForPath itself fails', (layerIt) => {
+    layerIt.effect('shows no diff line, no crash', () =>
+      Effect.gen(function* () {
+        const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+        const text = lines.join('\n')
+        expect(text).toContain('file /r/docs/a.summary.md (stale):')
+        expect(text).not.toContain('changed since')
+      }),
+    )
+  })
 
   // Adversarial review of this feature's first cut found the per-doc bound
   // (MAX_HISTORY_DEPTH) doesn't cover a repo with MANY stale docs and no
