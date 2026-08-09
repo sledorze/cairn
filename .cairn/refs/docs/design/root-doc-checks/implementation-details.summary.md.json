@@ -1,0 +1,8 @@
+{
+  "refs": [
+    {
+      "hash": "3f936ac85f14ce3340085473bbe471400c387f1d2597f6cc8dd00e0bd46e6cb7",
+      "target": "./implementation-details.md"
+    }
+  ]
+}

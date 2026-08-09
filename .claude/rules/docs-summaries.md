@@ -50,8 +50,10 @@ When you create or edit any doc:
    reflect the new content.
 2. Update the `_SUMMARY.md` of every affected directory, walking **up** the tree
    leaves-first, and keep a link to every child file and sub-directory.
-3. Run the stamp command to (re)write the sidecar hashes under `.cairn/` bottom-up:
-   `npx cairn check --summaries-only --stamp`.
+3. Run this repo's configured stamp command (`stampCommand` in `.cairnrc.json`) to
+   (re)write the sidecar hashes under `.cairn/` bottom-up. That's currently `pnpm
+format && npx cairn check --summaries-only --stamp` — format first, since stamping
+   before a later reformat hashes content the format step is about to change.
 4. Run `npx cairn check` and ensure it exits 0 (green) before you finish.
 5. Commit your doc changes **together with** the `.cairn/` sidecar changes — a doc
    edit without its matching sidecar update is exactly what `check` is designed to catch.

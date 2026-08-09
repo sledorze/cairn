@@ -1,0 +1,8 @@
+{
+  "refs": [
+    {
+      "hash": "f8f8bf528c5cc34fccc6180f93d09f466fc4b47cd2125c68c4e087f453a2687a",
+      "target": "./knowledge.md"
+    }
+  ]
+}
