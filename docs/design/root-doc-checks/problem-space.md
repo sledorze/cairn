@@ -6,7 +6,7 @@
 freshness (`CheckSummaries.ts`), and `checks.coverage`/`checks.docCoverage` — only ever
 sees files reachable from `config.roots` (default `["docs"]`, this repo's own
 `.cairnrc.json`). `roots` is resolved by `expandRoots`/`expandOne` in
-[`src/config.ts`](../../../src/config.ts) (`expandOne` at line 184, `isDir` at line 220):
+[`src/config.ts`](../../../src/config.ts) (`expandOne`/`isDir`):
 every candidate path `expandOne` resolves for a pattern is filtered through `isDir` before
 being returned —
 
@@ -65,7 +65,8 @@ Both are real, valuable, already-merged tests that caught real gaps. Neither che
 **links** — both are narrow, hand-written content-coverage assertions, each independently
 re-deriving "read the real source of truth, assert it's reflected in the doc," because
 `checks.coverage`/`checks.docCoverage` structurally cannot reach `README.md` at all. A
-third test, `src/agentsMdLinks.unit.test.ts`, extends the same pattern to actual link
+third test, `agentsMdLinks.unit.test.ts` (not present on this branch — proposed in an
+unmerged PR, see below), extends the same pattern to actual link
 resolution for `AGENTS.md` — but it exists only as an **open, unmerged PR (#148)**, filed
 the same day as this finding by the same author. Citing it as a fully independent third
 recurrence would overstate the evidence available right now; it's a live proposal

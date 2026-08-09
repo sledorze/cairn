@@ -95,7 +95,7 @@ before ranking it, not after.
 Once Release 1 ships as real code, `src/config.ts`'s widened `expandOne` and
 `src/io/DocsFs.ts`'s widened `listFiles` become citable implementation for this design
 package itself — this package's own `_SUMMARY.md` and `implementation-details.md` should
-gain real `[text](../../../src/config.ts)`-style links once that code exists, the same
+gain real `[text](path)`-style links once that code exists, the same
 discipline `docs/design/101-refs-symbol-scoping/knowledge.md`'s own closing section
 names for its design. Don't let this become the next "bare-backtick mention instead of a
 real link" gap `--prose-refs` exists to catch.

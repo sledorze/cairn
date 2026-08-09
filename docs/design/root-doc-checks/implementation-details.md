@@ -136,7 +136,7 @@ case and stays that way.
 
 ## `checkLinks`'s consumer path — no change needed, traced explicitly
 
-`checkLinks` (`src/program/links/CheckLinks.ts:381`) calls `dfs.listFiles(roots, ignore)`
+`checkLinks` (in [`src/program/links/CheckLinks.ts`](../../../src/program/links/CheckLinks.ts)) calls `dfs.listFiles(roots, ignore)`
 and treats the result as a flat file list from that point on (`buildBasenameIndex`,
 `withAncestors`, `.filter((file) => file.endsWith('.md') ...)`) — nothing in `checkLinks`
 itself assumes a root is a directory. Once `DocsFs.listFiles` includes a file-shaped root

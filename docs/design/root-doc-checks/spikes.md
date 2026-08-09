@@ -20,7 +20,7 @@ $ node dist/cli.js check --root AGENTS.md --links-only
 ```
 
 `AGENTS.md` exists at the repo root and is well over the summary threshold. `isDir`
-(`src/config.ts:220`) silently drops it, exactly as the code read predicts — 0 files
+(in [`src/config.ts`](../../../src/config.ts)) silently drops it, exactly as the code read predicts — 0 files
 checked, no error, a doc that's real and readable treated as if it doesn't exist.
 
 ## Spike 2 — is the `ignore: ["*/"]` shallow-scan workaround actually viable? (option 2, disproven live)
