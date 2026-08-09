@@ -56,7 +56,7 @@
     "prepublishOnly": "pnpm build",
     "release": "changeset publish",
     "ship": "bash scripts/ship.sh",
-    "stamp": "tsx src/cli.ts check --summaries-only --stamp",
+    "stamp": "pnpm format && tsx src/cli.ts check --summaries-only --stamp",
     "stamp:refs": "tsx src/cli.ts check --refs --stamp",
     "test": "vitest run",
     "test:watch": "vitest",

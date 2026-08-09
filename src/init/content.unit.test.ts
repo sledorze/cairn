@@ -11,40 +11,64 @@ import { CONVENTION_BODY, SKILL_BODY } from './content.ts'
 // consumer customizes `stampCommand` (exactly what this repo's own
 // .cairnrc.json now does), their scaffolded onboarding docs silently start
 // telling readers to run the wrong command, forever, with nothing to catch
-// it. Confirmed live: this repo's own already-scaffolded AGENTS.md and
-// .claude/skills/cairn/SKILL.md were still telling readers to run the bare
-// default the moment `stampCommand` diverged from it.
+// it.
 //
-// A second adversarial pass on THIS fix found the first version of this test
-// too weak: `.toContain('stampCommand')` passes for a wording that mentions
-// the word in passing while still literally instructing "Run `npx cairn
-// check --summaries-only --stamp`." right next to it — the exact bug,
-// un-fixed, with a decoy nearby. `mentionsStampCommandAsTheRunInstruction`
-// below requires the imperative "run"/"Run" to be directly followed by
-// something that reads `stampCommand`/"configured" rather than a bare
-// `npx cairn check...` literal, which the decoy wording fails.
-const mentionsStampCommandAsTheRunInstruction = (text: string): boolean =>
-  /\brun\b[^.]{0,40}(stampCommand|configured)/i.test(text) &&
-  !/\brun\b\s*`npx cairn check --summaries-only --stamp`/i.test(text)
+// Two more adversarial passes on this fix each broke the previous version of
+// this test:
+// - Pass 2 found a character-window matcher (`stampCommand` within 40 chars
+//   of "run") satisfiable by filler text co-occurring with the bare command
+//   in the SAME sentence.
+// - Pass 3's fix (scope the check to the sentence containing "run", split on
+//   the first period) had a bug of its own: `.cairnrc.json`'s OWN leading dot
+//   was misread as a sentence-ending period, truncating the "sentence" before
+//   it ever reached the bare command — passing by accident, not by actually
+//   being safe. Natural-language sentence-boundary detection via regex is
+//   inherently fragile (headings, code spans, abbreviations, and filenames
+//   all contain periods that aren't sentence boundaries).
+//
+// Final, robust design: don't try to parse sentence boundaries at all. The
+// actionable step's text must reference `stampCommand`, and must NOT contain
+// the bare literal command as an exact substring anywhere — full stop, no
+// windowing, no sentence-splitting. This can't be fooled by co-occurrence or
+// punctuation, because it isn't looking at proximity or grammar at all.
+const BARE_STAMP_COMMAND = 'npx cairn check --summaries-only --stamp'
+
+const referencesStampCommandWithoutTheBareLiteral = (text: string): boolean =>
+  text.includes('stampCommand') && !text.includes(BARE_STAMP_COMMAND)
 
 describe('scaffolded stamp-command guidance references stampCommand, not a bare literal', () => {
-  it('CONVENTION_BODY\'s actionable "Workflow when you edit docs" step 3 mentions stampCommand', () => {
+  it('CONVENTION_BODY\'s actionable "Workflow when you edit docs" step 3 references stampCommand, never the bare command', () => {
     const step3 = CONVENTION_BODY.split('## Workflow when you edit docs')[1]?.split('## Commands')[0]
     expect(step3).toBeDefined()
-    expect(step3).toContain('stampCommand')
-    expect(mentionsStampCommandAsTheRunInstruction(step3 ?? '')).toBeTruthy()
+    expect(referencesStampCommandWithoutTheBareLiteral(step3 ?? '')).toBeTruthy()
   })
 
-  it('SKILL_BODY\'s "Stamp mechanically" step mentions stampCommand', () => {
-    const stampStep = SKILL_BODY.split('**Stamp mechanically.**')[1]
+  it('SKILL_BODY\'s "Stamp mechanically" step references stampCommand, never the bare command', () => {
+    const stampStep = SKILL_BODY.split('**Stamp mechanically.**')[1]?.split('**Never hand-edit')[0]
     expect(stampStep).toBeDefined()
-    expect(stampStep).toContain('stampCommand')
-    expect(mentionsStampCommandAsTheRunInstruction(`run ${stampStep}`)).toBeTruthy()
+    expect(referencesStampCommandWithoutTheBareLiteral(stampStep ?? '')).toBeTruthy()
   })
 
-  it('rejects the decoy wording an adversarial review found: mentions stampCommand nearby while still literally instructing the bare default', () => {
-    const decoy = 'Run `npx cairn check --summaries-only --stamp`. (Note: stampCommand also exists in .cairnrc.json.)'
+  // Every decoy wording constructed across all three adversarial passes —
+  // each satisfied an earlier, weaker version of this check while still
+  // being the exact bug (the bare command appears verbatim as the thing to
+  // run). All must be rejected by the final design.
+  it.each([
+    'Run `npx cairn check --summaries-only --stamp`. (Note: stampCommand also exists in .cairnrc.json.)',
+    'Run this command (stampCommand may differ) `npx cairn check --summaries-only --stamp`.',
+    'Run the stamp step; note stampCommand exists too, then execute `npx cairn check --summaries-only --stamp` now.',
+    'You should run stampCommand ideally, but for now just do: `npx cairn check --summaries-only --stamp`',
+    // Pass 3's specific bug: a real production sentence, with `.cairnrc.json`'s
+    // dot able to fool a period-based sentence-boundary split.
+    "Run this repo's configured stamp command (`stampCommand` in `.cairnrc.json`, " +
+      'defaulting to `npx cairn check --summaries-only --stamp` if unset).',
+  ])('rejects decoy wording that mentions stampCommand while still containing the bare literal: %s', (decoy) => {
     expect(decoy).toContain('stampCommand')
-    expect(mentionsStampCommandAsTheRunInstruction(decoy)).toBeFalsy()
+    expect(referencesStampCommandWithoutTheBareLiteral(decoy)).toBeFalsy()
+  })
+
+  it('accepts wording that references stampCommand and never spells out the bare literal verbatim', () => {
+    const good = "Run this repo's configured stamp command (`stampCommand` in `.cairnrc.json`)."
+    expect(referencesStampCommandWithoutTheBareLiteral(good)).toBeTruthy()
   })
 })

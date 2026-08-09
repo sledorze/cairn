@@ -50,9 +50,9 @@ top-down, parents capture stale child hashes and `check` stays red.
    roots. For each, write its `_SUMMARY.md`: orientation paragraph, then a linked line
    for every direct child (child `.summary.md` or doc, and each sub-dir's `_SUMMARY.md`).
 3. **Stamp mechanically.** Run this repo's configured stamp command (`stampCommand` in
-   `.cairnrc.json`: `pnpm format && npx cairn check --summaries-only --stamp` — format
-   first, since stamping before a later reformat hashes content the format step is about
-   to change). It rewrites every `.cairn/` sidecar hash bottom-up. **Never hand-edit a sidecar** — it
+   `.cairnrc.json`). That's currently `pnpm format && npx cairn check --summaries-only
+--stamp` — format first, since stamping before a later reformat hashes content the
+   format step is about to change. It rewrites every `.cairn/` sidecar hash bottom-up. **Never hand-edit a sidecar** — it
    is computed, not authored; a hand-typed hash is always wrong.
 4. **Verify.** Run `npx cairn check` and confirm exit 0.
 
