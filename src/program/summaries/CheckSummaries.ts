@@ -297,13 +297,23 @@ const explainPlan = (
       `  expected ${shortHash(node.expectedHash)}  recorded ${shortHash(node.recordedHash)}`,
     )
     if (node.kind === 'file') {
-      const source = node.inputs[0]
-      const content = source === undefined ? '' : (files.get(source) ?? '')
-      lines.push(`  source: ${source} (${countLines(content)} lines)`, ...headings(content).map((h) => `    ${h}`))
+      // Issue #162 item 2: the delta used to print LAST, below a full
+      // heading outline — on a large doc the answer ("how much changed")
+      // landed 20+ lines below the question ("is this a real content change
+      // or a reflex re-stamp?"). Delta now sits right under the hash pair,
+      // adjacent to the question it answers. Pure reordering — the outline
+      // itself still always prints: a stale summary has to be REWRITTEN,
+      // and the outline is the source's current section shape, exactly
+      // what a rewrite is done against (an earlier version of this fix
+      // suppressed it for stale nodes; withdrawn on further review of #162
+      // for exactly that reason).
       const diff = diffs.get(node.path)
       if (diff !== undefined) {
         lines.push(`  changed since ${diff.sha.slice(0, 8)}…: +${diff.added}/-${diff.removed} lines`)
       }
+      const source = node.inputs[0]
+      const content = source === undefined ? '' : (files.get(source) ?? '')
+      lines.push(`  source: ${source} (${countLines(content)} lines)`, ...headings(content).map((h) => `    ${h}`))
     } else {
       const staleInputs = node.inputs.filter((input) => byPath.get(input)?.status !== 'ok')
       if (staleInputs.length > 0) {

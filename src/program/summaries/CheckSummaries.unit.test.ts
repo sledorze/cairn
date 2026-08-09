@@ -409,6 +409,37 @@ describe('explainSummaries()', () => {
     },
   )
 
+  // Issue #162 item 2: on a STALE file node with a real delta available, the
+  // delta must sit right under the hash pair, not below the heading outline
+  // — pure reordering. The outline itself still always prints (an earlier
+  // version of this fix suppressed it for stale nodes; withdrawn on further
+  // review of #162 — a stale summary has to be rewritten, and the outline
+  // is exactly the shape you rewrite against).
+  const staleWithHeadingsDoc = makeTestDocsFs({
+    '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${hashContent(big)}","version":1}`),
+    '/r/docs/a.md': tf(`${big}\n## Configuration\nmore text`),
+    '/r/docs/a.summary.md': tf('# résumé de a'),
+  })
+  const staleWithHeadingsLayer = Layer.merge(staleWithHeadingsDoc, matchingHistoryGit)
+  effectIt.layer(staleWithHeadingsLayer)(
+    'puts the delta adjacent to the hash pair, above the outline, on a stale node with a delta',
+    (layerIt) => {
+      layerIt.effect('orders correctly, outline still present', () =>
+        Effect.gen(function* () {
+          const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+          const recordedIdx = lines.findIndex((l) => l.includes('recorded'))
+          const deltaIdx = lines.findIndex((l) => l.includes('changed since'))
+          const sourceIdx = lines.findIndex((l) => l.includes('source:'))
+          const headingIdx = lines.findIndex((l) => l.includes('## Configuration'))
+          expect(recordedIdx).toBeGreaterThanOrEqual(0)
+          expect(deltaIdx).toBe(recordedIdx + 1)
+          expect(sourceIdx).toBeGreaterThan(deltaIdx)
+          expect(headingIdx).toBeGreaterThan(sourceIdx)
+        }),
+      )
+    },
+  )
+
   const staleWithNoHistoryDocs = makeTestDocsFs({
     '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${'0'.repeat(64)}","version":1}`),
     '/r/docs/a.md': tf(big),
