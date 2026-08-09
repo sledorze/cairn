@@ -1,10 +1,10 @@
 import { it as effectIt } from '@effect/vitest'
-import { Effect } from 'effect'
-import type { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { hashContent } from '../../core/hashing.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
+import { GitFs, GitUnavailableError, makeTestGitFs } from '../../io/Git.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -305,11 +305,20 @@ describe('checkSummaries()', () => {
 })
 
 describe('explainSummaries()', () => {
+  // Shared, no-history GitFs double for tests that aren't exercising the git
+  // lookup itself — collapses `makeTestGitFs(new Set())` to a single
+  // reference at each call site (also keeps `Effect.provide(...)` chains
+  // under this repo's own nesting-depth lint rule).
+  const noGit = makeTestGitFs(new Set())
+
   it('shows the source outline and hash pair for a stale/missing file summary', async () => {
     const withHeadings = `${big}\n## Configuration\nmore text`
     const layer = makeTestDocsFs({ '/r/docs/a.md': tf(withHeadings) })
     const lines = await Effect.runPromise(
-      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(
+        Effect.provide(layer),
+        Effect.provide(noGit),
+      ),
     )
     const text = lines.join('\n')
     expect(text).toContain('file /r/docs/a.summary.md (missing):')
@@ -322,7 +331,10 @@ describe('explainSummaries()', () => {
   it('names the stale child driving a directory summary stale', async () => {
     const layer = makeTestDocsFs({ '/r/docs/a.md': tf(big) })
     const lines = await Effect.runPromise(
-      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(
+        Effect.provide(layer),
+        Effect.provide(noGit),
+      ),
     )
     const dirBlock = lines.join('\n')
     expect(dirBlock).toContain('dir /r/docs/_SUMMARY.md (missing):')
@@ -339,7 +351,10 @@ describe('explainSummaries()', () => {
       stampSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
     )
     const lines = await Effect.runPromise(
-      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(
+        Effect.provide(layer),
+        Effect.provide(noGit),
+      ),
     )
     expect(lines).toEqual(['Nothing to explain — all summaries are fresh.'])
   })
@@ -351,7 +366,10 @@ describe('explainSummaries()', () => {
       '/r/docs/a.summary.md': tf('# résumé de a'),
     })
     const lines = await Effect.runPromise(
-      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(Effect.provide(layer)),
+      explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 }).pipe(
+        Effect.provide(layer),
+        Effect.provide(noGit),
+      ),
     )
     const text = lines.join('\n')
     expect(text).toContain('file /r/docs/a.summary.md (stale):')
@@ -360,6 +378,176 @@ describe('explainSummaries()', () => {
     // authored in this fixture) and legitimately still says "recorded none".
     expect(text).toContain(`expected ${hashContent(big).slice(0, 8)}…  recorded ${'0'.repeat(8)}…`)
   })
+
+  const staleWithMatchingHistoryDocs = makeTestDocsFs({
+    '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${hashContent(big)}","version":1}`),
+    '/r/docs/a.md': tf(`${big}\nmore\nlines`),
+    '/r/docs/a.summary.md': tf('# résumé de a'),
+  })
+  const matchingHistoryGit = makeTestGitFs(
+    new Set(),
+    [],
+    [],
+    new Map([['/r/docs/a.md', big]]), // atRef: sha1's content == the OLD source
+    [],
+    new Map(),
+    new Map([['/r/docs/a.md', ['sha1']]]), // history: newest-first
+    new Map([['/r/docs/a.md', { added: 2, removed: 0 }]]), // diffStat sha1..working tree
+  )
+  const staleWithMatchingHistoryLayer = Layer.merge(staleWithMatchingHistoryDocs, matchingHistoryGit)
+  effectIt.layer(staleWithMatchingHistoryLayer)(
+    'shows a real git line-count delta since the recorded hash last matched (#142/#154)',
+    (layerIt) => {
+      layerIt.effect('shows it', () =>
+        Effect.gen(function* () {
+          const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+          const text = lines.join('\n')
+          expect(text).toContain('file /r/docs/a.summary.md (stale):')
+          expect(text).toContain('changed since sha1…: +2/-0 lines')
+        }),
+      )
+    },
+  )
+
+  const staleWithNoHistoryDocs = makeTestDocsFs({
+    '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${'0'.repeat(64)}","version":1}`),
+    '/r/docs/a.md': tf(big),
+    '/r/docs/a.summary.md': tf('# résumé de a'),
+  })
+  const staleWithNoHistoryLayer = Layer.merge(staleWithNoHistoryDocs, makeTestGitFs(new Set()))
+  effectIt.layer(staleWithNoHistoryLayer)(
+    'shows no diff line when git has no record of the recorded hash ever matching (best-effort, never fabricated)',
+    (layerIt) => {
+      layerIt.effect('shows nothing', () =>
+        Effect.gen(function* () {
+          const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+          const text = lines.join('\n')
+          expect(text).toContain('file /r/docs/a.summary.md (stale):')
+          expect(text).not.toContain('changed since')
+        }),
+      )
+    },
+  )
+
+  // Three distinct real failure points inside `diffSinceRecorded`, each
+  // proven to degrade to "no diff line, no crash" rather than propagate —
+  // the actual claim this feature makes, not just its happy path.
+  const staleDocsFixture = makeTestDocsFs({
+    '/r/.cairn/docs/a.summary.md.json': tf(`{"sha256":"${hashContent(big)}","version":1}`),
+    '/r/docs/a.md': tf(`${big}\nmore`),
+    '/r/docs/a.summary.md': tf('# résumé de a'),
+  })
+
+  // `historyForPath` reports a candidate SHA, but `atRef` has no entry for
+  // it — the real implementation's `readFileAtRef` failure mode.
+  const unreadableCandidateGit = makeTestGitFs(
+    new Set(),
+    [],
+    [],
+    new Map(),
+    [],
+    new Map(),
+    new Map([['/r/docs/a.md', ['sha-unreadable']]]),
+  )
+  const readFileAtRefFailureLayer = Layer.merge(staleDocsFixture, unreadableCandidateGit)
+  effectIt.layer(readFileAtRefFailureLayer)(
+    'degrades cleanly when readFileAtRef fails for a candidate commit',
+    (layerIt) => {
+      layerIt.effect('shows no diff line, no crash', () =>
+        Effect.gen(function* () {
+          const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+          const text = lines.join('\n')
+          expect(text).toContain('file /r/docs/a.summary.md (stale):')
+          expect(text).not.toContain('changed since')
+        }),
+      )
+    },
+  )
+
+  // A real match (content hashes to the recorded hash), but `diffStat`
+  // itself fails — the real implementation's `diffStat` failure mode.
+  const matchedButDiffStatFailsGit = makeTestGitFs(
+    new Set(),
+    [],
+    [],
+    new Map([['/r/docs/a.md', big]]),
+    [],
+    new Map(),
+    new Map([['/r/docs/a.md', ['sha-matched']]]),
+    new GitUnavailableError({ base: '/r', message: 'diff unavailable' }),
+  )
+  const diffStatFailureLayer = Layer.merge(staleDocsFixture, matchedButDiffStatFailsGit)
+  effectIt.layer(diffStatFailureLayer)('degrades cleanly when diffStat fails after a real match', (layerIt) => {
+    layerIt.effect('shows no diff line, no crash', () =>
+      Effect.gen(function* () {
+        const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+        const text = lines.join('\n')
+        expect(text).toContain('file /r/docs/a.summary.md (stale):')
+        expect(text).not.toContain('changed since')
+      }),
+    )
+  })
+
+  // `historyForPath` itself fails outright — the outermost catch.
+  const historyForPathFailsGit = makeTestGitFs(
+    new Set(),
+    [],
+    [],
+    new Map(),
+    [],
+    new Map(),
+    new GitUnavailableError({ base: '/r', message: 'no git here' }),
+  )
+  const historyForPathFailureLayer = Layer.merge(staleDocsFixture, historyForPathFailsGit)
+  effectIt.layer(historyForPathFailureLayer)('degrades cleanly when historyForPath itself fails', (layerIt) => {
+    layerIt.effect('shows no diff line, no crash', () =>
+      Effect.gen(function* () {
+        const lines = yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+        const text = lines.join('\n')
+        expect(text).toContain('file /r/docs/a.summary.md (stale):')
+        expect(text).not.toContain('changed since')
+      }),
+    )
+  })
+
+  // Adversarial review of this feature's first cut found the per-doc bound
+  // (MAX_HISTORY_DEPTH) doesn't cover a repo with MANY stale docs and no
+  // matches anywhere — every one of them would still pay a full git lookup.
+  // 25 stale docs, none ever matching, a GitFs double that COUNTS how many
+  // it's actually asked to enrich.
+  const MANY_STALE_DOCS = 25
+  const manyStaleFiles: Record<string, { content: string; mtimeMs: number }> = {}
+  for (let i = 0; i < MANY_STALE_DOCS; i += 1) {
+    manyStaleFiles[`/r/docs/a${i}.md`] = tf(big)
+    manyStaleFiles[`/r/.cairn/docs/a${i}.summary.md.json`] = tf(`{"sha256":"${'0'.repeat(64)}","version":1}`)
+    manyStaleFiles[`/r/docs/a${i}.summary.md`] = tf(`# résumé ${i}`)
+  }
+  const manyStaleDocsLayer = makeTestDocsFs(manyStaleFiles)
+  let historyCallCount = 0
+  const countingGitLayer = Layer.succeed(GitFs, {
+    diffStat: () => Effect.succeed(null),
+    historyForPath: () => {
+      historyCallCount += 1
+      return Effect.succeed([]) // no history at all — the cheapest real "no match"
+    },
+    lastCommitDate: () => Effect.succeed(null),
+    listDeletedSince: () => Effect.succeed([]),
+    listIgnoredDirs: () => Effect.succeed([]),
+    listTrackedFiles: () => Effect.succeed(new Set()),
+    listWorktreeDirs: () => Effect.succeed([]),
+    readFileAtRef: () => Effect.succeed(''),
+  })
+  effectIt.layer(Layer.merge(manyStaleDocsLayer, countingGitLayer))(
+    'bounds the number of stale file nodes it attempts to git-enrich, even when none ever match (cost cap)',
+    (layerIt) => {
+      layerIt.effect('bounds it', () =>
+        Effect.gen(function* () {
+          yield* explainSummaries({ base, roots: ['/r/docs'], thresholdLines: 30 })
+          expect(historyCallCount).toBe(20)
+        }),
+      )
+    },
+  )
 })
 
 describe('pruneOrphans()', () => {

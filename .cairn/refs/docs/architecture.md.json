@@ -89,7 +89,7 @@
       "target": "../src/io/DocsFs.ts"
     },
     {
-      "hash": "442664bc8c5c97822506b950c42b9ceb42e1ee4155ddc41a868b3db3f4ce79cd",
+      "hash": "476c805db39b83768162fcddb0ed9fd7e7ff8b5ebe34f3635fdad417580a4150",
       "target": "../src/io/Git.ts"
     },
     {
@@ -105,7 +105,7 @@
       "target": "../src/program/checks/runCheckPlugin.ts"
     },
     {
-      "hash": "e60d1d2185d950639c056a3183ed6d9c6d914fcef105baba8ea9ab0cd10e7bd6",
+      "hash": "58b2a7890ac680dc35af33578583f6a9c2ae3d425ff1d4849d7addee43368668",
       "target": "../src/program/summaries/CheckSummaries.ts"
     },
     {

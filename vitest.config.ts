@@ -73,9 +73,9 @@ export default defineConfig({
         // ratio shift with no coverage lost: every real branch this
         // rewrite touches (the mixed file/directory glob-segment case
         // included) has its own real-filesystem test.
-        functions: 98.96,
-        lines: 99.52,
-        statements: 99.36,
+        functions: 98.99,
+        lines: 99.53,
+        statements: 99.37,
       },
     },
     // scripts/**/*.test.ts: a genuine exception to "tests live under src/" —
