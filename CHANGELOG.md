@@ -1,5 +1,15 @@
 # @sledorze/cairn
 
+## 0.11.0
+
+### Minor Changes
+
+- bd13609: `cairn check --summaries-only --explain` now shows a real git line-count delta for a stale file summary (e.g. `changed since 029d0f0e…: +3/-0 lines`) instead of only the source's current outline — the "reflexive re-stamping" gap (issues #101/#142/#154): a bare hash mismatch says nothing about _what_ changed, so a human or agent re-stamps without looking. Best-effort only: silently falls back to today's output when there's no git repo, the recorded hash predates the file's available history, or the change is binary. Bounded on both axes — at most 50 past commits walked per doc, and at most 20 stale docs enriched per `--explain` run — so a large repo with many stale docs can't make this slow; later docs simply show without a diff line. No effect on `check`'s exit code, on non-`--explain` output, or when git is unavailable — purely additive.
+
+### Patch Changes
+
+- 371fbdc: `cairn check --summaries-only` now tells a legacy in-content `<!-- source-sha256: ... -->` stamp (pre-`.cairn/` sidecar format) apart from genuine content drift. Previously both showed the same generic `stale (source changed)`, which reads as alarming, undifferentiated mass drift on a repo upgrading off the old format — the actual fix (`--migrate-stamps`, or an ordinary self-healing `--stamp`) wasn't discoverable at the point of failure. Affected summaries now report `legacy inline stamp (format migration, not drift)`, and the report ends with a line pointing straight at `cairn check --summaries-only --migrate-stamps`. No behavior change to what's stale/missing or to exit codes — output only (issue #142, item #1).
+
 ## 0.10.0
 
 ### Minor Changes
