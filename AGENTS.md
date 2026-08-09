@@ -277,3 +277,14 @@ and legible on one concern instead of easy to skim past on five. Incidents:
 **A changeset for every user-facing change** — written for someone who'll never read the PR
 description: what changed, and whether it can flip a previously-passing repo to failing (a
 stricter check is a real behavior change, not just a bugfix).
+
+**A dependency upgrade isn't done at the version bump — check the changelog for a feature
+that closes a gap in how this repo already uses it, and check the tool's own diagnostic
+command before assuming the current setup is fine.** Incident: upgrading
+`@sledorze/falsestart` 0.2.0→0.3.0 stopped at `package.json` + green `pnpm verify` until
+asked directly whether the new version addressed a shortcoming — 0.3.0's `--fail closed`
+exists specifically because this repo's hook (`.claude/settings.json`, `--preset all`, no
+`--fail` flag) fails **open**: a broken rule tree or config silently lets every write
+through instead of blocking. `falsestart --doctor` (its own coverage-diagnostic command)
+confirmed rules were still loading before recommending the change, rather than trusting the
+diff alone.
