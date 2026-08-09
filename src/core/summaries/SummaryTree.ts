@@ -30,7 +30,7 @@ import { extractLinks, isCheckableTarget, stripAnchor, stripCode } from '../link
 import { hashContent } from '../hashing.ts'
 import { isIgnored, isInScope } from '../paths.ts'
 import type { Naming, SummaryStatus } from './DocSummaries.ts'
-import { countLines, DEFAULT_NAMING, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
+import { countLines, DEFAULT_NAMING, extractSourceHash, isSummaryFile, summaryPathFor } from './DocSummaries.ts'
 
 // POSIX path semantics so the plan is identical on every OS (inputs normalised
 // to `/` at the IO boundary).
@@ -43,6 +43,14 @@ export interface PlanNode {
   readonly expectedHash: string
   readonly inputs: readonly string[]
   readonly kind: 'dir' | 'file'
+  /** True when the summary's OWN content still carries the legacy in-content
+   * `<!-- source-sha256: ... -->` stamp (pre-sidecar format, see
+   * DocSummaries.ts's `extractSourceHash`). Only ever true for a `stale`
+   * node whose source is otherwise unchanged — an ordinary `--stamp` (or the
+   * explicit `--migrate-stamps` alias) self-heals it in one pass. Reporting
+   * uses this to distinguish a genuine content drift from a one-time format
+   * upgrade (issue #142 item #1) instead of the generic "stale" message. */
+  readonly legacyStamp: boolean
   readonly missingLinks: readonly string[]
   readonly path: string
   readonly recordedHash: string | null
@@ -106,6 +114,23 @@ const statusOf = (exists: boolean, recorded: string | null, expected: string): S
   return 'ok'
 }
 
+/**
+ * True only for a `stale` node whose summary content still carries the
+ * legacy in-content stamp (see DocSummaries.ts's `extractSourceHash`) AND
+ * that stamp's embedded hash matches the node's CURRENT `expectedHash` —
+ * i.e. the source is unchanged since the legacy stamp was written; the only
+ * thing missing is the `.cairn/**` sidecar entry (a one-time format
+ * migration, `--migrate-stamps`/self-healing `--stamp`). A tag present but
+ * embedding a DIFFERENT hash means the source has genuinely drifted since —
+ * that's real content drift on top of the format gap, not migration alone,
+ * so it must NOT be reported as the softer "format migration" message.
+ * Gated on `status === 'stale'` so it can never surface on an `ok` node
+ * (relevant beyond the text report — the full `SummaryPlan.nodes`, not just
+ * `todo`, is what `--json` serialises).
+ */
+const hasLegacyStamp = (status: SummaryStatus, content: string, expectedHash: string): boolean =>
+  status === 'stale' && extractSourceHash(content) === expectedHash
+
 export interface NodeHashArgs {
   readonly files: ReadonlyMap<string, string>
   readonly inputs: readonly string[]
@@ -164,14 +189,16 @@ export const planSummaries = ({
     const sp = summaryPathFor(doc, naming)
     const expectedHash = nodeExpectedHash({ files, inputs: [doc], kind: 'file', path: sp })
     const recordedHash = recorded(sp)
+    const status = statusOf(files.has(sp), recordedHash, expectedHash)
     fileNodes.push({
       expectedHash,
       inputs: [doc],
       kind: 'file',
+      legacyStamp: hasLegacyStamp(status, files.get(sp) ?? '', expectedHash),
       missingLinks: [],
       path: sp,
       recordedHash,
-      status: statusOf(files.has(sp), recordedHash, expectedHash),
+      status,
     })
   }
 
@@ -250,14 +277,16 @@ export const planSummaries = ({
       ...childDirs.filter((sub) => !isChildDirLinked(sub)),
     ].toSorted()
     const fresh = exists && recordedHash === expectedHash && missingLinks.length === 0
+    const status: SummaryStatus = exists ? (fresh ? 'ok' : 'stale') : 'missing'
     dirNodes.push({
       expectedHash,
       inputs: inputs.toSorted(),
       kind: 'dir',
+      legacyStamp: hasLegacyStamp(status, files.get(dsp) ?? '', expectedHash),
       missingLinks,
       path: dsp,
       recordedHash,
-      status: exists ? (fresh ? 'ok' : 'stale') : 'missing',
+      status,
     })
   }
 
