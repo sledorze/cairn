@@ -81,7 +81,7 @@
       "target": "../src/core/paths.ts"
     },
     {
-      "hash": "e94ff6c7f1314c82eecbc384276385c28a02c017048b39e0ae217ef260eec62a",
+      "hash": "6055c45d602e4f0dec83ec7e8bb789164a6160a5d5dd158cb61635a89ec4058f",
       "target": "../src/core/Config.ts"
     },
     {
@@ -97,11 +97,11 @@
       "target": "../src/io/gitEnv.ts"
     },
     {
-      "hash": "aba38c0dbfd2ce0e48214206cc3fe8fd827b92d1deeb906f2be17f87f29a758c",
+      "hash": "9a5188a3930fd7e14c58dc3e906d36dea990d2328c017ee3447e070e37a9c9f4",
       "target": "../src/program/checks/CheckPlugin.ts"
     },
     {
-      "hash": "be966b6504a10becb4957a71e39a74de8d08440afa376e1ebf14f0af9382dd0d",
+      "hash": "829b1468002be3c9e4f5c8ad2b9a8917a204dab4bbfea5cf9f14435f1119fdda",
       "target": "../src/program/checks/runCheckPlugin.ts"
     },
     {
@@ -117,7 +117,7 @@
       "target": "../src/program/links/CheckLinks.ts"
     },
     {
-      "hash": "7de29b4fbca91085e385935832aea1c6acdbabcb52c6a2c902722a384f0fc0e4",
+      "hash": "53ce8140187706507fd9dd85b2d6e144661c39d9a5fa673e2d5a15f5992ffd89",
       "target": "../src/program/links/CheckRefs.ts"
     },
     {

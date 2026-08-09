@@ -1,7 +1,7 @@
 import { Result } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget, isUrlTarget } from './Config.ts'
+import { DEFAULT_CONFIG, decodeConfig, formatConfigError, isKindTarget, isUrlTarget, layerConfig } from './Config.ts'
 
 // `decodeConfig` is total and pure over its actual domain — any value JSON.parse can
 // produce — and never throws for it: `effect/Schema` already hands back a `Result`, so
@@ -1111,6 +1111,23 @@ describe('isUrlTarget()', () => {
   })
 })
 
+describe('layerConfig() refsStampCommand', () => {
+  // Issue #162 item 1: `refsStampCommand` is a fresh field alongside the
+  // long-established `stampCommand` — proves it participates in the same
+  // "later wins, absent inherits" layering as every sibling scalar field
+  // (both the override AND the inherit branch, matching this suite's own
+  // pattern for `stampCommand`/`roots` elsewhere).
+  it('overrides the base when the layer sets it', () => {
+    const layered = layerConfig(DEFAULT_CONFIG, { refsStampCommand: 'pnpm run stamp:refs' })
+    expect(layered.refsStampCommand).toBe('pnpm run stamp:refs')
+  })
+
+  it('inherits the base when the layer leaves it absent', () => {
+    const layered = layerConfig(DEFAULT_CONFIG, {})
+    expect(layered.refsStampCommand).toBe(DEFAULT_CONFIG.refsStampCommand)
+  })
+})
+
 describe('the built-in defaults', () => {
   it('matches the documented defaults', () => {
     expect(DEFAULT_CONFIG).toEqual({
@@ -1127,6 +1144,7 @@ describe('the built-in defaults', () => {
       naming: { dirSummary: '_SUMMARY.md', fileSummarySuffix: '.summary.md' },
       onlyGitTracked: false,
       refs: { scope: [] },
+      refsStampCommand: 'npx cairn check --refs --stamp',
       requireDirSummaries: true,
       roots: ['docs'],
       stampCommand: 'npx cairn check --summaries-only --stamp',

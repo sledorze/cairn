@@ -5,6 +5,7 @@
     "fileSummarySuffix": ".summary.md"
   },
   "roots": ["docs"],
+  "refsStampCommand": "pnpm run stamp:refs",
   "stampCommand": "pnpm format && npx cairn check --summaries-only --stamp",
   "thresholdLines": 30,
   "checks": {

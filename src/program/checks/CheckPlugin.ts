@@ -59,6 +59,12 @@ export interface CheckRunArgs {
 
 export interface FormatOptions {
   readonly locale: Locale
+  /** Issue #162 item 1: threaded through so `refsPlugin.format` can read the
+   * repo's actual configured ref-stamping command instead of hardcoding a
+   * guess — the same pattern `CheckSummaries.ts`'s `formatSummaryReport`
+   * already uses for `stampCommand`. Optional and unused by every other
+   * plugin today; only `refs` reads it. */
+  readonly refsStampCommand?: string
 }
 
 /** One check, decoupled from cli.ts's own dispatch: cli.ts only ever calls

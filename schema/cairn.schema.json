@@ -327,6 +327,10 @@
           "description": "Restrict the scanned file universe to files `git ls-files` reports as tracked/staged (issue #48) — so a local run sees the same files a fresh CI checkout would, ignoring untracked scratch docs and links to them. Default false (unchanged, glob-only behavior)."
         },
         "refs": { "$ref": "#/$defs/CairnRefsConfig" },
+        "refsStampCommand": {
+          "type": "string",
+          "description": "Command agents should run to re-stamp reference hashes after `--refs` reports drift. Default \"npx cairn check --refs --stamp\". Deliberately separate from `stampCommand`: that field stamps SUMMARY freshness (commonly scoped `--summaries-only`, as this repo's own config does) and does not stamp `--refs` sidecars at all — reusing it for the refs hint would suggest a command that silently doesn't do what it claims."
+        },
         "requireDirSummaries": {
           "type": "boolean",
           "description": "Require a directory summary in every in-scope directory. Default true."

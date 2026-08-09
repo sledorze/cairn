@@ -795,6 +795,16 @@ export const CairnConfigSchema = Schema.Struct({
     }),
   ),
   refs: Schema.optionalKey(RefsInputSchema),
+  refsStampCommand: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        'Command agents should run to re-stamp reference hashes after `--refs` reports drift. Default ' +
+        '"npx cairn check --refs --stamp". Deliberately separate from `stampCommand`: that field stamps ' +
+        "SUMMARY freshness (commonly scoped `--summaries-only`, as this repo's own config does) and does " +
+        'not stamp `--refs` sidecars at all — reusing it for the refs hint would suggest a command that ' +
+        "silently doesn't do what it claims.",
+    }),
+  ),
   requireDirSummaries: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Require a directory summary in every in-scope directory. Default true.',
@@ -1044,6 +1054,16 @@ export type Locale = (typeof LOCALES)[number]
  * too, and it can't be defined there, since `core/` can't depend on `program/`. */
 export const DEFAULT_STAMP_COMMAND = 'npx cairn check --summaries-only --stamp'
 
+/** Issue #162 item 1: the `--refs` stale-report's own fix hint used to be
+ * hardcoded (guessing a `pnpm run stamp:refs` script that may not exist, and
+ * omitting any formatter step a repo's real ref-stamping command needs) —
+ * see `program/links/CheckRefs.ts`'s `formatRefsReport`. Deliberately NOT
+ * `DEFAULT_STAMP_COMMAND` reused as-is: that command is conventionally
+ * scoped to `--summaries-only` (this repo's own `.cairnrc.json` included) and
+ * does not stamp `--refs` sidecars — see `refsStampCommand`'s own schema
+ * description above. */
+export const DEFAULT_REFS_STAMP_COMMAND = 'npx cairn check --refs --stamp'
+
 export interface ResolvedConfig {
   readonly checks: ChecksConfig
   readonly ignore: readonly string[]
@@ -1051,6 +1071,7 @@ export interface ResolvedConfig {
   readonly naming: Naming
   readonly onlyGitTracked: boolean
   readonly refs: RefsConfig
+  readonly refsStampCommand: string
   readonly requireDirSummaries: boolean
   readonly roots: readonly string[]
   readonly stampCommand: string
@@ -1077,6 +1098,7 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
   naming: DEFAULT_NAMING,
   onlyGitTracked: false,
   refs: { scope: [] },
+  refsStampCommand: DEFAULT_REFS_STAMP_COMMAND,
   requireDirSummaries: true,
   roots: ['docs'],
   stampCommand: DEFAULT_STAMP_COMMAND,
@@ -1113,6 +1135,7 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
   ...(layer.locale === undefined ? {} : { locale: layer.locale }),
   ...(layer.onlyGitTracked === undefined ? {} : { onlyGitTracked: layer.onlyGitTracked }),
   ...(layer.requireDirSummaries === undefined ? {} : { requireDirSummaries: layer.requireDirSummaries }),
+  ...(layer.refsStampCommand === undefined ? {} : { refsStampCommand: layer.refsStampCommand }),
   ...(layer.roots === undefined ? {} : { roots: layer.roots }),
   ...(layer.stampCommand === undefined ? {} : { stampCommand: layer.stampCommand }),
   ...(layer.thresholdLines === undefined ? {} : { thresholdLines: layer.thresholdLines }),

@@ -237,6 +237,38 @@ describe('formatRefsReport()', () => {
     expect(lines.some((l) => l.includes('cairn check --refs --stamp'))).toBeTruthy()
   })
 
+  // Issue #162 item 1: the hint used to hardcode a guessed `pnpm run
+  // stamp:refs` fallback instead of reading the repo's actual configured
+  // command — reproduced live in a repo where that guessed script name
+  // didn't exist. This proves the report now surfaces whatever
+  // `refsStampCommand` the caller supplies (the same way
+  // `formatSummaryReport` already surfaces `stampCommand`), not a guess.
+  it('surfaces the configured refsStampCommand in the fix hint instead of a guessed fallback', () => {
+    const lines = formatRefsReport(
+      {
+        checked: 1,
+        kindsConfigured: false,
+        stale: [
+          {
+            file: 'docs/index.md',
+            kindGuidance: [],
+            refs: [
+              {
+                currentHash: 'def456ghijk',
+                recordedHash: 'abc123defgh',
+                target: '../src/x.ts',
+                targetKindGuidance: [],
+              },
+            ],
+          },
+        ],
+      },
+      { refsStampCommand: 'pnpm run stamp:refs' },
+    )
+    expect(lines.some((l) => l.includes('pnpm run stamp:refs'))).toBeTruthy()
+    expect(lines.some((l) => l.includes('or `pnpm run stamp:refs` if this repo has that script'))).toBeFalsy()
+  })
+
   it('appends the kind-guidance discoverability tip when checks.coverage.kinds is not configured', () => {
     const lines = formatRefsReport({
       checked: 1,
