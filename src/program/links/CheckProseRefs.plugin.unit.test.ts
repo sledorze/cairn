@@ -7,6 +7,7 @@ import type { CheckCliFlags } from '../checks/CheckPlugin.ts'
 import { formatProseRefsReport, proseRefsPlugin } from './CheckProseRefs.ts'
 
 const CLI: CheckCliFlags = {
+  changed: [],
   fix: false,
   json: false,
   linksOnly: false,

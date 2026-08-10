@@ -70,6 +70,13 @@ Separation of concerns: pure decisions, IO at the edges.
     silent, only a drifted one is reported, with the link syntax to convert it).
   - **`structure/`**: `CheckCoverage` — opt-in (`checks.coverage`'s mere presence)
     missing-coverage/orphan/unmatched-kind reporting over a declared doc-kind graph.
+    `--changed <path...>` (spike) is a real CLI flag, but only RESCOPES the already-
+    computed report to edges touching those paths — it opts nothing in or out, so
+    `checks.coverage`'s presence in config remains the sole enablement switch; the exit
+    code still stays corpus-wide. Every cause of a non-zero exit is disclosed by the
+    scoped report: an in-scope unsatisfied rule shows up directly; anything else — an
+    unsatisfied rule outside scope, or any orphan at all (never rendered by this report
+    regardless of scope) — is counted in an explicit "N other coverage issue(s)" line.
     `CheckDocCoverage` (issue #108) — opt-in (`checks.docCoverage`'s mere presence):
     scans the whole `base` tree for `sources`/`coveredBy` files, extracts each covering
     doc's own direct links, hands the result to `DocCoverage`'s pure functions.

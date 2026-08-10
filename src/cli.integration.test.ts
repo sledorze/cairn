@@ -143,6 +143,111 @@ describe('cli.ts (real subprocess) — --json incompatibility gate', () => {
   })
 })
 
+// --changed (spike): scopes checks.coverage's report to rule edges touching
+// the given path(s), printing each matching rule's own `description` as
+// AI-review guidance — instead of the full missing/orphan corpus report.
+describe('cli.ts (real subprocess) — --changed scopes checks.coverage to AI-review guidance', () => {
+  const changedProject = () =>
+    project('cli-changed', {
+      '.cairnrc.json': JSON.stringify({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A feature doc.', id: 'feature', select: { by: 'path', glob: '**/docs/features/**' } },
+              { description: 'A decision doc.', id: 'decision', select: { by: 'path', glob: '**/docs/decisions/**' } },
+            ],
+            rules: [
+              {
+                description: 'A feature changing its contract must keep its linked decision doc in sync.',
+                from: 'feature',
+                to: 'decision',
+              },
+            ],
+          },
+          summaries: false,
+        },
+      }),
+      'docs/decisions/d1.md': '# Decision 1\n',
+      'docs/features/f1.md': '# Feature 1\n\nSee [decision](../decisions/d1.md).\n',
+      // Also satisfies the rule (unlike f1, via its own separate link) so
+      // the UNSCOPED baseline report is green — this describe block is
+      // about `--changed` SCOPING an already-satisfied corpus, not about
+      // triggering `missing`, which the pre-existing coverage tests already
+      // cover on their own.
+      'docs/features/f2.md': '# Feature 2\n\nSee [decision](../decisions/d1.md).\n',
+      // Classified as neither kind — the "no rule touches this changed
+      // path" case below.
+      'docs/other.md': '# Unrelated doc, not feature- or decision-kind\n',
+    })
+
+  it("prints the rule's description for a changed doc that IS a rule's `from` side", () => {
+    const p = changedProject()
+    const result = runCli(p.root, ['check', '--changed', 'docs/features/f1.md'])
+    expect(result.stdout).toContain('docs/features/f1.md')
+    expect(result.stdout).toContain('A feature changing its contract must keep its linked decision doc in sync.')
+    // f2 never changed, so its own (unrelated) edge must not appear.
+    expect(result.stdout).not.toContain('docs/features/f2.md')
+  })
+
+  it("also matches when the changed doc is a rule's `satisfiedBy` TARGET, not its `from` side", () => {
+    const p = changedProject()
+    const result = runCli(p.root, ['check', '--changed', 'docs/decisions/d1.md'])
+    // d1 is the satisfying target for BOTH f1 and f2's edges.
+    expect(result.stdout).toContain('docs/features/f1.md')
+    expect(result.stdout).toContain('docs/features/f2.md')
+    expect(result.stdout).toContain('A feature changing its contract must keep its linked decision doc in sync.')
+  })
+
+  it('reports "no rule touches this" for a changed path matching no rule edge at all', () => {
+    const p = changedProject()
+    const result = runCli(p.root, ['check', '--changed', 'docs/other.md'])
+    expect(result.stdout).toContain('No coverage rule touches the changed path')
+  })
+
+  it('leaves the ordinary (unscoped) report completely unaffected when --changed is not passed', () => {
+    const p = changedProject()
+    const result = runCli(p.root, ['check'])
+    expect(result.stdout).toContain('Coverage OK')
+    expect(result.stdout).not.toContain('A feature changing its contract must keep its linked decision doc in sync.')
+  })
+
+  // Adversarial-review finding: exit code 1 with a scoped report showing
+  // only a clean edge (nothing visibly wrong) used to be unexplainable —
+  // real repro: a compliant, CHANGED doc alongside a non-compliant,
+  // UNTOUCHED one. Fixed by keeping the exit code corpus-wide (never
+  // narrowed by --changed — see coverageExitCode's own doc comment) while
+  // making the scoped report itself disclose the count of issues it isn't
+  // showing.
+  it('a scoped report showing only a clean edge still exits 1 AND explains why, when an untouched doc is broken', () => {
+    const p = project('cli-changed-exit-code-repro', {
+      '.cairnrc.json': JSON.stringify({
+        checks: {
+          coverage: {
+            kinds: [
+              { description: 'A feature doc.', id: 'feature', select: { by: 'path', glob: '**/docs/features/**' } },
+              { description: 'A decision doc.', id: 'decision', select: { by: 'path', glob: '**/docs/decisions/**' } },
+            ],
+            rules: [{ description: 'Link every feature to its decision.', from: 'feature', to: 'decision' }],
+          },
+          summaries: false,
+        },
+      }),
+      'docs/decisions/d1.md': '# Decision 1\n',
+      // Changed + compliant: this is the ONLY thing the scoped report shows.
+      'docs/features/f1.md': '# Feature 1\n\nSee [decision](../decisions/d1.md).\n',
+      // Untouched + non-compliant: the real, sole cause of exit code 1 —
+      // must stay invisible in the scoped report's edge list, but its
+      // EXISTENCE must still be disclosed.
+      'docs/features/f2.md': '# Feature 2, no link at all\n',
+    })
+    const result = runCli(p.root, ['check', '--changed', 'docs/features/f1.md'])
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('docs/features/f1.md')
+    expect(result.stdout).not.toContain('docs/features/f2.md')
+    expect(result.stdout).toContain('1 other coverage issue(s) not shown above')
+  })
+})
+
 // DX finding (goal: "refute the DX for end users (dev/ai) is great"): a repo
 // where NO roots resolve at all — the default `docs/` doesn't exist, nothing
 // configured yet — used to print one warning line, then two green

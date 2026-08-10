@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { DocMetadata } from './DocMetadata.ts'
-import { collectExternalRefTargets, resolveRuleEdges } from './Coverage.ts'
+import { collectExternalRefTargets, filterRuleEdgesByChanged, resolveRuleEdges } from './Coverage.ts'
 
 const doc = (path: string, kinds: readonly string[], nodes: DocMetadata['nodes'] = []): DocMetadata => ({
   kinds,
@@ -587,6 +587,68 @@ describe('to: { atLeast: { n, of } } — general N-of-M cardinality', () => {
       rules: [{ from: 'roadmap', to: { atLeast: { n: 1, of: ['spikes', 'evidence'] } } }],
     })
     expect(edges[0]?.satisfied).toBeTruthy()
+  })
+})
+
+// `--changed` (spike, ../../program/structure/CheckCoverage.ts) scoping —
+// pure filtering only; path resolution is that caller's job, so every
+// `changed` value here is already absolute, matching `RuleEdge.doc`/
+// `SatisfyingRef.targetPath`'s own convention directly.
+describe('filterRuleEdgesByChanged()', () => {
+  it("keeps an edge whose OWN doc (the rule's `from` side) is in `changed`", () => {
+    const docs = [
+      doc('/r/features/f1.md', ['feature'], [ref('../decisions/d1.md')]),
+      doc('/r/decisions/d1.md', ['decision']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
+    const kept = filterRuleEdgesByChanged(edges, new Set(['/r/features/f1.md']))
+    expect(kept).toEqual(edges)
+  })
+
+  it('keeps an edge whose `satisfiedBy` TARGET (not its own doc) is in `changed`', () => {
+    const docs = [
+      doc('/r/features/f1.md', ['feature'], [ref('../decisions/d1.md')]),
+      doc('/r/decisions/d1.md', ['decision']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
+    const kept = filterRuleEdgesByChanged(edges, new Set(['/r/decisions/d1.md']))
+    expect(kept).toEqual(edges)
+  })
+
+  it('drops an edge touching neither the changed doc nor any of its satisfiedBy targets', () => {
+    const docs = [
+      doc('/r/features/f1.md', ['feature'], [ref('../decisions/d1.md')]),
+      doc('/r/decisions/d1.md', ['decision']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
+    expect(filterRuleEdgesByChanged(edges, new Set(['/r/unrelated/other.md']))).toEqual([])
+  })
+
+  it('an unsatisfied edge (no satisfiedBy at all) is still kept when its OWN doc is in `changed`', () => {
+    const docs = [doc('/r/features/f1.md', ['feature'], []), doc('/r/decisions/d1.md', ['decision'])]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
+    expect(filterRuleEdgesByChanged(edges, new Set(['/r/features/f1.md']))).toEqual(edges)
+  })
+
+  it('an empty `changed` set drops every edge', () => {
+    const docs = [
+      doc('/r/features/f1.md', ['feature'], [ref('../decisions/d1.md')]),
+      doc('/r/decisions/d1.md', ['decision']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
+    expect(filterRuleEdgesByChanged(edges, new Set())).toEqual([])
+  })
+
+  it('filters down to just the matching edges out of several, not all-or-nothing', () => {
+    const docs = [
+      doc('/r/features/f1.md', ['feature'], [ref('../decisions/d1.md')]),
+      doc('/r/features/f2.md', ['feature'], [ref('../decisions/d1.md')]),
+      doc('/r/decisions/d1.md', ['decision']),
+    ]
+    const edges = resolveRuleEdges({ docs, exempt: [], rules: [{ from: 'feature', to: 'decision' }] })
+    expect(edges).toHaveLength(2)
+    const kept = filterRuleEdgesByChanged(edges, new Set(['/r/features/f1.md']))
+    expect(kept).toEqual([edges[0]])
   })
 })
 

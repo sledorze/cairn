@@ -39,6 +39,17 @@ import type { DocsFs } from '../../io/DocsFs.ts'
  * do with it (e.g. `--prune`, which only `summaries` — outside this
  * abstraction entirely — understands). */
 export interface CheckCliFlags {
+  /** `--changed <path...>` (spike, cli.ts) — one or more paths this run
+   * should scope AI-review guidance to; empty when the flag wasn't passed.
+   * Read only by `coveragePlugin` today (../structure/CheckCoverage.ts):
+   * filters `checks.coverage`'s rule-edge report down to edges touching one
+   * of these paths (as the rule's own `from` doc, or as a `satisfiedBy`
+   * target), printing each matching rule's `description` as guidance
+   * instead of the full corpus report. Declared here, not as a
+   * coverage-only field, so it survives the same narrow-slice discipline
+   * this interface's own header describes — a future plugin can read it
+   * too without a second, parallel flag. */
+  readonly changed: readonly string[]
   readonly fix: boolean
   readonly json: boolean
   readonly linksOnly: boolean

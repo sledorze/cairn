@@ -7,6 +7,7 @@ import type { CheckCliFlags } from '../checks/CheckPlugin.ts'
 import { docCoveragePlugin, formatDocCoverageReport } from './CheckDocCoverage.ts'
 
 const CLI: CheckCliFlags = {
+  changed: [],
   fix: false,
   json: false,
   linksOnly: false,

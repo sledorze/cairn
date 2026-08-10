@@ -8,6 +8,7 @@ import type { CheckCliFlags } from '../checks/CheckPlugin.ts'
 import { formatRefsReport, refsPlugin } from './CheckRefs.ts'
 
 const CLI: CheckCliFlags = {
+  changed: [],
   fix: false,
   json: false,
   linksOnly: false,
