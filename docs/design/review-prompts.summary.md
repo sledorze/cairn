@@ -39,3 +39,22 @@ real printed output for the schema variant/hedge-language censuses, instead of h
 them by reading the schema file — the other four measurable checks are still hand-derived
 per domain. Both prompts require quoted evidence and end with measurable, re-checkable
 criteria rather than a prose-only verdict.
+
+**3. Problem-space rationalization**: a prerequisite to the two prompts above — both assume
+a package's scope is already correct; this one refutes that assumption before any structure
+is proposed. Given an initiative's current (or draft) framing plus real evidence, tries to
+REFUTE four claims: (a) scope correctness — does the problem's real boundary match the
+stated one, or does content belong elsewhere/leak in from elsewhere; (b) evidence
+sufficiency — is the cited evidence's corroboration strength proportionate to the
+investment implied, per this repo's own recurrence-gate lesson; (c) vocabulary honesty —
+does a borrowed product/process term (roadmap, story map, persona) actually mean what it
+claims under that heading; (d) placement correctness — do the eventual documents live where
+cross-cutting-vs-single-scoped content actually belongs, a claim distinct from (a) since
+placement can diverge from the problem's own logical boundary. Requires the same steelman
+second pass as prompt 2, and ends with each claim marked SURVIVED/REFUTED plus a minimal
+rewrite instruction per refuted claim. Motivated by, and cites, a real finding: this repo's
+own `docs/design/*/roadmap.md` files assert cross-package release priority
+(`137-typed-relations/roadmap.md` on `101-refs-symbol-scoping`'s ADR 0004) that
+`checks.coverage`'s sibling-scoped rules structurally cannot see or check — a (d)-class
+violation `CONVENTION.md` had only partly named (as a vocabulary gap, Claim 1) without
+following it to its placement consequence.
