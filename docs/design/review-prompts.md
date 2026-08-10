@@ -1,7 +1,7 @@
 # Reusable prompts for designing and judging a `checks.coverage` structure
 
-Two prompts for applying cairn's `checks.coverage` (kinds/rules) to any domain's
-documentation, not just software design packages. Both are business-agnostic: they take a
+Three prompts for applying cairn's `checks.coverage` (kinds/rules) to any domain's
+documentation, not just software design packages. All are business-agnostic: they take a
 domain and real source material as input, and neither assumes the reader already knows what
 `docs/design/` or "design package" means.
 

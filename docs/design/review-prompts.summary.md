@@ -1,8 +1,8 @@
 # Review prompts — summary
 
-Two business-agnostic prompts for applying cairn's `checks.coverage` (kinds/rules) to any
+Three business-agnostic prompts for applying cairn's `checks.coverage` (kinds/rules) to any
 documentation domain, not just software design packages. Real, dated evidence from actually
-running both prompts (against `docs/design/`, `docs/adr/`, and several rounds of closing
+running the first two (against `docs/design/`, `docs/adr/`, and several rounds of closing
 schema gaps) lives separately in [`review-findings.md`](./review-findings.md) — split out
 from this file once that evidence grew past a lean reference, the same doc-role split this
 repo already applies to `CONVENTION.md` versus [`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`](../adr/0005-design-packages-structurally-enforced-by-existing-coverage.md).
