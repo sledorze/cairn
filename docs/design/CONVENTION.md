@@ -132,10 +132,24 @@ Example report line with a `description`:
 
 ```
 ❌ 1 doc(s) missing required coverage:
+ℹ️  Coverage only confirms these links exist — it does not check the linked content's
+    substance. Judge that yourself, against this project's own documented conventions, if any.
   docs/design/101-refs-symbol-scoping/solution-space.md
     ✗ no link ("grounded_by") to a "spikes"-kind doc (required by kind "solution-space")
-      A cost/feasibility/risk claim needs real evidence — cite the spike that backs it.
+      A cost/feasibility/risk claim in solution-space.md must cite the spike backing it —
+      direction runs FROM the claim TO its evidence. Citing a spike that tested a different
+      primitive, or one cited elsewhere in the package but unrelated to THIS claim, satisfies
+      the link while proving nothing.
 ```
+
+The `ℹ️` line above is printed automatically by the tool itself (`CheckCoverage.ts`'s
+`coverageContentDisclaimer`) whenever at least one shown entry has a `description` —
+never authored per-rule, and never repeated per-entry within one report. It exists
+because `checks.coverage` only ever confirms a LINK exists; it has no way to judge
+whether the linked content is any good. That is exactly why a rule's own `description`
+is worth the words it costs: not to restate what the tool can't check, but to tell a
+reviewer what a hollow-but-technically-present link would look like for THIS specific
+relationship.
 
 Choosing a rule name means re-reading the actual sentence making the claim and picking the
 word that's true of that relationship, not the most generic-sounding one. For example, in
@@ -163,6 +177,75 @@ rebuttal): `grounds` / `grounded_by`, `warrants`, `backs` / `backed_by`, `qualif
 **Lineage / process relations** (how a doc came to exist, not what it claims):
 `derived_from`, `sourced_from`, `distilled_from`, `builds_on`, `supersedes`, `deprecates`,
 `amends`, `extends`, `elaborates`, `clarifies`.
+
+### Writing a good `description`, not just a good `name`
+
+The vocabulary above only picks the right VERB. The `description` text itself needs its
+own discipline, learned the hard way revising this repo's own 14 rules — a brief for
+anyone writing `checks.coverage` rules for their OWN domain, not just this repo's:
+
+1. **State which direction the dependency runs.** Name which doc is making a claim and
+   which doc is its evidence — not just "link A to B." `grounded_by`'s revised text opens
+   with "direction runs FROM the claim TO its evidence"; a reader who only sees "cite the
+   spike" has to reconstruct that themselves, or worse, guess it backwards.
+2. **Name ONE concrete, relationship-specific way the link could be hollow.** Not a
+   generic "make sure it's good" — a scenario an author of THIS rule's kind pair could
+   actually produce and get away with, because a link satisfying it says nothing about
+   whether the content is real. Different relationships fail differently: a `spikes.md`
+   satisfying its OWN `requires` rule can still be pure narration ("this would probably
+   work") instead of a real run; a `solution-space.md` citing a spike can still cite one
+   that tested a different primitive than the claim it's backing. Generic advice like
+   "make sure the linked doc is good" fits every rule and therefore teaches nothing about
+   any of them.
+3. **Don't repeat what the tool already can't check.** `checks.coverage` only ever
+   confirms a link exists — it never reads the linked content's substance (see the
+   automatic `ℹ️` disclaimer above). A rule's own words are wasted restating that
+   limitation per-rule; spend them on what WOULD make the link meaningful instead.
+
+**What NOT to do** — two failure modes found in this repo's own FIRST pass at these 14
+descriptions, both since fixed:
+
+- Writing "cite X" alone (link-existence framing with no coherence guidance) — the ORIGINAL
+  `grounded_by` text ("A cost/feasibility/risk claim needs real evidence — cite the spike
+  that backs it.") named the obligation but not which direction it ran or what a hollow
+  citation would look like.
+- Writing a generic disclaimer per rule ("...but this check can't verify the content is
+  actually good") — repeated 14 times, it would have added zero information beyond the
+  one shared disclaimer the tool now prints automatically.
+
+**Before/after, this repo's own real change** (`.cairnrc.json`'s `grounded_by` rule,
+`solution-space` → `spikes`):
+
+> Before: "A cost/feasibility/risk claim needs real evidence — cite the spike that backs
+> it."
+>
+> After: "A cost/feasibility/risk claim in solution-space.md must cite the spike backing
+> it — direction runs FROM the claim TO its evidence. Citing a spike that tested a
+> different primitive, or one cited elsewhere in the package but unrelated to THIS claim,
+> satisfies the link while proving nothing."
+
+The "after" version does two new things the "before" one didn't: it states the direction
+explicitly, and it names the exact way this specific link could exist and still be
+worthless (a real spike, just the wrong one) — something a reviewer can actually check
+for, instead of a reminder to "make sure it's real."
+
+**A second, deliberately different worked example** (`.cairnrc.json`'s `requires` rule,
+`design-package` → `spikes`) — this one is not a citation-mismatch failure at all, but a
+content-narration failure, to show the discipline applies differently per relationship:
+
+> Before: "Every design package must include and link to its own spikes.md — skipping it
+> means claims rest on assumption, not evidence."
+>
+> After: "Requires design-package's `_SUMMARY.md` to link its own spikes.md. A spikes.md
+> that narrates what an experiment 'would probably show' instead of a real run satisfies
+> this link while proving nothing — this check cannot tell the difference."
+
+Here the direction is trivial (a package's index links its own required doc — there's no
+claim/evidence pair to orient), so the "after" version spends its words entirely on the
+hollow scenario instead: a spikes.md that reads like a real spike but never actually ran
+anything. The first example's hollow scenario was a MISMATCHED citation (a real spike, the
+wrong one); this one is FABRICATED content wearing a spike's shape — same discipline,
+different failure mode, because the two rules test different things.
 
 ## Judging this convention
 

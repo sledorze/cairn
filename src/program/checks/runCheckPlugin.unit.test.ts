@@ -7,6 +7,7 @@ import type { CheckCliFlags, CheckPlugin, CheckRunArgs } from './CheckPlugin.ts'
 import { rejectedJsonMessage, runCheckPlugin } from './runCheckPlugin.ts'
 
 const CLI_DEFAULTS: CheckCliFlags = {
+  changed: [],
   fix: false,
   json: false,
   linksOnly: false,

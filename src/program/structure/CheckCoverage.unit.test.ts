@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { CoverageRule } from '../../core/Config.ts'
 import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
-import { checkCoverage, coverageExitCode, formatCoverageReport } from './CheckCoverage.ts'
+import { checkCoverage, coverageExitCode, formatChangedGuidance, formatCoverageReport } from './CheckCoverage.ts'
 
 const KINDS = [
   { id: 'feature', select: { by: 'path' as const, glob: '/r/features/**' } },
@@ -26,6 +26,182 @@ describe('checkCoverage()', () => {
     expect(result.missing).toEqual([])
     expect(result.orphans).toEqual([])
     expect(coverageExitCode(result)).toBe(0)
+  })
+
+  // `--changed` (spike, cli.ts) — path resolution against `base` lives here
+  // (`filterRuleEdgesByChanged` itself, ../../core/structure/Coverage.ts, is
+  // pure and unit-tested on its own with already-absolute paths); these
+  // tests exercise the actual relative-path-resolution glue.
+  effectIt.layer(
+    makeTestDocsFs({
+      '/r/decisions/d1.md': { content: '# Decision', mtimeMs: 1 },
+      '/r/features/f1.md': { content: '# Feature\n\n[why](../decisions/d1.md)', mtimeMs: 1 },
+      '/r/features/f2.md': { content: '# Feature 2, no link', mtimeMs: 1 },
+    }),
+  )('changed', (layerIt) => {
+    layerIt.effect('is `null` (the ordinary, unfiltered report) when `changed` is omitted entirely', () =>
+      Effect.gen(function* () {
+        const result = yield* checkCoverage({ base: '/r', kinds: KINDS, roots: ['/r'], rules: RULES })
+        expect(result.changedGuidance).toBeNull()
+      }),
+    )
+
+    layerIt.effect('is `null` when `changed` is an empty array — same as omitted, not "matched nothing"', () =>
+      Effect.gen(function* () {
+        const result = yield* checkCoverage({ base: '/r', changed: [], kinds: KINDS, roots: ['/r'], rules: RULES })
+        expect(result.changedGuidance).toBeNull()
+      }),
+    )
+
+    layerIt.effect('resolves a `changed` path RELATIVE to `base` and matches the corresponding edge', () =>
+      Effect.gen(function* () {
+        const result = yield* checkCoverage({
+          base: '/r',
+          changed: ['features/f1.md'],
+          kinds: KINDS,
+          roots: ['/r'],
+          rules: RULES,
+        })
+        expect(result.changedGuidance).toEqual([
+          { doc: '/r/features/f1.md', rule: RULES[0], satisfied: true, satisfiedBy: expect.any(Array) },
+        ])
+      }),
+    )
+
+    layerIt.effect('also accepts an already-ABSOLUTE `changed` path', () =>
+      Effect.gen(function* () {
+        const result = yield* checkCoverage({
+          base: '/r',
+          changed: ['/r/features/f1.md'],
+          kinds: KINDS,
+          roots: ['/r'],
+          rules: RULES,
+        })
+        expect(result.changedGuidance).toHaveLength(1)
+        expect(result.changedGuidance?.[0]?.doc).toBe('/r/features/f1.md')
+      }),
+    )
+
+    layerIt.effect("matches via a `satisfiedBy` TARGET too, not just the edge's own `from` doc", () =>
+      Effect.gen(function* () {
+        const result = yield* checkCoverage({
+          base: '/r',
+          changed: ['decisions/d1.md'],
+          kinds: KINDS,
+          roots: ['/r'],
+          rules: RULES,
+        })
+        expect(result.changedGuidance).toEqual([
+          { doc: '/r/features/f1.md', rule: RULES[0], satisfied: true, satisfiedBy: expect.any(Array) },
+        ])
+      }),
+    )
+
+    layerIt.effect('is an empty array (not null) when `changed` was passed but touches no rule edge', () =>
+      Effect.gen(function* () {
+        const result = yield* checkCoverage({
+          base: '/r',
+          changed: ['nothing/here.md'],
+          kinds: KINDS,
+          roots: ['/r'],
+          rules: RULES,
+        })
+        expect(result.changedGuidance).toEqual([])
+      }),
+    )
+
+    layerIt.effect('never affects `missing`/`orphans`/`checked` — purely an additional, independent field', () =>
+      Effect.gen(function* () {
+        const scoped = yield* checkCoverage({
+          base: '/r',
+          changed: ['features/f1.md'],
+          kinds: KINDS,
+          roots: ['/r'],
+          rules: RULES,
+        })
+        const unscoped = yield* checkCoverage({ base: '/r', kinds: KINDS, roots: ['/r'], rules: RULES })
+        expect(scoped.missing).toEqual(unscoped.missing)
+        expect(scoped.orphans).toEqual(unscoped.orphans)
+        expect(scoped.checked).toEqual(unscoped.checked)
+      }),
+    )
+
+    // Adversarial-review repro: f1 (changed, compliant) + f2 (untouched,
+    // missing coverage) — a scoped report that shows only the clean f1 edge
+    // must not leave a non-zero exit code unexplained. Asserts real,
+    // user-visible OUTPUT (the printed lines and `coverageExitCode`), not
+    // just an internal field, per the fix requirement.
+    layerIt.effect(
+      'a scoped report showing only a clean edge still explains a non-zero exit code caused by an untouched doc',
+      () =>
+        Effect.gen(function* () {
+          const result = yield* checkCoverage({
+            base: '/r',
+            changed: ['features/f1.md'],
+            kinds: KINDS,
+            roots: ['/r'],
+            rules: RULES,
+          })
+          // f2 (untouched, no link) is the sole cause of a non-zero exit —
+          // real, corpus-wide `missing`, exactly as it would be without
+          // `--changed` at all (`coverageExitCode` intentionally never
+          // narrows to the scoped view — see its own doc comment).
+          expect(result.missing).toEqual([{ path: '/r/features/f2.md', rule: RULES[0] }])
+          expect(coverageExitCode(result)).toBe(1)
+
+          const lines = formatCoverageReport(result)
+          // The scoped report itself shows only f1 (satisfied) — f2 must
+          // NOT appear as if it were part of what changed.
+          expect(lines.some((l) => l.includes('/r/features/f1.md'))).toBeTruthy()
+          expect(lines.some((l) => l.includes('/r/features/f2.md'))).toBeFalsy()
+          // But the exit-code-explaining line IS present, so a reader of
+          // the scoped report alone can see why exit code 1 is still
+          // correct despite an apparently-clean scoped view.
+          expect(lines.some((l) => l.includes('1 other coverage issue(s) not shown above'))).toBeTruthy()
+        }),
+    )
+  })
+
+  // Round-2 adversarial-review repro: a corpus whose ONLY defect is an
+  // orphan doc, scoped with `--changed` pointing at that VERY SAME orphan's
+  // own path. An earlier version of `changedOtherIssues` excluded an orphan
+  // from the count whenever its own path was in `changed`, wrongly assuming
+  // that made it "already visible" in the scoped report — but
+  // `formatChangedGuidance` never renders orphans in ANY case (they're
+  // per-doc facts, not `RuleEdge`s, structurally invisible to that report).
+  // That bug produced exactly the failure round 1's fix exists to prevent:
+  // a clean-looking `✅ No coverage rule touches...` report, exit code 1,
+  // and NO warning line anywhere to explain it.
+  effectIt.layer(
+    makeTestDocsFs({
+      // A lone decision doc, never linked from anywhere — the only defect
+      // in this corpus. No `feature`-kind doc exists at all, so `missing`
+      // stays empty; this isolates the orphan-only case.
+      '/r/decisions/d1.md': { content: '# Decision, never referenced', mtimeMs: 1 },
+    }),
+  )('changed — orphan-only defect, scoped at the orphan itself', (layerIt) => {
+    layerIt.effect("counts the orphan in changedOtherIssues even when --changed IS the orphan's own path", () =>
+      Effect.gen(function* () {
+        const result = yield* checkCoverage({
+          base: '/r',
+          changed: ['decisions/d1.md'],
+          kinds: KINDS,
+          roots: ['/r'],
+          rules: RULES,
+        })
+        expect(result.orphans).toEqual([{ kinds: ['decision'], path: '/r/decisions/d1.md' }])
+        expect(result.missing).toEqual([])
+        expect(coverageExitCode(result)).toBe(1)
+        // The orphan is never a RuleEdge, so it can never appear in
+        // changedGuidance — this must stay an empty array, not null.
+        expect(result.changedGuidance).toEqual([])
+        expect(result.changedOtherIssues).toBe(1)
+
+        const lines = formatCoverageReport(result)
+        expect(lines).toContain('✅ No coverage rule touches the changed path(s).')
+        expect(lines.some((l) => l.includes('1 other coverage issue(s) not shown above'))).toBeTruthy()
+      }),
+    )
   })
 
   it('never scans a non-.md file, even one under a declared kind glob', async () => {
@@ -1242,6 +1418,7 @@ describe('formatCoverageReport()', () => {
     })
     expect(lines).toEqual([
       '❌ 1 doc(s) missing required coverage:',
+      "ℹ️  Coverage only confirms these links exist — it does not check the linked content's substance. Judge that yourself, against this project's own documented conventions, if any.",
       '  /r/design/pkg/solution-space.md',
       '    ✗ no link ("grounded_by") to a "spikes"-kind doc (required by kind "solution-space")',
       '      A cost/feasibility claim needs real evidence — cite the spike that backs it.',
@@ -1403,5 +1580,198 @@ describe('formatCoverageReport()', () => {
       { locale: 'fr' },
     )
     expect(lines.some((l) => l.includes('n’a correspondu à aucun document'))).toBeTruthy()
+  })
+
+  // The shared "coverage only confirms links exist" disclaimer — must print
+  // AT MOST ONCE per report (never once per entry), and only when at least
+  // one entry actually shown carries a `description` to disclaim.
+  describe('coverage content disclaimer', () => {
+    const RULE_WITH_DESCRIPTION: CoverageRule = {
+      description: 'Cite the spike that validated this.',
+      from: 'feature',
+      to: 'decision',
+    }
+    const RULE_WITHOUT_DESCRIPTION: CoverageRule = { from: 'feature', to: 'decision' }
+
+    it('appears exactly once in the `missing` section, not once per missing doc', () => {
+      const lines = formatCoverageReport({
+        checked: 3,
+        emptyScopeUnders: [],
+        missing: [
+          { path: '/r/features/f1.md', rule: RULE_WITH_DESCRIPTION },
+          { path: '/r/features/f2.md', rule: RULE_WITH_DESCRIPTION },
+          { path: '/r/features/f3.md', rule: RULE_WITH_DESCRIPTION },
+        ],
+        orphans: [],
+        unmatchedKinds: [],
+      })
+      const disclaimerLines = lines.filter((l) => l.includes('Coverage only confirms these links exist'))
+      expect(disclaimerLines).toHaveLength(1)
+    })
+
+    it('is absent from the `missing` section when NO missing entry carries a `description`', () => {
+      const lines = formatCoverageReport({
+        checked: 1,
+        emptyScopeUnders: [],
+        missing: [{ path: '/r/features/f1.md', rule: RULE_WITHOUT_DESCRIPTION }],
+        orphans: [],
+        unmatchedKinds: [],
+      })
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
+
+    it('is present when only SOME missing entries carry a description, not just when all do', () => {
+      const lines = formatCoverageReport({
+        checked: 2,
+        emptyScopeUnders: [],
+        missing: [
+          { path: '/r/features/f1.md', rule: RULE_WITHOUT_DESCRIPTION },
+          { path: '/r/features/f2.md', rule: RULE_WITH_DESCRIPTION },
+        ],
+        orphans: [],
+        unmatchedKinds: [],
+      })
+      expect(lines.filter((l) => l.includes('Coverage only confirms these links exist'))).toHaveLength(1)
+    })
+
+    // Confirms `CheckCoverage.ts`'s own claim (per its `missing` block's doc
+    // comment): the `orphans` loop never renders `rule.description` at all
+    // (an orphan is a per-doc fact, `path (kinds)` only) — so an
+    // orphans-ONLY report (no `missing` at all) must get NO disclaimer, even
+    // though real defects are being reported.
+    it('never appears for an orphans-only report, even though real defects are reported', () => {
+      const lines = formatCoverageReport({
+        checked: 1,
+        emptyScopeUnders: [],
+        missing: [],
+        orphans: [{ kinds: ['decision'], path: '/r/decisions/d1.md' }],
+        unmatchedKinds: [],
+      })
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
+
+    it('appears exactly once in formatChangedGuidance, not once per edge', () => {
+      const lines = formatChangedGuidance(
+        [
+          { doc: '/r/features/f1.md', rule: RULE_WITH_DESCRIPTION, satisfied: true, satisfiedBy: [] },
+          { doc: '/r/features/f2.md', rule: RULE_WITH_DESCRIPTION, satisfied: false, satisfiedBy: [] },
+        ],
+        0,
+      )
+      expect(lines.filter((l) => l.includes('Coverage only confirms these links exist'))).toHaveLength(1)
+    })
+
+    it('is absent from formatChangedGuidance when no edge carries a description', () => {
+      const lines = formatChangedGuidance(
+        [{ doc: '/r/features/f1.md', rule: RULE_WITHOUT_DESCRIPTION, satisfied: true, satisfiedBy: [] }],
+        0,
+      )
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
+
+    it('is absent from formatChangedGuidance when there are no edges at all ("no rule touches")', () => {
+      const lines = formatChangedGuidance([], 0)
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
+  })
+
+  // `--changed` (spike, cli.ts): `changedGuidance` non-null/non-undefined
+  // short-circuits to its OWN report entirely — every missing/orphan/
+  // unmatched-kind section below is unreached, even when the underlying
+  // result also has real `missing`/`orphans` data (proving this is a true
+  // short-circuit, not just "additionally prints guidance too").
+  describe('--changed guidance mode (changedGuidance)', () => {
+    const BASE_RESULT = {
+      checked: 2,
+      emptyScopeUnders: ['some-typo'],
+      missing: [{ path: '/r/features/other.md', rule: { from: 'feature', to: 'decision' } }],
+      orphans: [{ kinds: ['decision'], path: '/r/decisions/orphan.md' }],
+      unmatchedKinds: ['unrelated-kind'],
+    }
+
+    it('prints "no rule touches" when changedGuidance is an empty array', () => {
+      const lines = formatCoverageReport({ ...BASE_RESULT, changedGuidance: [] })
+      expect(lines).toEqual(['✅ No coverage rule touches the changed path(s).'])
+    })
+
+    it("prints each matching edge's doc, satisfied status, and the rule's own description", () => {
+      const lines = formatCoverageReport({
+        ...BASE_RESULT,
+        changedGuidance: [
+          {
+            doc: '/r/features/f1.md',
+            rule: { description: 'Keep the decision doc in sync.', from: 'feature', to: 'decision' },
+            satisfied: true,
+            satisfiedBy: [],
+          },
+        ],
+      })
+      expect(lines[0]).toBe('🔎 1 coverage rule edge(s) relevant to the changed path(s):')
+      expect(lines).toContain('  /r/features/f1.md')
+      expect(lines.some((l) => l.includes('satisfied') && !l.includes('NOT satisfied'))).toBeTruthy()
+      expect(lines).toContain('      Keep the decision doc in sync.')
+    })
+
+    it('marks an unsatisfied edge as "NOT satisfied"', () => {
+      const lines = formatCoverageReport({
+        ...BASE_RESULT,
+        changedGuidance: [
+          { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfied: false, satisfiedBy: [] },
+        ],
+      })
+      expect(lines.some((l) => l.includes('NOT satisfied'))).toBeTruthy()
+    })
+
+    it('never mentions the ordinary missing/orphan/unmatched-kind sections while in guidance mode', () => {
+      const lines = formatCoverageReport({ ...BASE_RESULT, changedGuidance: [] }).join('\n')
+      expect(lines).not.toContain('/r/features/other.md')
+      expect(lines).not.toContain('/r/decisions/orphan.md')
+      expect(lines).not.toContain('unrelated-kind')
+      expect(lines).not.toContain('some-typo')
+    })
+
+    it('falls back to the ordinary report when changedGuidance is `undefined` (an older-shaped result literal)', () => {
+      expect(formatCoverageReport(BASE_RESULT)[0]).toBe('❌ 1 doc(s) missing required coverage:')
+    })
+
+    it('falls back to the ordinary report when changedGuidance is explicitly `null`', () => {
+      expect(formatCoverageReport({ ...BASE_RESULT, changedGuidance: null })[0]).toBe(
+        '❌ 1 doc(s) missing required coverage:',
+      )
+    })
+
+    // Adversarial-review fix: exit code stays corpus-wide (coverageExitCode
+    // is untouched by this whole describe block), so the printed report
+    // must explicitly disclose when it's hiding real, non-zero-exit-causing
+    // issues — otherwise a scoped, all-clean-looking report with a non-zero
+    // exit code is unexplainable from its own output alone.
+    it('appends a "N other coverage issue(s)" warning when changedOtherIssues > 0', () => {
+      const lines = formatCoverageReport({ ...BASE_RESULT, changedGuidance: [], changedOtherIssues: 2 })
+      expect(lines).toEqual([
+        '✅ No coverage rule touches the changed path(s).',
+        '⚠️  2 other coverage issue(s) not shown above — run `cairn check` without --changed to see the full report.',
+      ])
+    })
+
+    it('omits the "other issues" warning entirely when changedOtherIssues is 0', () => {
+      const lines = formatCoverageReport({ ...BASE_RESULT, changedGuidance: [], changedOtherIssues: 0 })
+      expect(lines).toEqual(['✅ No coverage rule touches the changed path(s).'])
+    })
+
+    it('omits the "other issues" warning when changedOtherIssues is absent — treated as 0, not as "unknown"', () => {
+      const lines = formatCoverageReport({ ...BASE_RESULT, changedGuidance: [] })
+      expect(lines).toEqual(['✅ No coverage rule touches the changed path(s).'])
+    })
+
+    it('appends the warning even alongside a real, non-empty scoped edge list', () => {
+      const lines = formatCoverageReport({
+        ...BASE_RESULT,
+        changedGuidance: [
+          { doc: '/r/features/f1.md', rule: { from: 'feature', to: 'decision' }, satisfied: true, satisfiedBy: [] },
+        ],
+        changedOtherIssues: 1,
+      })
+      expect(lines.some((l) => l.includes('1 other coverage issue(s) not shown above'))).toBeTruthy()
+    })
   })
 })

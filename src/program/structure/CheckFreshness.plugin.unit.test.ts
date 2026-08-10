@@ -12,6 +12,7 @@ import type { FreshnessResult } from './CheckFreshness.ts'
 import { formatFreshnessReport, freshnessPlugin } from './CheckFreshness.ts'
 
 const CLI: CheckCliFlags = {
+  changed: [],
   fix: false,
   json: false,
   linksOnly: false,

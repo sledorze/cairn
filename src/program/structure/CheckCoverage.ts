@@ -29,13 +29,17 @@
 // `CheckRefs.ts`/`CheckProseRefs.ts` wiring precedent otherwise — its own
 // exit code, `Math.max`'d into the overall one — just without their CLI flag.
 
+import * as nodePath from 'node:path'
+
 import { Effect } from 'effect'
 
 import { canonicalJson } from '../../core/canonicalJson.ts'
 import type { CoverageRule, CoverageTarget, CoverageToSpec, KindDef } from '../../core/Config.ts'
 import { isAnyTarget, isAtLeastTarget, isKindTarget, isTargetArray, isUrlTarget, targetsOf } from '../../core/Config.ts'
 import { matchesAny, matchesGlob } from '../../core/glob.ts'
-import { collectExternalRefTargets, resolveRuleEdges } from '../../core/structure/Coverage.ts'
+import { toPosix } from '../../core/paths.ts'
+import type { RuleEdge } from '../../core/structure/Coverage.ts'
+import { collectExternalRefTargets, filterRuleEdgesByChanged, resolveRuleEdges } from '../../core/structure/Coverage.ts'
 import { buildDocGraph } from '../../core/structure/DocGraph.ts'
 import { extractDocMetadata } from '../../core/structure/DocMetadata.ts'
 import { DocsFs, isSafelyWithinBase, readMarkdownCorpus } from '../../io/DocsFs.ts'
@@ -45,6 +49,13 @@ import { pick } from '../locale.ts'
 
 export interface CheckCoverageArgs {
   readonly base: string
+  /** `--changed <path...>` (spike, cli.ts) — zero or more paths, relative to
+   * `base` or absolute, either is fine (resolved against `base` the same
+   * way `toAbsPosix` resolves a git-reported path in ../../io/Git.ts).
+   * Absent or empty means "no scoping" — `CoverageResult.changedGuidance`
+   * stays `null` and every existing report is completely unaffected; this
+   * is the ENTIRE additivity guarantee for this flag. */
+  readonly changed?: readonly string[]
   readonly exempt?: readonly string[]
   readonly ignore?: readonly string[]
   readonly kinds: readonly KindDef[]
@@ -68,6 +79,40 @@ export interface CoverageResult {
    * report classes are drawn from, same "what did this actually look at"
    * transparency `RefsCheckResult.checked` already gives. */
   readonly checked: number
+  /** Absent/`undefined` (from `checkCoverage` itself, always set — this is
+   * only optional so an OLDER hand-built `CoverageResult` literal, e.g. an
+   * existing test fixture, stays valid without every call site touching
+   * this new field) or `null` when `--changed` wasn't passed — the
+   * ordinary, unfiltered report. Otherwise every `RuleEdge`
+   * (../../core/structure/Coverage.ts) touching one of the changed paths,
+   * per `filterRuleEdgesByChanged`'s own doc comment (as `edge.doc` OR as a
+   * `satisfiedBy` target). An empty array (as opposed to `null`/`undefined`)
+   * means `--changed` WAS passed but matched no rule edge at all — a real,
+   * reportable "nothing relevant changed," distinct from "the flag wasn't
+   * used." */
+  readonly changedGuidance?: readonly RuleEdge[] | null
+  /** Absent/`undefined`/`null` under the exact same rule as `changedGuidance`
+   * above (this is its sibling field, always set together) — otherwise the
+   * count of real `missing`/`orphans` issues that exist SOMEWHERE in the
+   * corpus but fall OUTSIDE `changedGuidance`'s scoped view. Exists because
+   * `coverageExitCode` deliberately stays corpus-wide even under `--changed`
+   * (a scoping/reporting convenience must never quietly relax cairn's own
+   * "green check is a hard requirement" gate — AGENTS.md) — which means a
+   * scoped report showing zero problems can still legitimately exit 1. This
+   * field is what lets `formatChangedGuidance` say so explicitly instead of
+   * leaving that exit code unexplained (adversarial review: an all-clean
+   * scoped report with exit code 1 and no visible cause is worse than no
+   * scoping at all). Computed from `missing.length` (minus the count of
+   * `missing` entries already shown, unsatisfied, inside `changedGuidance`)
+   * plus the FULL, unconditional `orphans.length` — every orphan counts,
+   * regardless of whether the orphan's own path happens to be one of the
+   * changed paths (round-2 adversarial review: an earlier version excluded
+   * an orphan here whenever its own path was in `changed`, wrongly assuming
+   * that made it "already visible" — `formatChangedGuidance` never renders
+   * orphans at all, scoped or not, so that exclusion silently hid a real,
+   * otherwise completely undisclosed cause of a non-zero exit). See
+   * `checkCoverage`'s own computation for the exact accounting. */
+  readonly changedOtherIssues?: number | null
   /** A `scope: { under: '...' }` value used by at least one rule that
    * matched ZERO scanned docs at all — of ANY kind, not just the rule's own
    * `to` kind (see `checkCoverage`'s own comment for why the wider check).
@@ -103,7 +148,18 @@ export interface CoverageResult {
 }
 
 /** 0 when nothing is missing or orphaned, 1 otherwise — same convention as
- * every sibling check's own exit code. */
+ * every sibling check's own exit code. Deliberately ALWAYS corpus-wide, off
+ * `result.missing`/`result.orphans` directly — never narrowed to
+ * `result.changedGuidance` even when `--changed` scoped the printed report.
+ * `--changed` is a reporting/guidance convenience (see its own doc comments
+ * on `CoverageResult`); letting it also narrow the exit verdict would mean
+ * `cairn check --changed <diff files>` in CI could pass with real,
+ * unrelated corpus defects sitting untouched — exactly the "green check is
+ * a hard requirement" gate AGENTS.md exists to protect, silently punched
+ * through by an otherwise-innocuous review-scoping flag. See
+ * `CoverageResult.changedOtherIssues` for how a scoped report stays
+ * self-explanatory about ITS OWN non-zero exit code without changing what
+ * that code means. */
 export const coverageExitCode = (result: CoverageResult): number =>
   result.missing.length > 0 || result.orphans.length > 0 ? 1 : 0
 
@@ -115,6 +171,7 @@ export const coverageExitCode = (result: CoverageResult): number =>
 // external-path branch reads real filesystem state.
 export const checkCoverage = ({
   base,
+  changed,
   exempt = [],
   ignore = [],
   kinds,
@@ -230,6 +287,23 @@ export const checkCoverage = ({
     // the exact same logic instead of re-deriving it as a second, divergent
     // copy. `missing` here is just "which edges had zero satisfying refs."
     const edges = resolveRuleEdges({ docs, exempt, externalExists, rules: uniqueRules })
+
+    // `--changed` scoping (cli.ts) — resolved to absolute POSIX here (the
+    // one IO-adjacent step this stays responsible for, matching
+    // `filterRuleEdgesByChanged`'s own "caller resolves paths" contract in
+    // ../../core/structure/Coverage.ts). `nodePath.resolve(base, p)` already
+    // returns `p` untouched (aside from normalization) when `p` is absolute,
+    // so this needs no separate `isAbsolute` branch — same shortcut
+    // `toAbsPosix` (../../io/Git.ts) takes for the identical
+    // "relative-or-absolute, resolve against base" shape. `null` (not an
+    // empty `Set`) when `--changed` wasn't passed, so `changedGuidance`/
+    // `changedOtherIssues` below stay `null` too — the whole "completely
+    // unaffected when absent" contract hinges on this one `null` check.
+    const changedSet =
+      changed === undefined || changed.length === 0
+        ? null
+        : new Set(changed.map((p) => toPosix(nodePath.resolve(base, p))))
+    const changedGuidance = changedSet === null ? null : filterRuleEdgesByChanged(edges, changedSet)
     // `e.satisfied` (../../core/structure/Coverage.ts), not
     // `e.satisfiedBy.length === 0` — the two agreed for every `to` shape
     // that existed before `{ atLeast: { n, of } }`, but a rule requiring a
@@ -293,7 +367,43 @@ export const checkCoverage = ({
       })
       .toSorted()
 
-    return { checked: docs.length, emptyScopeUnders, missing, orphans, unmatchedKinds }
+    // `coverageExitCode` (below) deliberately stays corpus-wide even when
+    // `--changed` scoped the PRINTED report — see `CoverageResult.
+    // changedOtherIssues`'s own doc comment for why (never let a
+    // reporting/scoping convenience quietly relax the hard build gate). This
+    // is the count that makes an otherwise-unexplained non-zero exit code
+    // legible from a scoped report alone: every `missing` entry NOT already
+    // shown as an unsatisfied edge in `changedGuidance` (a `missing` entry is
+    // exactly `edges.filter(!satisfied)`, and `changedGuidance` is always a
+    // SUBSET of `edges`, so this subtraction is exact, never negative) plus
+    // EVERY orphan, unconditionally.
+    //
+    // Round-2 adversarial review caught a real bug here: an earlier version
+    // excluded an orphan from this count whenever the orphan's OWN path was
+    // itself one of the changed paths, on the assumption that made it
+    // "already visible" in the scoped report. False — `formatChangedGuidance`
+    // never renders orphans in ANY case (an orphan is a standalone per-doc
+    // fact, not a `RuleEdge`; it's structurally invisible to that report
+    // regardless of `changed`). Reproduced live: a corpus whose only defect
+    // is an orphan doc, scoped with `--changed <that orphan's own path>`,
+    // printed a clean "no rule touches" report with exit code 1 and no
+    // warning anywhere — exactly the failure this whole field exists to
+    // prevent. Every orphan is counted here, full stop; `changedSet` is not
+    // consulted for orphans at all.
+    const changedOtherIssues =
+      changedSet === null
+        ? null
+        : missing.length - (changedGuidance?.filter((e) => !e.satisfied).length ?? 0) + orphans.length
+
+    return {
+      changedGuidance,
+      changedOtherIssues,
+      checked: docs.length,
+      emptyScopeUnders,
+      missing,
+      orphans,
+      unmatchedKinds,
+    }
   })
 
 export interface CoverageReportOptions {
@@ -348,9 +458,122 @@ const describeToRequirement = (to: CoverageToSpec, locale: Locale): string => {
   return pick(locale, { en: 'to an existing file', fr: 'vers un fichier existant' })
 }
 
+/** Shared across both render paths below (`formatChangedGuidance` and
+ * `formatCoverageReport`'s `missing` section) — printed at most ONCE per
+ * report, never per entry, whenever at least one rule actually being shown
+ * carries its own `description`. `checks.coverage` only ever confirms a
+ * LINK exists between two docs; it has no way to judge whether the linked
+ * content is any good — a rule's own `description` (the whole point of the
+ * revised rules in .cairnrc.json, and of the authoring brief in README.md /
+ * docs/design/CONVENTION.md) names a specific way a link could be
+ * technically present but hollow, but that's a hint for a HUMAN or AI
+ * reviewer to go read the content, not something this check verifies
+ * itself. Without this disclaimer, someone unfamiliar with cairn could
+ * mistake "coverage OK" / a listed rule edge for "the content was actually
+ * judged," which it never is. A fixed, generic constant rather than a
+ * config-authored one (no `conventionDoc` field) — weighed and rejected:
+ * the fallback text has to stand alone for any downstream consumer anyway,
+ * so a fixed generic constant is simpler and equally effective; revisit
+ * only if a real second consumer demonstrates actual need. */
+const coverageContentDisclaimer = (locale: Locale): string =>
+  pick(locale, {
+    en: "ℹ️  Coverage only confirms these links exist — it does not check the linked content's substance. Judge that yourself, against this project's own documented conventions, if any.",
+    fr: 'ℹ️  La couverture ne fait que confirmer que ces liens existent — elle ne vérifie pas le fond du contenu lié. Jugez-en vous-même, en vous appuyant sur les conventions documentées de ce projet, le cas échéant.',
+  })
+
+/** `--changed` (spike, cli.ts) report mode: every rule edge touching a
+ * changed path, with its rule's own `description` printed as guidance —
+ * "if this file changed, here's what a reviewer should re-check, and why."
+ * Deliberately its own small report rather than a filtered VARIANT of
+ * `formatCoverageReport`'s missing/orphan sections: those two report
+ * classes answer "is the corpus compliant," this answers "what's relevant
+ * to the diff," and conflating them would make an edge that IS satisfied
+ * (nothing wrong with it, still worth a reviewer's attention because it
+ * touches the diff) invisible from a report that only ever lists
+ * violations. */
+export const formatChangedGuidance = (
+  edges: readonly RuleEdge[],
+  otherIssues: number,
+  options: CoverageReportOptions = {},
+): string[] => {
+  const locale = options.locale ?? 'en'
+  const lines: string[] =
+    edges.length === 0
+      ? [
+          pick(locale, {
+            en: '✅ No coverage rule touches the changed path(s).',
+            fr: '✅ Aucune règle de couverture ne concerne le(s) chemin(s) modifié(s).',
+          }),
+        ]
+      : [
+          pick(locale, {
+            en: `🔎 ${edges.length} coverage rule edge(s) relevant to the changed path(s):`,
+            fr: `🔎 ${edges.length} relation(s) de couverture pertinente(s) pour le(s) chemin(s) modifié(s) :`,
+          }),
+        ]
+  // Printed once, before the per-edge loop — never once per entry — and
+  // only when at least one edge actually being shown carries a
+  // `description` to disclaim in the first place (an edge with no
+  // description at all has nothing this disclaimer would apply to).
+  if (edges.some((e) => e.rule.description !== undefined)) {
+    lines.push(coverageContentDisclaimer(locale))
+  }
+  for (const edge of edges) {
+    const named = edge.rule.name === undefined ? '' : ` ("${edge.rule.name}")`
+    const status = edge.satisfied
+      ? pick(locale, { en: 'satisfied', fr: 'satisfaite' })
+      : pick(locale, { en: 'NOT satisfied', fr: 'NON satisfaite' })
+    lines.push(
+      `  ${edge.doc}`,
+      pick(locale, {
+        en: `    rule${named} — link${named} ${describeToRequirement(edge.rule.to, locale)} (required by kind "${edge.rule.from}"): ${status}`,
+        fr: `    règle${named} — lien${named} ${describeToRequirement(edge.rule.to, locale)} (requis pour le type « ${edge.rule.from} ») : ${status}`,
+      }),
+    )
+    if (edge.rule.description !== undefined) {
+      lines.push(`      ${edge.rule.description}`)
+    }
+  }
+  // The exit code (`coverageExitCode`) deliberately stays corpus-wide even
+  // in this scoped report mode (see `CoverageResult.changedOtherIssues`'s
+  // own doc comment — a scoping convenience must never quietly relax
+  // cairn's own hard build gate). Without this line, a scoped report
+  // showing zero (or only satisfied) edges but a non-zero exit code would
+  // be unexplainable from its own output — adversarial review's exact
+  // finding. Omitted entirely when there's nothing to disclose (0), so a
+  // truly clean corpus's scoped report stays exactly as short as before.
+  //
+  // Deliberately scope-NEUTRAL wording ("not shown above," never "outside
+  // the changed path(s)") — round-3 adversarial review: an orphan counted
+  // here (see `changedOtherIssues`'s own doc comment) can have its OWN path
+  // be exactly one of the changed paths; orphan-ness is a per-doc fact this
+  // report structurally never renders regardless of scope, so "outside the
+  // changed path(s)" would be an outright false location claim in exactly
+  // that case, misdirecting a reviewer to look elsewhere in the corpus when
+  // the real defect is the file they were already looking at.
+  if (otherIssues > 0) {
+    lines.push(
+      pick(locale, {
+        en: `⚠️  ${otherIssues} other coverage issue(s) not shown above — run \`cairn check\` without --changed to see the full report.`,
+        fr: `⚠️  ${otherIssues} autre(s) problème(s) de couverture non affiché(s) ci-dessus — lancez \`cairn check\` sans --changed pour le rapport complet.`,
+      }),
+    )
+  }
+  return lines
+}
+
 /** Human-readable report lines (pure, so it's unit-tested independently of any IO). */
 export const formatCoverageReport = (result: CoverageResult, options: CoverageReportOptions = {}): string[] => {
   const locale = options.locale ?? 'en'
+  // `--changed` scoping short-circuits to its own report entirely (see
+  // `formatChangedGuidance`'s own comment for why it's a distinct mode, not
+  // a filtered variant of the sections below) — every other line in this
+  // function is unreached whenever `changedGuidance` is non-`null`, which is
+  // exactly and only when `--changed` was passed (`checkCoverage`'s own
+  // contract on this field).
+  if (result.changedGuidance !== null && result.changedGuidance !== undefined) {
+    return [...formatChangedGuidance(result.changedGuidance, result.changedOtherIssues ?? 0, options)]
+  }
   const lines: string[] = []
   // Appended regardless of branch below — an unmatched kind (the
   // roots/glob-mismatch trap) must be visible even on an otherwise-green
@@ -389,6 +612,15 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
         fr: `❌ ${result.missing.length} document(s) sans la couverture requise :`,
       }),
     )
+    // Printed once, right after the header and before the per-doc loop —
+    // never once per entry — and only when at least one `missing` entry's
+    // rule actually carries a `description` to disclaim in the first place.
+    // The `orphans` loop below never prints a `rule.description` at all (an
+    // orphan is a per-doc fact, not tied to any one rule's text), so an
+    // orphans-only report correctly gets no disclaimer from this block.
+    if (result.missing.some((m) => m.rule.description !== undefined)) {
+      lines.push(coverageContentDisclaimer(locale))
+    }
     for (const { path: p, rule } of result.missing) {
       // The rule's `name`, when set, disambiguates which obligation this is
       // — two rules can share a (from, to) pair (see CoverageRule's own
@@ -451,7 +683,7 @@ export const coveragePlugin: CheckPlugin<CoverageResult> = {
   isEnabled: (resolved) => resolved.checks.coverage !== null,
   jsonUnsupportedMessage: '--json cannot be combined with checks.coverage yet',
   name: 'coverage',
-  run: ({ base, ignore, resolved, roots, trackedFiles }) => {
+  run: ({ base, cli, ignore, resolved, roots, trackedFiles }) => {
     const coverage = resolved.checks.coverage
     if (coverage === null) {
       return Effect.die(
@@ -461,6 +693,11 @@ export const coveragePlugin: CheckPlugin<CoverageResult> = {
     const { exempt, kinds, rules } = coverage
     return checkCoverage({
       base,
+      // `cli.changed` (../checks/CheckPlugin.ts) is always defined (an
+      // empty array when `--changed` wasn't passed); `checkCoverage` treats
+      // an empty array the same as `undefined` (see its own `changedGuidance`
+      // comment), so no presence check is needed here.
+      changed: cli.changed,
       exempt,
       ignore,
       kinds,

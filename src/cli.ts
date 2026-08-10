@@ -74,6 +74,12 @@ const rootOption = Flag.string('root').pipe(
   Flag.withDescription('Add a documentation root (repeatable); merged with positional roots.'),
   Flag.atLeast(0),
 )
+const changedOption = Flag.string('changed').pipe(
+  Flag.withDescription(
+    "Scope checks.coverage output to rule edges touching this path (repeatable, relative-to-cwd or absolute): prints each matching rule's own `description` as AI-review guidance (\"if this file changed, here's what to re-check, and why\") instead of the full corpus report. No effect on any other check, or when checks.coverage isn't configured.",
+  ),
+  Flag.atLeast(0),
+)
 const fixOption = Flag.boolean('fix').pipe(Flag.withDescription('Auto-repair unambiguous dead links.'))
 const stampOption = Flag.boolean('stamp').pipe(
   Flag.withDescription('Rewrite the freshness stamp of existing summaries into their `.cairn/**` sidecar, bottom-up.'),
@@ -169,6 +175,7 @@ const expandRootsOrFail = (cwd: string, patterns: readonly string[]) =>
   expandRoots(cwd, patterns).pipe(Effect.mapError(toConfigError))
 
 interface CheckParsed {
+  readonly changed: readonly string[]
   readonly config: Option.Option<string>
   readonly deletionsSince: Option.Option<string>
   readonly explain: boolean
@@ -358,6 +365,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   const locale = config.locale
 
   const cliFlags: CheckCliFlags = {
+    changed: parsed.changed,
     fix: parsed.fix,
     json: parsed.json,
     linksOnly: parsed.linksOnly,
@@ -580,6 +588,7 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
 })
 
 const checkConfigShape = {
+  changed: changedOption,
   config: configPathOption,
   deletionsSince: deletionsSinceOption,
   explain: explainOption,

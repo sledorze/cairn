@@ -303,6 +303,54 @@ link somewhere to a doc of another:
 }
 ```
 
+Each rule can also carry its own `description` — required whenever `name` is set, optional
+otherwise — printed as guidance in the report (`✗ no link ("grounded_by") to a "spikes"-kind
+doc ... A cost/feasibility/risk claim must cite the spike backing it — ...`). `checks.coverage`
+only ever confirms a link EXISTS; it can never judge whether the linked content is any good, so
+a report with at least one `description` shown always carries one shared, automatic disclaimer
+saying so — write your own `description` to spend its words on something that disclaimer
+doesn't already say. Two things make a `description` actually useful instead of restating the
+obvious:
+
+- **State which direction the dependency runs** — which doc is making a claim, and which doc is
+  its evidence — not just "link A to B." "Cite the spike backing this" alone leaves the reader
+  to work out which side is the claim and which is the proof; "this claim must cite the spike
+  backing it — direction runs FROM the claim TO its evidence" doesn't.
+- **Name ONE concrete, relationship-specific way the link could be technically present but
+  hollow** — not a generic "make sure it's good," which fits every rule and therefore teaches
+  nothing about any of them. A link satisfying `implementation-details` → `spikes` (`builds_on`)
+  is hollow if the cited spike tested a different primitive than the one actually being built on
+  — a failure mode specific to THAT relationship, not a universal one.
+
+Before/after, from this repo's own rules (`.cairnrc.json`): before, `"A cost/feasibility/risk
+claim needs real evidence — cite the spike that backs it."` — states the obligation, not the
+direction or a concrete hollow-link scenario. After, `"A cost/feasibility/risk claim in
+solution-space.md must cite the spike backing it — direction runs FROM the claim TO its
+evidence. Citing a spike that tested a different primitive, or one cited elsewhere in the
+package but unrelated to THIS claim, satisfies the link while proving nothing."` — same
+obligation, now with both. See `docs/design/CONVENTION.md`'s "Writing a good `description`"
+section for the full brief, including a second worked example and the two failure modes it
+replaced.
+
+**`--changed <path...>`** (repeatable, relative-to-cwd or absolute) scopes `checks.coverage`'s
+output to just the rule edges touching those paths — as a rule's own `from` doc, or as a doc
+some other rule's edge resolved to (a `satisfiedBy` target) — and prints each matching rule's
+own `description` as guidance instead of the full corpus report: "if this file changed, here's
+what a reviewer should re-check, and why." Useful for AI-review tooling that already knows
+which files a diff touched and wants targeted guidance rather than the whole coverage report.
+Has no effect on any other check, or when `checks.coverage` isn't configured at all.
+
+The exit code stays corpus-wide even when `--changed` is used — it never narrows to just the
+scoped edges, so a real problem in a file you didn't touch still fails the build, exactly like
+running without `--changed`. Every cause of that non-zero exit is disclosed by the scoped
+report itself, one of two ways: an unsatisfied rule that's IN scope is printed directly, marked
+"NOT satisfied"; anything not shown there — an unsatisfied rule outside scope, or any orphan doc
+at all (an orphan is a per-doc fact this report never renders, scoped or not) — is counted in an
+explicit "N other coverage issue(s) not shown above" line — deliberately scope-neutral wording,
+since an orphan's own path can itself be one of the changed paths, so a location claim like
+"outside the changed path(s)" would sometimes be false. Rerun without `--changed` to see the
+full report.
+
 A kind's `select` can also classify by frontmatter instead of path: `{ "by": "frontmatter",
 "field": "status", "equals": "accepted" }` matches a doc whose leading YAML frontmatter has
 `status: accepted` — useful when a real structural distinction (e.g. an ADR's `proposed` vs

@@ -49,7 +49,7 @@
       "target": "../src/core/structure/DocGraph.ts"
     },
     {
-      "hash": "3a2a14ba8a9cc91aec2f800e6942758e95f05126c34100e6842d186fccf34e20",
+      "hash": "bf83029bfa21b48f92830514ff1ca4605a4f9c529191fcdb0f48ea1bbb347ccf",
       "target": "../src/core/structure/Coverage.ts"
     },
     {
@@ -97,7 +97,7 @@
       "target": "../src/io/gitEnv.ts"
     },
     {
-      "hash": "9a5188a3930fd7e14c58dc3e906d36dea990d2328c017ee3447e070e37a9c9f4",
+      "hash": "19e21c2f865f555c7489d9013030fd1cbffcdcbf0bc1b780067dce708fdb651c",
       "target": "../src/program/checks/CheckPlugin.ts"
     },
     {
@@ -125,7 +125,7 @@
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
-      "hash": "6848871ecfae45eee9d177993e730f7a6022037073b8840206f0f34b7a13597d",
+      "hash": "9257f14418f53e5a2fc520391eb9f806e64a78bd2382439fe653eccfe3af8f17",
       "target": "../src/program/structure/CheckCoverage.ts"
     },
     {
@@ -149,11 +149,11 @@
       "target": "../src/config.ts"
     },
     {
-      "hash": "eb0d534ac37e01ebb02e4e112383a1bcc7ff5971e4e82647b94bfa2ca60aa88e",
+      "hash": "045f4508d8e0ac97f7756940587f87417d73639c853e703689f849d00f087e50",
       "target": "../src/cli.ts"
     },
     {
-      "hash": "b595227be25facdf62b2dd9c0d50165c24f12deb893e55732aa50384c99dfdc8",
+      "hash": "f3537483df0fcbf66eb6e5c620262027811e6dedeb138f492794a9cc59dce642",
       "target": "../src/init/content.ts"
     },
     {

@@ -233,8 +233,23 @@ summary links to every child") — is one-directional and real, not a cycle.
    - **[`structure/`](../src/program/structure/)**
      - [`CheckCoverage.ts`](../src/program/structure/CheckCoverage.ts) — the
        first check built on `core/structure/`: opt-in (`checks.coverage`'s
-       mere presence, no CLI flag) missing-coverage/orphan/unmatched-kind
-       reporting over a declared doc-kind graph (docs/adr/0002).
+       mere presence — `kinds`/`rules` still have no CLI equivalent to
+       express them with) missing-coverage/orphan/unmatched-kind reporting
+       over a declared doc-kind graph (docs/adr/0002). `--changed <path...>`
+       (spike) IS a real CLI flag, but only ever RESCOPES this check's
+       already-computed report to the rule edges touching those paths
+       (`core/structure/Coverage.ts`'s `filterRuleEdgesByChanged`) — it opts
+       nothing in or out, so `checks.coverage`'s presence in config remains
+       the sole enablement switch, and the exit code stays corpus-wide rather
+       than ever silently narrowing what counts as green. Every cause of a
+       non-zero exit is disclosed by the scoped report itself, one of two
+       ways: an in-scope unsatisfied rule is shown directly (marked "NOT
+       satisfied"); anything not shown there — an unsatisfied rule outside
+       scope, or any orphan at all (orphans are per-doc facts, never
+       rendered by this report regardless of scope) — is counted in an
+       explicit "N other coverage issue(s)" line (round-2 adversarial
+       review: an earlier version of that count wrongly excluded an orphan
+       whenever the orphan's own path was itself one of the changed paths).
      - [`CheckDocCoverage.ts`](../src/program/structure/CheckDocCoverage.ts) —
        issue #108, opt-in (`checks.docCoverage`'s mere presence, no CLI flag):
        scans the whole `base` tree (not just doc `roots`, since source files

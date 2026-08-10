@@ -256,6 +256,28 @@ export const resolveRuleEdges = ({
   return edges
 }
 
+/** Every `RuleEdge` whose OWN `doc`, or one of whose `satisfiedBy` targets,
+ * is in `changed` — the pure logic behind the CLI's `--changed` scoping
+ * (../../program/structure/CheckCoverage.ts): "if this file changed, which
+ * rule edges are relevant to re-check, and why" (an edge's `rule.
+ * description`), for AI-review guidance. Both directions matter: a changed
+ * `from`-kind doc has its OWN obligations to re-verify, and a changed doc
+ * that some OTHER doc's rule points AT (a `satisfiedBy` target) means that
+ * other doc's edge is worth re-checking too — a decision doc changing
+ * content is exactly as relevant to review as the feature doc that cites it.
+ *
+ * Pure path-set membership only, no glob/resolution — the caller must hand
+ * in `changed` already resolved to the same absolute-POSIX form
+ * `RuleEdge.doc`/`SatisfyingRef.targetPath` use (`buildDocGraph`'s own
+ * contract), same division of labor as `externalExists` above (IO/
+ * resolution stays in ../../program/structure/CheckCoverage.ts, this module
+ * stays IO-free). */
+export const filterRuleEdgesByChanged = (
+  edges: readonly RuleEdge[],
+  changed: ReadonlySet<string>,
+): readonly RuleEdge[] =>
+  edges.filter((edge) => changed.has(edge.doc) || edge.satisfiedBy.some((ref) => changed.has(ref.targetPath)))
+
 /** Every distinct resolved target path a `from`-kind doc's ref points at,
  * for every rule whose `to` is `{ external: 'path' }` — the candidate set a
  * caller must confirm exists on disk (via IO) before calling
