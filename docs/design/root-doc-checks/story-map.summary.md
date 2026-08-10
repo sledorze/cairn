@@ -1,5 +1,11 @@
 # Story map summary: issue #151 (root-level docs reachable by cairn)
 
+Opens with the required, verbatim-across-packages disclosure (short, framework-free — an
+earlier draft using Team Topologies vocabulary was reverted on review as a poor fit for a
+single-maintainer repo): every role is an internal engineering role (doc author, reviewer,
+CI), not a customer persona — see [`../dependencies.md`](../dependencies.md) for this
+repo's real cross-package relations.
+
 Backbone: edit a root-level doc → add/change a link → run local checks / open a PR → CI
 runs `cairn check` → decide whether the broken link is caught → fix or merge.
 

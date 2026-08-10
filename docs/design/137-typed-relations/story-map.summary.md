@@ -1,9 +1,13 @@
 # Story map (issue #137) — summary
 
+Opens with the required, verbatim-across-packages disclosure (short, framework-free — an
+earlier draft using Team Topologies vocabulary was reverted on review as a poor fit for a
+single-maintainer repo): every role is an internal engineering role (doc author, reviewer,
+CI), not a customer persona. This package's own real cross-package relation lives in
+[`../dependencies.md`](../dependencies.md), not here.
+
 Backbone: write a claim → declare its relation → get evidence or admit there is none →
-code changes → re-run check → read the report → fix or confirm. Personas are internal
-engineering roles throughout (doc author, contributor, maintainer), stated rather than
-invented, matching `CONVENTION.md`'s own discipline for this repo's design packages.
+code changes → re-run check → read the report → fix or confirm.
 
 Key stories: a claim needs an addressable object even with no natural link (#130); a
 relation must say what kind of claim it is so cairn can pick an appropriate check; evidence

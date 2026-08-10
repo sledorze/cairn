@@ -1,0 +1,16 @@
+{
+  "refs": [
+    {
+      "hash": "d535020135eaf62db9d0edc60211bb9e46ade44e9845d5b2267d3d20911c9d9e",
+      "target": "./137-typed-relations/roadmap.md"
+    },
+    {
+      "hash": "593fa8e111da912beef5cabfa4125754768cdb5d8ade98a33eae719ac3d6cea7",
+      "target": "./101-refs-symbol-scoping/spikes.md"
+    },
+    {
+      "hash": "60d961e423df3d4b087c498368660625b3151a69eafb7b7dac0a8235feca6d70",
+      "target": "../adr/0004-refs-scoped-hashing-granularity.md"
+    }
+  ]
+}

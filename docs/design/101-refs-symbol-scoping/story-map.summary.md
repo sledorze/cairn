@@ -1,5 +1,11 @@
 # Story map (issue #101) — summary
 
+Opens with the required, verbatim-across-packages disclosure (short, framework-free — an
+earlier draft using Team Topologies vocabulary was reverted on review as a poor fit for a
+single-maintainer repo): every role is an internal engineering role (doc author, reviewer,
+CI), not a customer persona — see [`../dependencies.md`](../dependencies.md) for this repo's
+real cross-package relations, none of which involve this package as the dependent side.
+
 Backbone (doc author's real workflow): cite implementation → stamp →
 edit cited code → re-run `--refs` → decide if drift matters →
 re-stamp or investigate.

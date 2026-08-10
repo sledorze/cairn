@@ -93,3 +93,23 @@ undeclared-kind-id check) remain genuinely unexpressible in plain JSON Schema.
 
 Full historical narrative (what was tried, what failed, what was found) is in
 `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s amendments.
+
+**Addendum: roadmap/story-map rationalization pass.** A real rationalization pass found four
+gaps in `roadmap.md`/`story-map.md`, now closed, config-only: a cross-package sequencing
+claim now lives in a new top-level, non-sibling-scoped [`dependencies.md`](./dependencies.md)
+(with a small Mermaid context-map diagram), tagged via `roadmap.md`'s plain
+`external-dependency-kind: stable-interface` frontmatter (one kind — the only real instance;
+two other conceivable shapes weren't pre-built); `story-map`/`roadmap`/`implementation-details`/
+`knowledge` now require a NEW `design-package-proceeding` kind (`by: "frontmatter"`,
+`design-status: proceeding` on `_SUMMARY.md`, sitting on the Double Diamond's Develop→Deliver
+boundary) instead of the plain `design-package` kind, so a package can stop at
+`problem-space`/`solution-space`/`spikes` and stay green if an ROI checkpoint says no; every
+`story-map.md` carries the same short, required disclosure ("internal engineering role, not a
+customer segment"), honestly convention-only, not structurally enforced. A first draft
+borrowed Team Topologies' vocabulary throughout — rejected on review as cargo-cult for a
+single-maintainer repo (no teams, no handoffs); replaced with plain software vocabulary and,
+for the gate's placement, the Double Diamond (a cognitive sequence, not a team model). A new
+"Lexicon" section gives `design package`/the proceed signal/`stable-interface dependency` one
+canonical definition each. Full historical narrative, including a false claim caught and
+fixed mid-session and this doc's own length being cut back after growing to 874 lines, is in
+[`review-findings.md`](./review-findings.md) section 10.

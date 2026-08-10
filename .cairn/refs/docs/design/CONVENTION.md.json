@@ -1,12 +1,16 @@
 {
   "refs": [
     {
-      "hash": "349cf86f868c4cd1134e06f5166f2485c970da8301eaa90f5fd42b2b1a9c717a",
-      "target": "./review-prompts.md"
+      "hash": "233fc7a9c0d5e906a744c2eb814241f81ea0e0f7148fe9a46f3e12599ed567f6",
+      "target": "./dependencies.md"
     },
     {
-      "hash": "a22a40d712a5bc6e519dade419ad8fb1f3c93b06c28a5d14cdb35db0060acfc5",
+      "hash": "efd43c2edfeaff76f9fe47f8a1cea24e8f1cd3011e8dada2a592cb8fb7304fee",
       "target": "./review-findings.md"
+    },
+    {
+      "hash": "349cf86f868c4cd1134e06f5166f2485c970da8301eaa90f5fd42b2b1a9c717a",
+      "target": "./review-prompts.md"
     }
   ]
 }

@@ -1,5 +1,14 @@
 # Roadmap: issue #101 (`--refs` granularity)
 
+**What this roadmap actually is** (required disclosure, per `CONVENTION.md`'s "judging
+this convention" section): the releases below sequence shippable increments for THIS
+package by engineering dependency, not a business-tradeoff prioritization — there is no
+market/customer-value ranking here, just what needs what to be buildable first. This
+package declares no dependency on another package's state (no
+`external-dependency-kind` frontmatter) — see [`../dependencies.md`](../dependencies.md)
+for the one real cross-package relation that DOES exist in this repo (`137-typed-relations`
+depends on this package's Release 1 output).
+
 **Release 1 has shipped** (`refs.scope`, below — see `docs/adr/0004-refs-scoped-hashing-granularity.md`,
 now `accepted`). Releases 2/3 below remain provisional, unchanged, gated as this doc already
 states.

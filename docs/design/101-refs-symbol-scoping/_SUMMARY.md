@@ -1,3 +1,7 @@
+---
+design-status: proceeding
+---
+
 # Issue #101 design: `--refs` symbol/export-scoped hashing
 
 Full design package for closing [issue #101](https://github.com/sledorze/cairn/issues/101)

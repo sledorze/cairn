@@ -82,6 +82,40 @@
             "by": "path",
             "glob": "**/docs/design/*/knowledge.md"
           }
+        },
+        {
+          "description": "A design-package's _SUMMARY.md that ALSO carries `design-status: proceeding` frontmatter — the Linear-style 'proceed' signal (see CONVENTION.md's proceed-gate section). Only a package classified under THIS kind (not every design-package) is required to have story-map/roadmap/implementation-details/knowledge — a package still at problem-space/solution-space/spikes has no such obligation yet, so the full cost of those four docs is never sunk before a real go/no-go decision is recorded.",
+          "id": "design-package-proceeding",
+          "select": {
+            "by": "frontmatter",
+            "field": "design-status",
+            "equals": "proceeding"
+          }
+        },
+        {
+          "description": "The top-level, non-sibling-scoped index of every design package (docs/design/_SUMMARY.md itself, not a package's own _SUMMARY.md) — distinct from the `design-package` kind, which deliberately does NOT match this file (see CONVENTION.md's own note on the single `*` vs `**` glob).",
+          "id": "design-root-index",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/_SUMMARY.md"
+          }
+        },
+        {
+          "description": "The single, top-level register of REAL cross-package relations (docs/design/dependencies.md) — where a sequencing/consumption claim about ANOTHER package belongs, instead of as free prose inside a sibling-scoped roadmap.md (see CONVENTION.md's 'cross-package dependencies' section, and the finding it closes).",
+          "id": "dependencies",
+          "select": {
+            "by": "path",
+            "glob": "**/docs/design/dependencies.md"
+          }
+        },
+        {
+          "description": "A roadmap.md that declares (via `external-dependency-kind: stable-interface` frontmatter) that this package consumes another package's already-shipped, stable output (an API, a config schema, a CLI flag) — not ongoing joint work, not a one-off unblock. Must link the central `dependencies.md` register (see its own rule) rather than stating the dependency as unstructured prose. The ONLY dependency kind defined today — see CONVENTION.md's 'cross-package dependencies' section for why a second/third kind (e.g. actively co-evolving work, or a one-time favor) is deliberately NOT pre-built without a real instance to design it against.",
+          "id": "roadmap-external-dependency",
+          "select": {
+            "by": "frontmatter",
+            "field": "external-dependency-kind",
+            "equals": "stable-interface"
+          }
         }
       ],
       "rules": [
@@ -107,32 +141,45 @@
           "to": "spikes"
         },
         {
-          "description": "Requires design-package's _SUMMARY.md to link its own story-map.md. A story-map describing internal engineering tasks relabeled as 'stories' (not a real user workflow) satisfies this link while missing the point — this repo's own story-maps have this exact gap.",
-          "from": "design-package",
+          "description": "Requires a PROCEEDING design-package's _SUMMARY.md to link its own story-map.md — not required until `design-status: proceeding` is set (see the `design-package-proceeding` kind and CONVENTION.md's proceed-gate section). A story-map describing internal engineering tasks relabeled as 'stories' (not a real user workflow) satisfies this link while missing the point — this repo's own story-maps have this exact gap.",
+          "from": "design-package-proceeding",
           "name": "requires",
           "scope": "sibling",
           "to": "story-map"
         },
         {
-          "description": "Requires design-package's _SUMMARY.md to link its own roadmap.md. A roadmap with no dependency reasoning behind its sequencing, or that ignores its own cited spike/story-map (see grounded_by, derived_from), satisfies this link while being arbitrary.",
-          "from": "design-package",
+          "description": "Requires a PROCEEDING design-package's _SUMMARY.md to link its own roadmap.md — not required until `design-status: proceeding` is set. A roadmap with no dependency reasoning behind its sequencing, or that ignores its own cited spike/story-map (see grounded_by, derived_from), satisfies this link while being arbitrary.",
+          "from": "design-package-proceeding",
           "name": "requires",
           "scope": "sibling",
           "to": "roadmap"
         },
         {
-          "description": "Requires design-package's _SUMMARY.md to link its own implementation-details.md. A doc that restates the roadmap at a higher abstraction, rather than being concrete enough to start from, satisfies this link while not doing its job.",
-          "from": "design-package",
+          "description": "Requires a PROCEEDING design-package's _SUMMARY.md to link its own implementation-details.md — not required until `design-status: proceeding` is set. A doc that restates the roadmap at a higher abstraction, rather than being concrete enough to start from, satisfies this link while not doing its job.",
+          "from": "design-package-proceeding",
           "name": "requires",
           "scope": "sibling",
           "to": "implementation-details"
         },
         {
-          "description": "Requires design-package's _SUMMARY.md to link its own knowledge.md. A knowledge.md that recaps what the rest of the package already said, instead of a lesson someone extending this later actually needs, satisfies this link while adding nothing new.",
-          "from": "design-package",
+          "description": "Requires a PROCEEDING design-package's _SUMMARY.md to link its own knowledge.md — not required until `design-status: proceeding` is set. A knowledge.md that recaps what the rest of the package already said, instead of a lesson someone extending this later actually needs, satisfies this link while adding nothing new.",
+          "from": "design-package-proceeding",
           "name": "requires",
           "scope": "sibling",
           "to": "knowledge"
+        },
+        {
+          "description": "docs/design/_SUMMARY.md (the top-level package index) must link the central docs/design/dependencies.md register. A dependencies.md with entries for packages that no longer exist, or missing a real cross-package relation someone knows about, satisfies this link while the register itself is stale — read it, don't just trust the link.",
+          "from": "design-root-index",
+          "name": "requires",
+          "scope": "sibling",
+          "to": "dependencies"
+        },
+        {
+          "description": "A roadmap.md declaring a stable-interface dependency (it consumes another package's already-shipped, stable output — an API, a config schema, a CLI flag — not ongoing joint work) must link the central dependencies.md register — direction runs FROM the claim TO the structured record of it, so the claim isn't free prose a future reader has to trust unchecked. This link only confirms dependencies.md EXISTS and is linked — it does not confirm the register's entry actually names the right package; read it.",
+          "from": "roadmap-external-dependency",
+          "name": "depends_on",
+          "to": "dependencies"
         },
         {
           "description": "A cost/feasibility/risk claim in solution-space.md must cite the spike backing it — direction runs FROM the claim TO its evidence. Citing a spike that tested a different primitive, or one cited elsewhere in the package but unrelated to THIS claim, satisfies the link while proving nothing.",

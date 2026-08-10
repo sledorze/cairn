@@ -1,3 +1,7 @@
+---
+design-status: proceeding
+---
+
 # Issue #151 design: root-level docs reachable by cairn
 
 Full design package for closing [issue #151](https://github.com/sledorze/cairn/issues/151)

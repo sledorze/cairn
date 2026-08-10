@@ -1,5 +1,13 @@
 # Roadmap: issue #151 (root-level docs reachable by cairn)
 
+**What this roadmap actually is** (required disclosure, per `CONVENTION.md`'s "judging
+this convention" section): the release below sequences a shippable increment for THIS
+package by engineering dependency, not a business-tradeoff prioritization — there is no
+market/customer-value ranking here. This package declares no dependency on another
+package's state (no `external-dependency-kind` frontmatter) — see
+[`../dependencies.md`](../dependencies.md) for the real cross-package relations that DO
+exist in this repo.
+
 One release, deliberately scoped small — not a multi-release sequence like
 `docs/design/101-refs-symbol-scoping/`'s roadmap. [`spikes.md`](./spikes.md) already
 confirms the core primitive is a small, localized change; there's no equivalent of that

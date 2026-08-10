@@ -1,10 +1,16 @@
 # Story map: issue #137 (typed relations)
 
+**What this map actually is** (required, verbatim, across every design package's
+story-map.md — this convention's own requirement): every role below is an internal
+engineering role (doc author, reviewer, CI), not a customer or market segment. This
+repo's design-package docs are dev-shaped content, not product/market research, despite
+borrowing product vocabulary in their filenames (`story-map.md`, `roadmap.md`) — see
+`docs/design/CONVENTION.md`'s own "judging this convention" section. A real relationship
+with ANOTHER package (not an internal role within this one) belongs in
+[`../dependencies.md`](../dependencies.md), not here.
+
 Backbone = a doc author's actual workflow authoring and maintaining a claim-bearing
-sentence, left to right. As `CONVENTION.md`'s own "judging this convention" section notes
-for this repo's design packages generally: every persona below is an internal engineering
-role (doc author, reviewer, CI), not a customer or external user — stated here rather than
-invented, matching that section's own discipline.
+sentence, left to right.
 
 ## Backbone
 

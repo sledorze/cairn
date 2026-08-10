@@ -1,5 +1,14 @@
 # Story map: issue #151 (root-level docs reachable by cairn)
 
+**What this map actually is** (required, verbatim, across every design package's
+story-map.md — this convention's own requirement): every role below is an internal
+engineering role (doc author, reviewer, CI), not a customer or market segment. This
+repo's design-package docs are dev-shaped content, not product/market research, despite
+borrowing product vocabulary in their filenames (`story-map.md`, `roadmap.md`) — see
+`docs/design/CONVENTION.md`'s own "judging this convention" section. A real relationship
+with ANOTHER package (not an internal role within this one) belongs in
+[`../dependencies.md`](../dependencies.md), not here.
+
 Backbone = a maintainer's actual workflow editing a root-level instruction file, left to
 right. Each column's cards are ordered top-to-bottom by priority; the horizontal line
 marks the walking-skeleton release.

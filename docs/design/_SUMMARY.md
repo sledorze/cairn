@@ -13,6 +13,10 @@ DECISION concisely; these packages carry the full reasoning and evidence behind 
 - [Review findings](./review-findings.md) — the real, dated evidence from every round of
   actually running those prompts against this repo's own `checks.coverage` schema and
   config, split out from `review-prompts.md` once it grew past a lean reference.
+- [Cross-package dependencies](./dependencies.md) — the top-level, non-sibling-scoped
+  register of REAL cross-package relations, tagged with plain, framework-free dependency
+  vocabulary (currently: stable-interface dependency) — where a claim about ANOTHER
+  package's state belongs, instead of as free prose inside a sibling-scoped roadmap.md.
 - [101 — `--refs` symbol/export-scoped hashing](./101-refs-symbol-scoping/_SUMMARY.md)
 - [137 — typed relations](./137-typed-relations/_SUMMARY.md)
 - [151 — root-level docs reachable by cairn](./root-doc-checks/_SUMMARY.md)
