@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { CoverageRule } from '../../core/Config.ts'
 import type { DocsFsService } from '../../io/DocsFs.ts'
 import { DocsFs, makeTestDocsFs } from '../../io/DocsFs.ts'
-import { checkCoverage, coverageExitCode, formatCoverageReport } from './CheckCoverage.ts'
+import { checkCoverage, coverageExitCode, formatChangedGuidance, formatCoverageReport } from './CheckCoverage.ts'
 
 const KINDS = [
   { id: 'feature', select: { by: 'path' as const, glob: '/r/features/**' } },
@@ -1418,6 +1418,7 @@ describe('formatCoverageReport()', () => {
     })
     expect(lines).toEqual([
       '❌ 1 doc(s) missing required coverage:',
+      "ℹ️  Coverage only confirms these links exist — it does not check the linked content's substance. Judge that yourself, against this project's own documented conventions, if any.",
       '  /r/design/pkg/solution-space.md',
       '    ✗ no link ("grounded_by") to a "spikes"-kind doc (required by kind "solution-space")',
       '      A cost/feasibility claim needs real evidence — cite the spike that backs it.',
@@ -1579,6 +1580,99 @@ describe('formatCoverageReport()', () => {
       { locale: 'fr' },
     )
     expect(lines.some((l) => l.includes('n’a correspondu à aucun document'))).toBeTruthy()
+  })
+
+  // The shared "coverage only confirms links exist" disclaimer — must print
+  // AT MOST ONCE per report (never once per entry), and only when at least
+  // one entry actually shown carries a `description` to disclaim.
+  describe('coverage content disclaimer', () => {
+    const RULE_WITH_DESCRIPTION: CoverageRule = {
+      description: 'Cite the spike that validated this.',
+      from: 'feature',
+      to: 'decision',
+    }
+    const RULE_WITHOUT_DESCRIPTION: CoverageRule = { from: 'feature', to: 'decision' }
+
+    it('appears exactly once in the `missing` section, not once per missing doc', () => {
+      const lines = formatCoverageReport({
+        checked: 3,
+        emptyScopeUnders: [],
+        missing: [
+          { path: '/r/features/f1.md', rule: RULE_WITH_DESCRIPTION },
+          { path: '/r/features/f2.md', rule: RULE_WITH_DESCRIPTION },
+          { path: '/r/features/f3.md', rule: RULE_WITH_DESCRIPTION },
+        ],
+        orphans: [],
+        unmatchedKinds: [],
+      })
+      const disclaimerLines = lines.filter((l) => l.includes('Coverage only confirms these links exist'))
+      expect(disclaimerLines).toHaveLength(1)
+    })
+
+    it('is absent from the `missing` section when NO missing entry carries a `description`', () => {
+      const lines = formatCoverageReport({
+        checked: 1,
+        emptyScopeUnders: [],
+        missing: [{ path: '/r/features/f1.md', rule: RULE_WITHOUT_DESCRIPTION }],
+        orphans: [],
+        unmatchedKinds: [],
+      })
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
+
+    it('is present when only SOME missing entries carry a description, not just when all do', () => {
+      const lines = formatCoverageReport({
+        checked: 2,
+        emptyScopeUnders: [],
+        missing: [
+          { path: '/r/features/f1.md', rule: RULE_WITHOUT_DESCRIPTION },
+          { path: '/r/features/f2.md', rule: RULE_WITH_DESCRIPTION },
+        ],
+        orphans: [],
+        unmatchedKinds: [],
+      })
+      expect(lines.filter((l) => l.includes('Coverage only confirms these links exist'))).toHaveLength(1)
+    })
+
+    // Confirms `CheckCoverage.ts`'s own claim (per its `missing` block's doc
+    // comment): the `orphans` loop never renders `rule.description` at all
+    // (an orphan is a per-doc fact, `path (kinds)` only) — so an
+    // orphans-ONLY report (no `missing` at all) must get NO disclaimer, even
+    // though real defects are being reported.
+    it('never appears for an orphans-only report, even though real defects are reported', () => {
+      const lines = formatCoverageReport({
+        checked: 1,
+        emptyScopeUnders: [],
+        missing: [],
+        orphans: [{ kinds: ['decision'], path: '/r/decisions/d1.md' }],
+        unmatchedKinds: [],
+      })
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
+
+    it('appears exactly once in formatChangedGuidance, not once per edge', () => {
+      const lines = formatChangedGuidance(
+        [
+          { doc: '/r/features/f1.md', rule: RULE_WITH_DESCRIPTION, satisfied: true, satisfiedBy: [] },
+          { doc: '/r/features/f2.md', rule: RULE_WITH_DESCRIPTION, satisfied: false, satisfiedBy: [] },
+        ],
+        0,
+      )
+      expect(lines.filter((l) => l.includes('Coverage only confirms these links exist'))).toHaveLength(1)
+    })
+
+    it('is absent from formatChangedGuidance when no edge carries a description', () => {
+      const lines = formatChangedGuidance(
+        [{ doc: '/r/features/f1.md', rule: RULE_WITHOUT_DESCRIPTION, satisfied: true, satisfiedBy: [] }],
+        0,
+      )
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
+
+    it('is absent from formatChangedGuidance when there are no edges at all ("no rule touches")', () => {
+      const lines = formatChangedGuidance([], 0)
+      expect(lines.some((l) => l.includes('Coverage only confirms these links exist'))).toBeFalsy()
+    })
   })
 
   // `--changed` (spike, cli.ts): `changedGuidance` non-null/non-undefined

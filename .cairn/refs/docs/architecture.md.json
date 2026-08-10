@@ -125,7 +125,7 @@
       "target": "../src/program/links/CheckProseRefs.ts"
     },
     {
-      "hash": "42f744c926af6f06a246e9e5e88698e7001317bde8afbeca1ddd318003af127c",
+      "hash": "9257f14418f53e5a2fc520391eb9f806e64a78bd2382439fe653eccfe3af8f17",
       "target": "../src/program/structure/CheckCoverage.ts"
     },
     {
@@ -153,7 +153,7 @@
       "target": "../src/cli.ts"
     },
     {
-      "hash": "b595227be25facdf62b2dd9c0d50165c24f12deb893e55732aa50384c99dfdc8",
+      "hash": "f3537483df0fcbf66eb6e5c620262027811e6dedeb138f492794a9cc59dce642",
       "target": "../src/init/content.ts"
     },
     {

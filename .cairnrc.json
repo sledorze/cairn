@@ -86,98 +86,98 @@
       ],
       "rules": [
         {
-          "description": "Every design package must include and link to its own problem-space.md — skipping it means no one recorded WHY this work matters.",
+          "description": "Requires design-package's _SUMMARY.md to link its own problem-space.md. A stub or copy-pasted problem-space.md (no real need/context, root cause, or honest evidence basis) satisfies this link while adding nothing — read it, don't just trust the link.",
           "from": "design-package",
           "name": "requires",
           "scope": "sibling",
           "to": "problem-space"
         },
         {
-          "description": "Every design package must include and link to its own solution-space.md — skipping it means alternatives were never actually weighed.",
+          "description": "Requires design-package's _SUMMARY.md to link its own solution-space.md. A solution-space.md listing one option with no real alternative considered, or no rejects recorded, satisfies this link while being hollow — read it, don't just trust the link.",
           "from": "design-package",
           "name": "requires",
           "scope": "sibling",
           "to": "solution-space"
         },
         {
-          "description": "Every design package must include and link to its own spikes.md — skipping it means claims rest on assumption, not evidence.",
+          "description": "Requires design-package's _SUMMARY.md to link its own spikes.md. A spikes.md that narrates what an experiment 'would probably show' instead of a real run satisfies this link while proving nothing — this check cannot tell the difference.",
           "from": "design-package",
           "name": "requires",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "description": "Every design package must include and link to its own story-map.md — skipping it means there's no real user workflow behind the plan.",
+          "description": "Requires design-package's _SUMMARY.md to link its own story-map.md. A story-map describing internal engineering tasks relabeled as 'stories' (not a real user workflow) satisfies this link while missing the point — this repo's own story-maps have this exact gap.",
           "from": "design-package",
           "name": "requires",
           "scope": "sibling",
           "to": "story-map"
         },
         {
-          "description": "Every design package must include and link to its own roadmap.md — skipping it means there's no sequencing or migration plan.",
+          "description": "Requires design-package's _SUMMARY.md to link its own roadmap.md. A roadmap with no dependency reasoning behind its sequencing, or that ignores its own cited spike/story-map (see grounded_by, derived_from), satisfies this link while being arbitrary.",
           "from": "design-package",
           "name": "requires",
           "scope": "sibling",
           "to": "roadmap"
         },
         {
-          "description": "Every design package must include and link to its own implementation-details.md — skipping it means the design isn't concrete enough to start from.",
+          "description": "Requires design-package's _SUMMARY.md to link its own implementation-details.md. A doc that restates the roadmap at a higher abstraction, rather than being concrete enough to start from, satisfies this link while not doing its job.",
           "from": "design-package",
           "name": "requires",
           "scope": "sibling",
           "to": "implementation-details"
         },
         {
-          "description": "Every design package must include and link to its own knowledge.md — skipping it means lessons learned won't reach whoever extends this next.",
+          "description": "Requires design-package's _SUMMARY.md to link its own knowledge.md. A knowledge.md that recaps what the rest of the package already said, instead of a lesson someone extending this later actually needs, satisfies this link while adding nothing new.",
           "from": "design-package",
           "name": "requires",
           "scope": "sibling",
           "to": "knowledge"
         },
         {
-          "description": "A cost/feasibility/risk claim needs real evidence — cite the spike that backs it.",
+          "description": "A cost/feasibility/risk claim in solution-space.md must cite the spike backing it — direction runs FROM the claim TO its evidence. Citing a spike that tested a different primitive, or one cited elsewhere in the package but unrelated to THIS claim, satisfies the link while proving nothing.",
           "from": "solution-space",
           "name": "grounded_by",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "description": "A sequencing decision needs real evidence — cite the spike that justifies it.",
+          "description": "A sequencing decision in roadmap.md must cite the spike justifying it — direction runs FROM the ordering TO its evidence. A spike cited in passing, with no bearing on why this increment comes before or after another, satisfies the link while explaining nothing.",
           "from": "roadmap",
           "name": "grounded_by",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "description": "A risk/investment claim needs real evidence — cite the spike that backs it.",
+          "description": "A risk/investment claim in problem-space.md must cite the spike backing it — direction runs FROM the claim TO its evidence. A spike that merely exists in the same package, without actually demonstrating the claimed risk, satisfies the link while proving nothing.",
           "from": "problem-space",
           "name": "grounded_by",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "description": "An implementation approach must be built on a validated primitive, not assumed — cite the spike that confirmed it works.",
+          "description": "implementation-details.md's approach must cite the spike that validated its primitive — direction runs FROM the approach TO the confirming evidence. A spike that tested a different primitive, or an inconclusive/failed run, satisfies the link while the approach stays unvalidated.",
           "from": "implementation-details",
           "name": "builds_on",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "description": "Instructional guidance restating a spike's findings must cite the spike it's sourced from, so a reader can verify it's still accurate.",
+          "description": "knowledge.md's restated lesson must cite the spike it came from — direction runs FROM the lesson TO the spike, so a reader can check it's still accurate. If the spike changed since, the lesson can be quietly wrong while the link stays satisfied.",
           "from": "knowledge",
           "name": "sourced_from",
           "scope": "sibling",
           "to": "spikes"
         },
         {
-          "description": "A roadmap that realizes a story-map concept (e.g. a walking skeleton) must cite the story-map doc it derives from.",
+          "description": "A roadmap concept (e.g. a walking skeleton) must cite the story-map it realizes — direction runs FROM the roadmap increment TO the story-map that defined it. A coincidentally-linked story-map, not the one the increment actually realizes, satisfies the link while misrepresenting it.",
           "from": "roadmap",
           "name": "derived_from",
           "scope": "sibling",
           "to": "story-map"
         },
         {
-          "description": "The originating GitHub issue must be linked from problem-space.md — the evidence basis this design package rests on. See docs/design/CONVENTION.md's \"Linking to a dev issue\" section.",
+          "description": "problem-space.md must link the originating GitHub issue — the evidence basis the whole package rests on. Linking any issue matching the URL pattern, rather than the actual source of the stated need, satisfies this link while making the 'evidence basis' fictitious.",
           "from": "problem-space",
           "name": "traces_to",
           "to": {

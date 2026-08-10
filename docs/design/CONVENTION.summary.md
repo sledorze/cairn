@@ -29,6 +29,19 @@ vocabulary (requirements-traceability, Toulmin argumentation, evidence/epistemic
 process terms) is provided for naming new rules precisely, illustrated by this repo's own
 `grounded_by`/`builds_on`/`sourced_from` split.
 
+**Writing a good `description`** (new subsection, a sibling to naming, for library
+consumers writing their own rules): state which doc makes the claim and which is its
+evidence (direction), and name ONE concrete, relationship-specific way a link could be
+technically present but hollow — not a generic "make sure it's good." Don't write a
+per-rule content disclaimer either: `CheckCoverage.ts` now prints one shared, automatic
+"coverage only confirms links exist" line whenever any shown rule has a `description`, so a
+rule's own text should spend its words elsewhere. This repo's own 14 `.cairnrc.json` rule
+descriptions (and `DESIGN_PACKAGE_SKILL_BODY`'s scaffolded copy in `src/init/content.ts`,
+which `cairn init --agent claude` ships to consumers) were revised against this discipline;
+two deliberately different before/afters (the `solution-space` → `spikes` `grounded_by`
+rule, a citation-mismatch failure; the `design-package` → `spikes` `requires` rule, a
+content-narration failure) are given as worked examples.
+
 **Judging this convention** — two claims checked against real content: purpose-clarity
 holds for a developer reader (a captured report line is specific and actionable) but does
 NOT hold for a product reader (this repo's own `problem-space.md`/`story-map.md`/

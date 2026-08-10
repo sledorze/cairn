@@ -458,6 +458,29 @@ const describeToRequirement = (to: CoverageToSpec, locale: Locale): string => {
   return pick(locale, { en: 'to an existing file', fr: 'vers un fichier existant' })
 }
 
+/** Shared across both render paths below (`formatChangedGuidance` and
+ * `formatCoverageReport`'s `missing` section) — printed at most ONCE per
+ * report, never per entry, whenever at least one rule actually being shown
+ * carries its own `description`. `checks.coverage` only ever confirms a
+ * LINK exists between two docs; it has no way to judge whether the linked
+ * content is any good — a rule's own `description` (the whole point of the
+ * revised rules in .cairnrc.json, and of the authoring brief in README.md /
+ * docs/design/CONVENTION.md) names a specific way a link could be
+ * technically present but hollow, but that's a hint for a HUMAN or AI
+ * reviewer to go read the content, not something this check verifies
+ * itself. Without this disclaimer, someone unfamiliar with cairn could
+ * mistake "coverage OK" / a listed rule edge for "the content was actually
+ * judged," which it never is. A fixed, generic constant rather than a
+ * config-authored one (no `conventionDoc` field) — weighed and rejected:
+ * the fallback text has to stand alone for any downstream consumer anyway,
+ * so a fixed generic constant is simpler and equally effective; revisit
+ * only if a real second consumer demonstrates actual need. */
+const coverageContentDisclaimer = (locale: Locale): string =>
+  pick(locale, {
+    en: "ℹ️  Coverage only confirms these links exist — it does not check the linked content's substance. Judge that yourself, against this project's own documented conventions, if any.",
+    fr: 'ℹ️  La couverture ne fait que confirmer que ces liens existent — elle ne vérifie pas le fond du contenu lié. Jugez-en vous-même, en vous appuyant sur les conventions documentées de ce projet, le cas échéant.',
+  })
+
 /** `--changed` (spike, cli.ts) report mode: every rule edge touching a
  * changed path, with its rule's own `description` printed as guidance —
  * "if this file changed, here's what a reviewer should re-check, and why."
@@ -488,6 +511,13 @@ export const formatChangedGuidance = (
             fr: `🔎 ${edges.length} relation(s) de couverture pertinente(s) pour le(s) chemin(s) modifié(s) :`,
           }),
         ]
+  // Printed once, before the per-edge loop — never once per entry — and
+  // only when at least one edge actually being shown carries a
+  // `description` to disclaim in the first place (an edge with no
+  // description at all has nothing this disclaimer would apply to).
+  if (edges.some((e) => e.rule.description !== undefined)) {
+    lines.push(coverageContentDisclaimer(locale))
+  }
   for (const edge of edges) {
     const named = edge.rule.name === undefined ? '' : ` ("${edge.rule.name}")`
     const status = edge.satisfied
@@ -582,6 +612,15 @@ export const formatCoverageReport = (result: CoverageResult, options: CoverageRe
         fr: `❌ ${result.missing.length} document(s) sans la couverture requise :`,
       }),
     )
+    // Printed once, right after the header and before the per-doc loop —
+    // never once per entry — and only when at least one `missing` entry's
+    // rule actually carries a `description` to disclaim in the first place.
+    // The `orphans` loop below never prints a `rule.description` at all (an
+    // orphan is a per-doc fact, not tied to any one rule's text), so an
+    // orphans-only report correctly gets no disclaimer from this block.
+    if (result.missing.some((m) => m.rule.description !== undefined)) {
+      lines.push(coverageContentDisclaimer(locale))
+    }
     for (const { path: p, rule } of result.missing) {
       // The rule's `name`, when set, disambiguates which obligation this is
       // — two rules can share a (from, to) pair (see CoverageRule's own

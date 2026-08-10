@@ -241,13 +241,13 @@ edits ever:
       { "id": "knowledge", "description": "The reusable technique and lessons, for whoever extends this work later.", "select": { "by": "path", "glob": "**/docs/design/*/knowledge.md" } }
     ],
     "rules": [
-      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own problem-space.md — skipping it means no one recorded WHY this work matters.", "scope": "sibling", "to": "problem-space" },
-      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own solution-space.md — skipping it means alternatives were never actually weighed.", "scope": "sibling", "to": "solution-space" },
-      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own spikes.md — skipping it means claims rest on assumption, not evidence.", "scope": "sibling", "to": "spikes" },
-      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own story-map.md — skipping it means there's no real user workflow behind the plan.", "scope": "sibling", "to": "story-map" },
-      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own roadmap.md — skipping it means there's no sequencing or migration plan.", "scope": "sibling", "to": "roadmap" },
-      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own implementation-details.md — skipping it means the design isn't concrete enough to start from.", "scope": "sibling", "to": "implementation-details" },
-      { "from": "design-package", "name": "requires", "description": "Every design package must include and link to its own knowledge.md — skipping it means lessons learned won't reach whoever extends this next.", "scope": "sibling", "to": "knowledge" }
+      { "from": "design-package", "name": "requires", "description": "Requires design-package's _SUMMARY.md to link its own problem-space.md. A stub or copy-pasted problem-space.md (no real need/context, root cause, or honest evidence basis) satisfies this link while adding nothing — read it, don't just trust the link.", "scope": "sibling", "to": "problem-space" },
+      { "from": "design-package", "name": "requires", "description": "Requires design-package's _SUMMARY.md to link its own solution-space.md. A solution-space.md listing one option with no real alternative considered, or no rejects recorded, satisfies this link while being hollow — read it, don't just trust the link.", "scope": "sibling", "to": "solution-space" },
+      { "from": "design-package", "name": "requires", "description": "Requires design-package's _SUMMARY.md to link its own spikes.md. A spikes.md that narrates what an experiment 'would probably show' instead of a real run satisfies this link while proving nothing — this check cannot tell the difference.", "scope": "sibling", "to": "spikes" },
+      { "from": "design-package", "name": "requires", "description": "Requires design-package's _SUMMARY.md to link its own story-map.md. A story-map describing internal engineering tasks relabeled as 'stories' (not a real user workflow) satisfies this link while missing the point.", "scope": "sibling", "to": "story-map" },
+      { "from": "design-package", "name": "requires", "description": "Requires design-package's _SUMMARY.md to link its own roadmap.md. A roadmap with no dependency reasoning behind its sequencing, or that ignores its own cited spike/story-map, satisfies this link while being arbitrary.", "scope": "sibling", "to": "roadmap" },
+      { "from": "design-package", "name": "requires", "description": "Requires design-package's _SUMMARY.md to link its own implementation-details.md. A doc that restates the roadmap at a higher abstraction, rather than being concrete enough to start from, satisfies this link while not doing its job.", "scope": "sibling", "to": "implementation-details" },
+      { "from": "design-package", "name": "requires", "description": "Requires design-package's _SUMMARY.md to link its own knowledge.md. A knowledge.md that recaps what the rest of the package already said, instead of a lesson someone extending this later actually needs, satisfies this link while adding nothing new.", "scope": "sibling", "to": "knowledge" }
     ]
   }
 }
@@ -283,9 +283,36 @@ can't silently regress the next time someone adds one. NOT mandatory on an unnam
 (its report line is already self-explanatory) — but treat that as a narrow escape hatch, not
 a default to reach for: this repo's own 7 "design-package requires X" rules were first left
 unnamed on exactly that theory, and it didn't survive contact with the real question "why
-DOES a design package need its own spikes.md." All 13 rules in this repo's own config ended
+DOES a design package need its own spikes.md." All 14 rules in this repo's own config ended
 up named with real descriptions once re-examined honestly — naming and describing even a
 seemingly self-evident rule is usually worth it.
+
+Two things make a \`description\` actually useful instead of restating the obvious:
+
+- **State which direction the dependency runs** — which doc is making a claim, and which
+  doc is its evidence — not just "link A to B." "Cite the spike backing this" alone leaves
+  the reader to work out which side is the claim and which is the proof; "this claim must
+  cite the spike backing it — direction runs FROM the claim TO its evidence" doesn't.
+- **Name ONE concrete, relationship-specific way the link could be technically present but
+  hollow** — not a generic "make sure it's good," which fits every rule and therefore
+  teaches nothing about any of them. A link satisfying \`implementation-details\` →
+  \`spikes\` (\`builds_on\`) is hollow if the cited spike tested a DIFFERENT primitive than
+  the one actually being built on — a failure mode specific to THAT relationship, not a
+  universal one.
+
+Don't also write a generic disclaimer per rule ("...but this check can't verify the content
+is actually good") — \`checks.coverage\` prints exactly one shared disclaimer automatically,
+once per report, whenever any shown rule has a \`description\`; repeating it per-rule adds
+zero information the tool doesn't already say for you. Spend a rule's own words on what
+WOULD make ITS link meaningful instead.
+
+Before/after, from this exact skill's own \`grounded_by\`-shaped rules: before, \`"A
+cost/feasibility/risk claim needs real evidence — cite the spike that backs it."\` — states
+the obligation, not the direction or a concrete hollow-link scenario. After (this repo's own
+real revision), \`"A cost/feasibility/risk claim in solution-space.md must cite the spike
+backing it — direction runs FROM the claim TO its evidence. Citing a spike that tested a
+different primitive, or one cited elsewhere in the package but unrelated to THIS claim,
+satisfies the link while proving nothing."\` — same obligation, now with both.
 
 ## Stress-test your own package before trusting it
 
