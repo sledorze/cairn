@@ -24,29 +24,33 @@ PR` → `CI runs cairn check` → `Decide: does the broken link get caught?` →
 
 - _As a maintainer, editing `AGENTS.md` to add a new incident cross-reference is an
   ordinary doc edit_ — no different in kind from editing anything under `docs/`, even
-  though today cairn treats it completely differently (invisible vs. checked).
-  **(Release 1 makes this true.)**
+  though today cairn treats it completely differently (invisible vs. checked). Release 1
+  makes this true. _(Must — the only card at this step, and the precondition every later
+  step depends on.)_
 
 ### 2. Add or change a link
 
 - _As a maintainer, when I add `[x](docs/incidents/y/)` to `AGENTS.md`, I want the same
   guarantee I already get for a link inside `docs/architecture.md`_ — that a typo'd path,
   a moved directory, or a renamed file is caught before merge, not discovered by a reader
-  clicking a dead link. **(Release 1, the headline story.)**
+  clicking a dead link. Release 1, the headline story. _(Must.)_
 - _As a maintainer, I do NOT want adding `AGENTS.md` to `roots` to suddenly require a
   `AGENTS.md.summary.md` sibling or trip `checks.coverage`'s design-package rules_ — a
   231-line instruction file gaining an unwanted, unrelated summary-freshness obligation as
   a side effect of fixing its LINKS would be a surprising, unasked-for regression, not a
-  fix. **(Release 1 must explicitly NOT do this — see `roadmap.md`'s scoping decision.)**
+  fix. Release 1 must explicitly NOT do this — see `roadmap.md`'s scoping decision.
+  _(Should — a real, load-bearing scope boundary, but secondary to the headline story
+  above delivering at all.)_
 
 ### 3. Run local checks / open a PR
 
 - _As a contributor, I want `pnpm check` (or whatever local command already runs `cairn
 check`) to keep working exactly as it does today for the `docs/` tree_ — this design
-  adds a root-file check, it does not change or slow down the existing one.
+  adds a root-file check, it does not change or slow down the existing one. _(Must — a
+  regression here breaks every existing user of `pnpm check`, not just this feature.)_
 - _As a maintainer, I want the root-file check to be its own clearly-named step, not
   silently folded into the existing one_ — so a CI failure says "AGENTS.md has a broken
-  link," not an ambiguous failure inside a run whose name still says `docs/`.
+  link," not an ambiguous failure inside a run whose name still says `docs/`. _(Should.)_
 
 ### 4. CI runs `cairn check`
 
@@ -56,7 +60,9 @@ map otherwise traces:
 
 - A file-shaped root must go through the exact same containment guarantees
   (`assertNoRootEscape`, `isSafelyWithinBase`) a directory-shaped root already does — no
-  new, less-audited read path introduced just because the shape is different.
+  new, less-audited read path introduced just because the shape is different. _(Must — the
+  only card at this step, and a security guarantee the walking skeleton cannot ship
+  without.)_
 
 ### 5. Decide: does the broken link get caught?
 
@@ -64,19 +70,26 @@ map otherwise traces:
   someone eventually notices by hand, or one of the two existing bespoke tests happens to
   cover the SPECIFIC thing that changed (a flag name, a `--json` incompatibility), which
   neither one does for an arbitrary link._ This is the reported pain, restated as what
-  actually happens today, not what should happen.
+  actually happens today, not what should happen — descriptive of the status quo, not a
+  tiered story.
 - _As a maintainer, after this fix: `pnpm check` (or CI) catches it automatically, the
   same way it already does for any doc under `docs/`_ — the actual success criterion for
-  this whole issue.
+  this whole issue. _(Must.)_
 
 ### 6. Fix or merge
 
 - _As a maintainer, once Release 1 ships, PR #148's `agentsMdLinks.unit.test.ts` becomes
   redundant with a real, generic check_ — I want it closed/superseded, not left running
   forever as a second, parallel, narrower mechanism nobody remembers to keep in sync with
-  the generic one. **(Roadmap's explicit migration note.)**
+  the generic one. Roadmap's explicit migration note. _(Must — the only card at this step,
+  and the release's own definition of "done" for the migration it enables.)_
 
-## Walking skeleton (the line above marks it in each column)
+## Walking skeleton (the single (Must)-tagged card at each backbone step above marks it)
+
+The walking skeleton is exactly the single **(Must)**-tagged card at each backbone step
+above, concatenated left to right. `checks.storyMapTiers` (see the repo's own
+`.cairnrc.json`) now enforces that every step has exactly one, so this section can never
+silently drift from the tags again.
 
 Release 1 — `roots` accepting a literal file entry, consumed via a second, `--links-only`,
 root-file-scoped `cairn check` invocation (solution-space's synthesis of options 1 + 4) —

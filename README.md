@@ -125,9 +125,9 @@ the run exit non-zero, same as a broken link would. `--summaries-only`, `--refs`
 summary currently reads as `missing` rather than distinctly `unreadable`.
 
 `--json` cannot be combined with `--stamp`, `--migrate-stamps`, `--report-deletions`,
-`--refs`, `--prose-refs`, `checks.coverage`, `checks.docCoverage`, or `checks.freshness` —
-each rejects the combination with its own explicit (JSON-shaped) error rather than silently
-ignoring `--json` or one of the other flags.
+`--refs`, `--prose-refs`, `checks.coverage`, `checks.docCoverage`, `checks.freshness`, or
+`checks.storyMapTiers` — each rejects the combination with its own explicit (JSON-shaped)
+error rather than silently ignoring `--json` or one of the other flags.
 
 `cairn check --refs` is a separate, **opt-in** signal, off by default and not part of the
 `path`/`anchor`/`line` checks above: it tracks the _content_ of what a link points to, not
@@ -545,6 +545,44 @@ CLI flag — its `rules` have no CLI equivalent to express them with), and
 rule field — freshness is a per-doc, temporal question ("how old is this"), not the
 relational, doc-to-doc question every `checks.coverage` rule asks.
 
+### Story-map walking-skeleton invariant: `checks.storyMapTiers`
+
+This repo's own `docs/design/*/story-map.md` convention (see
+[`docs/design/CONVENTION.md`](docs/design/CONVENTION.md)) traces a backbone workflow, left
+to right, and tags some cards under each backbone step `(Must)`, `(Should)`, or `(Could)`
+(MoSCoW). Concatenating the single `(Must)`-tagged card at each step, in order, IS the
+walking skeleton — the smallest slice that's shippable and actually fixes the reported
+pain. That invariant can silently drift: a step can end up with zero `(Must)` cards
+(nothing named essential) or several (no single thinnest slice, just an unprioritized
+pile), with nothing catching it — found for real auditing this repo's own three
+story-maps, all three of which claimed a marked walking-skeleton card existed and none of
+which actually had one.
+
+`checks.storyMapTiers` closes that gap:
+
+```json
+"checks": {
+  "storyMapTiers": {
+    "globs": ["docs/design/*/story-map.md"]
+  }
+}
+```
+
+- **`globs`** — which docs to check. Each must have a `## Cards, by backbone step` section
+  with `### N. <title>` backbone-step headings under it (this repo's own story-map shape);
+  a matched doc without that section is simply not censused (nothing to check), not an
+  error.
+
+For each backbone-step heading, this counts `(Must)` tags anywhere in that step's own card
+text and reports any step whose count isn't exactly 1. Opt-in via mere presence in config
+(no CLI flag — `globs` has no CLI equivalent to express it with), and
+`checks.storyMapTiers: false` is the explicit way to re-disable it when inherited from an
+`extends` preset. Deliberately narrow, intra-document structural census — not a general
+predicate/comparison engine (that idea, for a much harder general problem, was considered
+and declined in `docs/design/137-typed-relations/roadmap.md`'s own Release 0): no
+code-target resolution, no cross-file comparison, just counting a tag within one doc's own
+text.
+
 ### Upgrading from an older cairn
 
 **If you're upgrading past `0.3.0`**: link checking got stricter. Anchors and links outside
@@ -634,6 +672,7 @@ Drop a `.cairnrc.json` at the repo root (`cairn init` scaffolds one for you):
 | `checks.coverage`          | Opt-in structural coverage/orphan check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                                       |
 | `checks.docCoverage`       | Opt-in source-tree documentation coverage check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                               |
 | `checks.freshness`         | Opt-in git-history-based doc staleness check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                                  |
+| `checks.storyMapTiers`     | Opt-in story-map walking-skeleton invariant check (see below). Absent by default — a config object enables it, `false` re-disables it (e.g. overriding an `extends` preset), no CLI flag                                                                                                                                                                                             |
 | `requireDirSummaries`      | Require a `_SUMMARY.md` in every in-scope directory                                                                                                                                                                                                                                                                                                                                  |
 | `ignore`                   | Globs to exclude from scanning, matched against both the absolute path and the path relative to its containing root (issue #102) — a directory-shaped match is pruned before it's ever walked, not just filtered out afterward (issue #63). `.gitignore` is also consulted automatically for the same directory-level pruning, with no config needed, regardless of `onlyGitTracked` |
 | `onlyGitTracked`           | Restrict scanning to `git ls-files`-tracked/staged paths (CI parity). Default `false`                                                                                                                                                                                                                                                                                                |

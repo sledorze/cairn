@@ -32,6 +32,7 @@ import { checkDeletions, formatDeletionsReport } from './program/summaries/Check
 import { coveragePlugin } from './program/structure/CheckCoverage.ts'
 import { docCoveragePlugin } from './program/structure/CheckDocCoverage.ts'
 import { freshnessPlugin } from './program/structure/CheckFreshness.ts'
+import { storyMapTiersPlugin } from './program/structure/CheckStoryMapTiers.ts'
 import {
   checkSummaries,
   explainSummaries,
@@ -45,14 +46,23 @@ import { buildJsonReport } from './program/JsonReport.ts'
 import type { Locale } from './program/locale.ts'
 import { pick } from './program/locale.ts'
 
-// The 6 checks migrated onto the CheckPlugin abstraction, in the EXACT
+// The 7 checks migrated onto the CheckPlugin abstraction, in the EXACT
 // order their equivalent hand-wired blocks used to run (links, then —
 // after summaries, which stays hand-wired, see ./program/checks/
 // CheckPlugin.ts's own header — refs, proseRefs, coverage, docCoverage,
-// freshness). Order matters: it's the order `--json` incompatibility
-// messages are checked in (rejectedJsonMessage) AND the order console
-// output appears in.
-const JSON_INCOMPATIBLE_PLUGINS = [refsPlugin, proseRefsPlugin, coveragePlugin, docCoveragePlugin, freshnessPlugin]
+// freshness, storyMapTiers). Order matters: it's the order `--json`
+// incompatibility messages are checked in (rejectedJsonMessage) AND the
+// order console output appears in. `storyMapTiers` is appended last —
+// it's the newest, narrowest structure check, matching how `freshness`
+// itself was appended after `docCoverage` when it was added.
+const JSON_INCOMPATIBLE_PLUGINS = [
+  refsPlugin,
+  proseRefsPlugin,
+  coveragePlugin,
+  docCoveragePlugin,
+  freshnessPlugin,
+  storyMapTiersPlugin,
+]
 
 // Narrowed once, at module scope, instead of a `!` non-null assertion
 // (forbidden by this repo's lint config) at each call site — a genuine,
@@ -544,6 +554,8 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   yield* reportOutcome(yield* runCheckPlugin(docCoveragePlugin, pluginArgs))
 
   yield* reportOutcome(yield* runCheckPlugin(freshnessPlugin, pluginArgs))
+
+  yield* reportOutcome(yield* runCheckPlugin(storyMapTiersPlugin, pluginArgs))
 
   if (deletionsOutcome !== null) {
     if (deletionsOutcome.error !== null) {

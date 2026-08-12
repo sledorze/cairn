@@ -247,6 +247,9 @@
         }
       ],
       "exempt": ["src/**/*.test.ts", "src/**/*.bench.ts", "src/testSupport/**"]
+    },
+    "storyMapTiers": {
+      "globs": ["docs/design/*/story-map.md"]
     }
   }
 }

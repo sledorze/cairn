@@ -26,32 +26,39 @@ release (the smallest slice that's shippable and actually fixes the reported pai
   (e.g. a config example, a small self-contained script) — **existing behavior, unchanged,
   must keep working identically.**
 - _As a doc author, I want to exempt specific cited files/globs from `--refs` scanning
-  entirely_ so a leaf file I cite for illustration only never generates noise. _(Release 1)_
+  entirely_ so a leaf file I cite for illustration only never generates noise. Release 1.
+  _(Must — this IS the walking-skeleton slice: it ships end-to-end and fully resolves the
+  reporter's own repro with zero new parsing dependency.)_
 - _As a doc author, I want to cite one exported symbol specifically_ (`#checkFile`) so a
-  reader — and `--refs` — both know exactly what claim the citation makes. _(Release 3)_
+  reader — and `--refs` — both know exactly what claim the citation makes. Release 3.
+  _(Could.)_
 
 ### 2. Stamp current state
 
 - _As a doc author, running `--refs --stamp` after authoring a citation records what "the
   cited thing" means today_ — unchanged mechanism, but the UNIT of what's hashed changes
-  per release below.
+  per release below. _(Must — the walking skeleton needs this exact unchanged mechanism to
+  keep working under the new `exempt` scoping, not a new one.)_
 - _As a maintainer, I want `--stamp` to tell me when a `unit`/scope config change means
   every existing sidecar is about to be recomputed_ (a one-time, expected mass-restamp,
   not a silent behavior change nobody notices) — see `roadmap.md`'s migration note.
+  _(Should.)_
 
 ### 3. Edit the cited code
 
 - _As a contributor, editing a private helper inside a file whose EXPORTS a doc cites
-  should NOT fail `--refs`_ — this is the issue's own headline complaint. _(Release 2,
-  fully addressed; Release 1 addresses it only for exempted files)_
+  should NOT fail `--refs`_ — this is the issue's own headline complaint. Release 2, fully
+  addressed; Release 1 addresses it only for exempted files. _(Must — the headline pain
+  this whole issue exists to fix.)_
 - _As a contributor, editing/adding/removing an EXPORTED declaration a doc's citation
   covers SHOULD fail `--refs`_ — the check must still catch what it exists to catch;
-  precision must never become "nothing fails." _(Release 2)_
+  precision must never become "nothing fails." Release 2. _(Should.)_
 - _As a contributor, renaming an exported symbol a doc cites by name (`#checkFile`) should
   produce an actionable, specific error_ ("citation target `checkFile` no longer exists in
   `engine.ts` — did you mean `checkFileContents`?"), not a silent false-pass or an opaque
-  hash mismatch. _(Release 3, the harder half of option A per `problem-space.md`'s
-  constraint 1 — a MISSING anchor must never resolve to "nothing to compare, so pass.")_
+  hash mismatch. Release 3, the harder half of option A per `problem-space.md`'s
+  constraint 1 — a MISSING anchor must never resolve to "nothing to compare, so pass."
+  _(Could.)_
 
 ### 4. Re-run `--refs`
 
@@ -59,14 +66,18 @@ Non-negotiable engineering constraints, not user stories — kept here (not in a
 format) because they attach to this exact backbone step and belong in the map even though
 "a CI pipeline" and "a security reviewer" aren't the doc author whose journey this map
 otherwise traces. Forcing these into "as a [role], I want" phrasing would inflate the map's
-apparent user-discovered value without actually discovering anything new:
+apparent user-discovered value without actually discovering anything new. Between the two,
+only the containment guarantee below carries the walking-skeleton tag: a scope regression
+here is a security bug the walking skeleton cannot ship without, whereas the
+tracked/untracked parity item already reuses `CheckRefs.ts`'s established behavior — real,
+but not new work this release introduces:
 
 - `--refs` must behave identically for `git ls-files`-tracked vs. untracked targets under
   `onlyGitTracked` — matches `CheckRefs.ts`'s already-established `trackedFiles` handling;
   no NEW gap for any new `unit` to introduce.
 - A new `unit`/scope must never widen what `--refs` reads outside `base` — every new code
   path re-uses `isSafelyWithinBase` (`resolveReferenceContent`'s own existing guard), not a
-  new, unaudited read path.
+  new, unaudited read path. _(Must)_
 
 ### 5. Decide: does this drift matter?
 
@@ -75,19 +86,25 @@ apparent user-discovered value without actually discovering anything new:
   `anchor` alongside `currentHash`/`recordedHash`, but nothing yet names WHICH export(s)
   changed within a multi-export file; with export-surface hashing (Release 2), the report
   can add that (a real, cheap upgrade once the hash is computed per-export instead of once
-  per file — see `implementation-details.md`).
+  per file — see `implementation-details.md`). _(Must)_
 - _As a doc author who's just been shown "3 unrelated files, same one-line internal
   change, still all green," I should be able to verify that for myself_, not just trust
   the tool — this is `roadmap.md`'s own falsification requirement for the release, mirrored
-  from every other check this repo has shipped.
+  from every other check this repo has shipped. _(Should)_
 
 ### 6. Re-stamp or investigate
 
 - _As a maintainer, `--stamp` after a real export-surface change should feel like signing
   off on a genuine review moment, not a reflex_ — this is the actual success criterion for
-  the whole issue: re-stamping stops being noise-driven.
+  the whole issue: re-stamping stops being noise-driven. _(Must — the only card at this
+  step, and the actual success criterion for the whole issue.)_
 
-## Walking skeleton (the line above marks it in each column)
+## Walking skeleton (the single (Must)-tagged card at each backbone step above marks it)
+
+The walking skeleton is exactly the single **(Must)**-tagged card at each backbone step
+above, concatenated left to right — `checks.storyMapTiers` (see the repo's own
+`.cairnrc.json`) now enforces that every step has exactly one, so this section can never
+silently drift from the tags again.
 
 Release 1 (`sources`/`exempt`-style config scoping, solution-space option D) is the
 walking skeleton: it ships end-to-end (config → CLI → sidecar → report), fully resolves

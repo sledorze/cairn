@@ -16,6 +16,10 @@ their own claim by quoting it in the annotation; a decidable failure and an unde
 `open` status must read as visibly different report lines (#133); a vacuously-true
 comparison must report as a guard failure, not a silent pass.
 
+Each backbone step now carries exactly one `(Must)`-tagged card (enforced by
+`checks.storyMapTiers`), all traceable back to spike 7's own end-to-end proof — which is
+exactly why that proof is the walking skeleton.
+
 **Walking skeleton:** `covers set:published-files`, exactly as built and proven in
 `spikes.md` spike 7 — declare → red on real drift → green after fix, zero new sidecar,
 zero new masking primitive.

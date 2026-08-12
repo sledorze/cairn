@@ -113,6 +113,8 @@
         "src/program/summaries/CheckSummaries.integration.test.ts",
         "src/program/structure/CheckFreshness.unit.test.ts",
         "src/program/structure/CheckFreshness.plugin.unit.test.ts",
+        "src/program/structure/CheckStoryMapTiers.unit.test.ts",
+        "src/program/structure/CheckStoryMapTiers.plugin.unit.test.ts",
         "src/program/structure/CheckCoverage.unit.test.ts",
         "src/program/links/CheckProseRefs.unit.test.ts",
         "src/program/links/CheckRefs.plugin.unit.test.ts",

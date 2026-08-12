@@ -186,6 +186,7 @@ describe('loadConfig()', () => {
       freshness: null,
       links: false,
       proseRefs: { ignore: [] },
+      storyMapTiers: null,
       summaries: false,
     }) // deep-merged
     expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
@@ -230,6 +231,7 @@ describe('loadConfig()', () => {
       freshness: null,
       links: false,
       proseRefs: { ignore: [] },
+      storyMapTiers: null,
       summaries: false,
     })
   })

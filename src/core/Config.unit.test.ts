@@ -1137,6 +1137,7 @@ describe('the built-in defaults', () => {
         freshness: null,
         links: true,
         proseRefs: { ignore: [] },
+        storyMapTiers: null,
         summaries: true,
       },
       ignore: ['**/node_modules/**'],

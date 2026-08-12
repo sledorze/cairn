@@ -20,6 +20,10 @@ distinguish "expected mass-restamp from a config change" from
 --refs" are kept as explicit non-negotiable constraints, not dressed
 up as user personas.
 
-**Walking skeleton:** Release 1 (`refs.scope` config) — ships
-end-to-end, fully resolves the reporter's own repro, needs no new
-parsing dependency.
+Each backbone step now carries exactly one `(Must)`-tagged card (enforced by
+`checks.storyMapTiers`, see the repo's own `.cairnrc.json`); the rest are
+`(Should)`/`(Could)`, or left untagged when purely descriptive/non-negotiable.
+
+**Walking skeleton:** the single `(Must)`-tagged card at each step, concatenated — Release 1
+(`refs.scope` config) — ships end-to-end, fully resolves the reporter's own repro, needs no
+new parsing dependency.

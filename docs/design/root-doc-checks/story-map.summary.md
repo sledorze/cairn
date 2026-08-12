@@ -17,6 +17,9 @@ directory-shaped one already does. Today: nothing catches a broken root-doc link
 automatically. After this fix: `pnpm check`/CI catches it the same way it already does for
 every doc under `docs/`.
 
+Each backbone step now carries exactly one `(Must)`-tagged card (enforced by
+`checks.storyMapTiers`).
+
 Walking skeleton: Release 1 — literal-file `roots` entries, consumed via a second
 `--links-only` invocation — ships end-to-end and directly resolves the reported pain,
 deliberately without yet extending summaries/coverage to root files.

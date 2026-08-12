@@ -660,6 +660,35 @@ const FreshnessInputSchema = Schema.Struct({
 // preset's freshness check back off with a plain `false`.
 const FreshnessOrDisabledSchema = Schema.Union([FreshnessInputSchema, Schema.Literal(false)])
 
+// A real, live drift this repo found in its OWN docs: every `docs/design/*/story-map.md`
+// carries a `## Walking skeleton (the line above marks it in each column)` heading
+// claiming a marked walking-skeleton card exists per backbone step, but none of the three
+// actually had exactly one `(Must)`-tagged card per step (two had zero MoSCoW tags at
+// all) — see `../structure/StoryMapTiers.ts`'s own header for the full finding. Kept to a
+// single `globs` field, not a configurable heading-pattern/tier-vocabulary system: this
+// repo has exactly one real convention for what a backbone/tier-tagged doc looks like (one
+// `## Cards, by backbone step` shape, one `(Must|Should|Could)` vocabulary, shared
+// verbatim across all 3 existing story-maps) — building configurability against a single
+// data point would be the same premature generality `137-typed-relations/roadmap.md`'s own
+// Release 0 already declined for the harder, general typed-relations problem.
+const StoryMapTiersInputSchema = Schema.Struct({
+  globs: Schema.Array(Schema.String).annotate({
+    description: 'Which docs to check for the walking-skeleton invariant (one `(Must)`-tagged card per backbone step).',
+  }),
+}).annotate({
+  description:
+    "Opt-in check that every backbone step under a story-map's `## Cards, by backbone step` section has " +
+    'exactly one `(Must)`-tagged card — the thinnest complete slice at that step. Absent by default — ' +
+    'presence enables it.',
+  identifier: 'CairnStoryMapTiersConfig',
+})
+
+// `StoryMapTiersInputSchema | Literal(false)` — same escape hatch as
+// `FreshnessOrDisabledSchema` above, for the same reason: a descendant config needs a way
+// to turn an inherited `extends` preset's storyMapTiers check back off with a plain
+// `false`.
+const StoryMapTiersOrDisabledSchema = Schema.Union([StoryMapTiersInputSchema, Schema.Literal(false)])
+
 // `CoverageInputSchema | Literal(false)`, not just `CoverageInputSchema` —
 // `links`/`summaries` can be turned back off with a plain `false`, letting a
 // descendant config override an inherited `extends` preset; `checks.coverage`
@@ -727,6 +756,7 @@ const ChecksInputSchema = Schema.Struct({
     Schema.Boolean.annotate({ description: 'Enable Markdown dead-link checking. Default true.' }),
   ),
   proseRefs: Schema.optionalKey(ProseRefsInputSchema),
+  storyMapTiers: Schema.optionalKey(StoryMapTiersOrDisabledSchema),
   summaries: Schema.optionalKey(
     Schema.Boolean.annotate({
       description: 'Enable summary freshness checking (content-hash based). Default true.',
@@ -1003,6 +1033,11 @@ export interface FreshnessConfig {
   readonly rules: readonly FreshnessRule[]
 }
 
+/** See `StoryMapTiersInputSchema`'s own comment for why `globs` is the only field. */
+export interface StoryMapTiersConfig {
+  readonly globs: readonly string[]
+}
+
 export interface ProseRefsConfig {
   readonly ignore: readonly string[]
 }
@@ -1033,6 +1068,9 @@ export interface ChecksConfig {
    * gate whether `--prose-refs` runs (the CLI flag alone does that); it only
    * tunes its ignore list, so an empty list is the only "off" state. */
   readonly proseRefs: ProseRefsConfig
+  /** `null` = disabled (the default), same convention as `coverage`/
+   * `docCoverage`/`freshness` above. */
+  readonly storyMapTiers: StoryMapTiersConfig | null
   readonly summaries: boolean
 }
 
@@ -1091,6 +1129,7 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
     freshness: null,
     links: true,
     proseRefs: { ignore: [] },
+    storyMapTiers: null,
     summaries: true,
   },
   ignore: ['**/node_modules/**'],
@@ -1189,6 +1228,14 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
     // `ignore` do), never merges array-by-array with the base's list.
     proseRefs:
       layer.checks?.proseRefs === undefined ? base.checks.proseRefs : { ignore: layer.checks.proseRefs.ignore ?? [] },
+    // Same three-way (undefined inherits / false disables / anything else
+    // replaces wholesale) reasoning as `coverage`/`docCoverage`/`freshness` above.
+    storyMapTiers:
+      layer.checks?.storyMapTiers === undefined
+        ? base.checks.storyMapTiers
+        : layer.checks.storyMapTiers === false
+          ? null
+          : { globs: layer.checks.storyMapTiers.globs },
     summaries: layer.checks?.summaries ?? base.checks.summaries,
   },
   naming: {
