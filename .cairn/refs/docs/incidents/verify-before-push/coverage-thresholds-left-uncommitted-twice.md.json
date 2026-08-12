@@ -1,7 +1,7 @@
 {
   "refs": [
     {
-      "hash": "230f7f25ca18c5f26e4c9b418d633aa3dcd96a726065563945dd07f8bc5cab12",
+      "hash": "65b5bbc668e7dae826e5caf576d6045e9db7056f1f3b28c7a4ed73c33be4201c",
       "target": "../../../vitest.config.ts"
     }
   ]

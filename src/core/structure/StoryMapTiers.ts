@@ -77,21 +77,27 @@ export const extractBackboneStepTiers = (content: string): readonly BackboneStep
     return []
   }
 
+  // A single `.test()` per heading, never `.exec()` — the step NUMBER is read directly off
+  // `h.text` via `Number.parseInt`, not off a `BACKBONE_STEP_RE` capture group. Originally
+  // this used `.exec()` to grab group 1, but that meant re-deriving, from a SEPARATE call
+  // against the same regex/text `.test()` already matched, a `match` TypeScript can only
+  // type as possibly-`null` (it can't see the two calls prove the same fact) — carrying a
+  // provably-dead `match === null` branch with no real input that could ever reach it. This
+  // sidesteps the whole problem: `Number.parseInt` reads only the LEADING digits of a
+  // string and ignores everything after (`"1. First step"` -> `1`), so once `.test()` has
+  // confirmed a heading starts `\d+\.`, there is nothing left to extract from a match
+  // object at all — no capture group, no null branch, no array-index type to fight either.
   const stepHeadings = headings.filter(
     (h) => h.line > cardsSection.line && h.level === cardsSection.level + 1 && BACKBONE_STEP_RE.test(h.text.trim()),
   )
 
   return stepHeadings.map((h) => {
-    const match = BACKBONE_STEP_RE.exec(h.text.trim())
-    const stepText = match?.[1]
-    // `Number.parseInt`, not `Number(...)`, is used deliberately here (oxlint's own
-    // `unicorn/prefer-number-coercion` would rather see `Math.trunc(Number(stepText))`) —
-    // this repo's write-time guard (`no-raw-coercion`, `.claude/settings.json`'s falsestart
-    // preset) blocks a raw `Number(...)` coercion outright, so `Number.parseInt` is the one
-    // form both tools accept; `stepText` is already `\d+`-matched by `BACKBONE_STEP_RE`, so
-    // no radix ambiguity is possible either way.
+    // `Number.parseInt`, not `Number(...)`: this repo's write-time guard (`no-raw-coercion`,
+    // `.claude/settings.json`'s falsestart preset) blocks a raw `Number(...)` coercion
+    // outright, so `Number.parseInt` is the one form both that guard and oxlint's own
+    // `unicorn/prefer-number-coercion` (suppressed below) can agree on.
     // oxlint-disable-next-line unicorn/prefer-number-coercion
-    const step = stepText === undefined ? 0 : Number.parseInt(stepText, 10)
+    const step = Number.parseInt(h.text.trim(), 10)
     // The next heading at this step's own level or shallower ends its span — this
     // uniformly covers both "the next backbone step" (same level) and "the end of the
     // whole Cards section" (a shallower heading, or none: end of file), since every real
