@@ -17,11 +17,11 @@ mechanism for a question it was never designed to answer (a real, present, linke
 directory you only wanted to exclude from the SCAN side, not the EXISTENCE side).
 **Generalized:** before reusing an existing exclusion/scoping mechanism for a new purpose,
 ask explicitly "does this mechanism's existing SIDE EFFECT (not just its stated purpose)
-also apply to the new question I'm asking, or only look like it does." This design's own
-`docs/design/CONVENTION.md` and `docs/design/101-refs-symbol-scoping/problem-space.md` both
-independently make a version of this same point for `ignore` vs. `--refs` (a different pair
-of concerns, same shape of mistake to avoid) — worth recognizing as the SAME lesson
-recurring in a third place, not three unrelated observations.
+also apply to the new question I'm asking, or only look like it does."
+`docs/design/101-refs-symbol-scoping/problem-space.md` already makes a version of this same
+point for `ignore` vs. `--refs` (a different pair of concerns, same shape of mistake to
+avoid) — worth recognizing as the SAME lesson recurring in a second place, not two
+unrelated observations.
 
 ## How this design validated the shortcut before trusting it
 

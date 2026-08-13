@@ -489,18 +489,6 @@ actually running those prompts against this repo (and others) lives in
 **Measurable checks, compiled from both claims above — track these as numbers over time,
 not prose:**
 
-- **Product-signal lexicon ratio**: grep each `problem-space.md`/`story-map.md`/
-  `roadmap.md` for product-signal terms (`user segment`, `customer`, `market`, `revenue`,
-  `competitor`, `interview`, `willingness to pay`, `retention`) versus dev-signal terms
-  (`API`, `hash`, `CLI`, `flag`, `dependency`, `scanner`, `sidecar`). A near-zero
-  product-term ratio against a doc named `problem-space.md` is the measurable form of
-  Claim 1's failure.
-- **Persona audit**: grep every `story-map.md` for `As a ` and list the extracted role
-  nouns; flag when every persona is an internal engineering role rather than an external
-  customer/user of the thing being built.
-- **Evidence-source classifier**: for each `problem-space.md`'s evidence-basis section,
-  classify each citation as GitHub-issue-only versus interview/survey/support-ticket-volume/
-  analytics; flag packages where 100% of cited evidence is a single maintainer-filed issue.
 - **Schema variant census**: count `KindSelector.by`, `CoverageTarget`,
   `CoverageRequirement.by`, `CoverageRule.scope`, and `CoverageRule.to`'s Literal/Union
   variants — computed for real by `scripts/coverage-metrics.ts` (`pnpm run
@@ -515,16 +503,9 @@ coverage-metrics`) rather than hand-counted, since a prior round of this same re
   extra field naming which OTHER rule to alternate with, a bigger shape change than the gap
   needed) — so without a dedicated `to` counter, this exact growth would have been invisible
   to this census even though it's the single largest variant-count change tracked here.
-  Current real output:
-
-  ```
-  Schema variant census (src/core/Config.ts):
-    KindSelector.by:          2
-    CoverageTarget:           3
-    CoverageRequirement.by:   1
-    CoverageRule.scope:       2
-    CoverageRule.to:          4
-  ```
+  Run `pnpm run coverage-metrics` for the current numbers rather than trusting a
+  hand-pasted snapshot here — the hedge-language census below once carried exactly such a
+  snapshot and it drifted silently (see that bullet); a link to the live command can't.
 
   Keep a running log of real requests that needed a variant that doesn't exist yet — a
   rising unmet-request count against a static variant count is Claim 2's gap growing,
@@ -628,16 +609,11 @@ coverage-metrics`) rather than hand-counted, since a prior round of this same re
   over release is a direct measure of whether reviews like this are actually closing gaps
   or just re-discovering and re-recording the same ones. Also computed for real by
   `scripts/coverage-metrics.ts` (across `docs/**/*.md`, excluding the `.cairn/` sidecar
-  tree). Current real output:
-
-  ```
-  Hedge-language census (docs/**/*.md, excluding .cairn/):
-    "not modeled":            4
-    "un-enforced":            2
-    "out of scope":           6
-    "no concept of":          3
-    total:                    15
-  ```
+  tree). Run `pnpm run coverage-metrics` for the current numbers — deliberately not
+  hand-pasted here: a prior version of this exact paragraph pasted a snapshot
+  (`"out of scope": 6, total: 15`) that had already drifted to 12/21 by the time a review
+  caught it, silently, with `pnpm check` still green throughout (nothing wires this
+  census into a check). A link to the live command can't go stale the way a number can.
 
 Neither Claim 1's nor Claim 2's gap is closed by this section — both are recorded as open,
 exactly like the URL-target and product-issue gaps above, rather than treated as solved by
