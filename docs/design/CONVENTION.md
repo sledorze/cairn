@@ -53,6 +53,7 @@ hardcoded assumption.
   "coverage": {
     "kinds": [
       { "id": "design-package", "select": { "by": "path", "glob": "**/docs/design/*/_SUMMARY.md" } },
+      { "id": "design-package-proceeding", "select": { "by": "frontmatter", "field": "design-status", "equals": "proceeding" } },
       { "id": "problem-space", "select": { "by": "path", "glob": "**/docs/design/*/problem-space.md" } },
       { "id": "solution-space", "select": { "by": "path", "glob": "**/docs/design/*/solution-space.md" } },
       { "id": "spikes", "select": { "by": "path", "glob": "**/docs/design/*/spikes.md" } },
@@ -65,10 +66,10 @@ hardcoded assumption.
       { "from": "design-package", "scope": "sibling", "to": "problem-space" },
       { "from": "design-package", "scope": "sibling", "to": "solution-space" },
       { "from": "design-package", "scope": "sibling", "to": "spikes" },
-      { "from": "design-package", "scope": "sibling", "to": "story-map" },
-      { "from": "design-package", "scope": "sibling", "to": "roadmap" },
-      { "from": "design-package", "scope": "sibling", "to": "implementation-details" },
-      { "from": "design-package", "scope": "sibling", "to": "knowledge" }
+      { "from": "design-package-proceeding", "scope": "sibling", "to": "story-map" },
+      { "from": "design-package-proceeding", "scope": "sibling", "to": "roadmap" },
+      { "from": "design-package-proceeding", "scope": "sibling", "to": "implementation-details" },
+      { "from": "design-package-proceeding", "scope": "sibling", "to": "knowledge" }
     ]
   }
 }
@@ -79,6 +80,92 @@ directory as the `from` doc. Combined with wildcard `kinds` globs, one generic b
 every design package at once — present and future, at any nesting depth
 (`docs/design/<slug>/`, or `docs/design/<time-bucket>/<slug>/` if organized by
 sprint/cycle/quarter later) — with zero additional config per package.
+
+`problem-space`/`solution-space`/`spikes` are required from the plain `design-package` kind
+— unconditionally, from the moment a package's directory exists. `story-map`/`roadmap`/
+`implementation-details`/`knowledge` are required from `design-package-proceeding` instead —
+a SEPARATE kind, matched only once a package's own `_SUMMARY.md` carries `design-status:
+proceeding` frontmatter. See "The proceed gate" below for why, and for the concrete evidence
+this needed no new schema, only a second kind and a changed `from`.
+
+## Roadmap.md and the proceed gate
+
+Informed by [Linear Method](https://linear.app/method/introduction) (short specs, one owner,
+small increments over speculative multi-release plans) and the
+[Double Diamond](https://www.designcouncil.org.uk/our-resources/the-double-diamond/)
+(Discover → Define → Develop → Deliver — a single thinker's own cognitive sequence, not an
+organizational framework; see "On borrowed vocabulary" below for why that distinction
+matters here). Both are process/modeling conventions applied to THIS repo's real history
+(`137-typed-relations`), not adopted speculatively.
+
+- **`roadmap.md` sequences ONE package's own increments, never another package's release
+  priority.** `137-typed-relations/roadmap.md` once asserted `101-refs-symbol-scoping`'s own
+  release priority inline; it went stale silently and needed a hand-patched "status update,
+  added after the fact." That claim now belongs in [`dependencies.md`](./dependencies.md)
+  (below), which fails `cairn check` loudly instead of drifting silently.
+- **Prefer one small release over several speculative ones.** `137`'s own roadmap wrote four
+  releases in full before a real ROI checkpoint rejected three of them — evidence that
+  planning ahead of dogfooded need is a real, not just theoretical, cost.
+- **`story-map.md`/`roadmap.md`/`implementation-details.md`/`knowledge.md` are required only
+  once a package's `_SUMMARY.md` carries `design-status: proceeding` frontmatter** (the
+  `design-package-proceeding` kind, config above) — `problem-space`/`solution-space`/`spikes`
+  stay required unconditionally. This needed no new code: `by: "frontmatter"` kind selection
+  already existed (the same mechanism this repo's own ADR `status` frontmatter uses), and a
+  doc can already match more than one declared kind at once — changing four rules' `from`
+  field is the entire code-relevant change.
+- **Gate placement, checked against Double Diamond rather than asserted:** Discover/Define =
+  `problem-space.md`; Develop = `solution-space.md` + `spikes.md`; Deliver = the four gated
+  docs. The gate sits exactly on the Develop→Deliver boundary — matching `137`'s own real
+  history, whose Release 0 checkpoint ran AFTER `solution-space`/`spikes` and rejected exactly
+  the Deliver-stage work that followed.
+- **Disclosed limitation:** the gate is self-reported — nothing distinguishes an honest
+  go/no-go from someone setting the frontmatter reflexively. Accepted as-is: every
+  self-reported status field in this repo has this property (the ADR `status` frontmatter is
+  exactly as self-reported); a structural check that a real checkpoint happened would need
+  literal-prose-content verification this repo doesn't have and isn't building for one case.
+
+## Cross-package dependencies
+
+[`dependencies.md`](./dependencies.md) is the one place a real cross-package relation is
+recorded — not sibling-scoped `roadmap.md` prose (see the incident above). A `roadmap.md`
+declares one via `external-dependency-kind: stable-interface` frontmatter (see the
+[Lexicon](#lexicon-one-canonical-definition-per-term) for the definition — only one kind
+exists today; `cairn check` itself reported the other two conceivable shapes matching zero
+real docs, so they weren't pre-built, per `AGENTS.md`'s own "don't design for hypothetical
+requirements"). `checks.coverage`'s `depends_on` rule then requires that roadmap link
+`dependencies.md`. Investigated first whether `{ external: "path" }` alone was enough: no —
+it's satisfied by a link resolving to ANY real file, not a SPECIFIC one. Config-only change,
+zero lines of `src/` touched. Same link-existence-only limitation as every other coverage
+rule here; `dependencies.md`'s own freshness beyond that is its own disclosed decision (see
+that file).
+
+## story-map.md's disclosure
+
+Every `story-map.md` opens with the same short, required paragraph (see any file — verified
+byte-identical across all three) stating plainly that its roles are internal engineering
+roles, not customer personas — previously true in wording for only 1 of 3 packages. Not
+structurally enforced: no existing check (`checks.coverage`, `--prose-refs`,
+`checks.freshness`) verifies literal doc prose, so this stays a documented convention, same
+as `problem-space.md`'s "root cause and evidence basis" requirement already is — worth
+revisiting only if a future package's story-map drifts from the wording in practice.
+
+## On borrowed vocabulary: process/modeling conventions, not organizational ones
+
+A first draft of the two sections above, and of the story-map disclosure, borrowed [Team
+Topologies](https://teamtopologies.com/key-concepts)' interaction-mode/team-type vocabulary.
+Rejected on review: this is a single-maintainer repo (`git log` confirms no teams, no
+handoffs, no service boundaries) and the draft's own text had to stretch "team" to mean "a
+tool" just to make the framework apply — the tell of a framework used where none of its
+assumptions hold. The general principle, stated once here rather than re-argued per section:
+a borrowed PROCESS/MODELING convention (Linear Method's cycle discipline, Double Diamond's
+stage sequence, C4/DDD's context-map notation in `dependencies.md`) is fine for a
+solo-maintainer repo because it makes no claim about team size; a borrowed ORGANIZATIONAL
+convention (Team Topologies) is not, because its entire vocabulary presupposes teams and
+handoffs that don't exist here. The MECHANISM each Team-Topologies-labeled section described
+(a structured, checkable dependency register; a short required, consistent disclosure) was
+unaffected by the relabeling — only the borrowed vocabulary was cut. Full narrative,
+including the false claim this drafting process itself produced and caught, is preserved as
+dated history in [`review-findings.md`](./review-findings.md) section 10, not repeated here.
 
 The single `*` (not `**`) between `docs/design/` and the filename matters: `**` can match
 zero segments, which would make `docs/design/_SUMMARY.md` itself (the parent index, not a
@@ -116,6 +203,29 @@ modeled by this convention. This repo has no real product/customer-feedback cont
 ground such a model in; see
 `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md` for the
 reasoning behind leaving it unmodeled.
+
+## Lexicon: one canonical definition per term
+
+This session hit the same ubiquitous-language (DDD sense) failure twice — a rule-count
+miscount, and a story-map disclosure claimed "verbatim" that had drifted across three
+copies. `checks.coverage` already enforces one-definition-per-`description` structurally for
+rules; this section applies the same discipline to this doc's own prose vocabulary. One
+canonical home per term — every other mention elsewhere references it, not re-explains it:
+
+- **Design package** — see "The convention" above.
+- **`design-status: proceeding`** (the proceed-gate signal) — see "Roadmap.md and the
+  proceed gate" above.
+- **Stable-interface dependency** — see [`dependencies.md`](./dependencies.md)'s own
+  "Vocabulary" section.
+- The rule-relationship vocabulary (`grounded_by`, `builds_on`, `derived_from`, ...) — see "A
+  vocabulary for rule names" directly below, already this doc's existing canonical source.
+
+Checked, not assumed: before this lexicon, "stable-interface dependency" was fully defined
+in 2 places (`dependencies.md`, and a second restatement inside "Cross-package
+dependencies") — now defined in exactly 1, confirmed by search. "Design package" and the
+proceed-gate signal were each already single-sourced. No `story-map.md` disclosure restates
+any of these three terms (it defines a separate concept — internal-role vs. customer
+persona — not one of this lexicon's entries).
 
 ## A vocabulary for rule names
 
@@ -379,18 +489,6 @@ actually running those prompts against this repo (and others) lives in
 **Measurable checks, compiled from both claims above — track these as numbers over time,
 not prose:**
 
-- **Product-signal lexicon ratio**: grep each `problem-space.md`/`story-map.md`/
-  `roadmap.md` for product-signal terms (`user segment`, `customer`, `market`, `revenue`,
-  `competitor`, `interview`, `willingness to pay`, `retention`) versus dev-signal terms
-  (`API`, `hash`, `CLI`, `flag`, `dependency`, `scanner`, `sidecar`). A near-zero
-  product-term ratio against a doc named `problem-space.md` is the measurable form of
-  Claim 1's failure.
-- **Persona audit**: grep every `story-map.md` for `As a ` and list the extracted role
-  nouns; flag when every persona is an internal engineering role rather than an external
-  customer/user of the thing being built.
-- **Evidence-source classifier**: for each `problem-space.md`'s evidence-basis section,
-  classify each citation as GitHub-issue-only versus interview/survey/support-ticket-volume/
-  analytics; flag packages where 100% of cited evidence is a single maintainer-filed issue.
 - **Schema variant census**: count `KindSelector.by`, `CoverageTarget`,
   `CoverageRequirement.by`, `CoverageRule.scope`, and `CoverageRule.to`'s Literal/Union
   variants — computed for real by `scripts/coverage-metrics.ts` (`pnpm run
@@ -405,16 +503,9 @@ coverage-metrics`) rather than hand-counted, since a prior round of this same re
   extra field naming which OTHER rule to alternate with, a bigger shape change than the gap
   needed) — so without a dedicated `to` counter, this exact growth would have been invisible
   to this census even though it's the single largest variant-count change tracked here.
-  Current real output:
-
-  ```
-  Schema variant census (src/core/Config.ts):
-    KindSelector.by:          2
-    CoverageTarget:           3
-    CoverageRequirement.by:   1
-    CoverageRule.scope:       2
-    CoverageRule.to:          4
-  ```
+  Run `pnpm run coverage-metrics` for the current numbers rather than trusting a
+  hand-pasted snapshot here — the hedge-language census below once carried exactly such a
+  snapshot and it drifted silently (see that bullet); a link to the live command can't.
 
   Keep a running log of real requests that needed a variant that doesn't exist yet — a
   rising unmet-request count against a static variant count is Claim 2's gap growing,
@@ -518,17 +609,29 @@ coverage-metrics`) rather than hand-counted, since a prior round of this same re
   over release is a direct measure of whether reviews like this are actually closing gaps
   or just re-discovering and re-recording the same ones. Also computed for real by
   `scripts/coverage-metrics.ts` (across `docs/**/*.md`, excluding the `.cairn/` sidecar
-  tree). Current real output:
-
-  ```
-  Hedge-language census (docs/**/*.md, excluding .cairn/):
-    "not modeled":            4
-    "un-enforced":            2
-    "out of scope":           6
-    "no concept of":          3
-    total:                    15
-  ```
+  tree). Run `pnpm run coverage-metrics` for the current numbers — deliberately not
+  hand-pasted here: a prior version of this exact paragraph pasted a snapshot
+  (`"out of scope": 6, total: 15`) that had already drifted to 12/21 by the time a review
+  caught it, silently, with `pnpm check` still green throughout (nothing wires this
+  census into a check). A link to the live command can't go stale the way a number can.
 
 Neither Claim 1's nor Claim 2's gap is closed by this section — both are recorded as open,
 exactly like the URL-target and product-issue gaps above, rather than treated as solved by
 writing about them.
+
+## Addendum: roadmap/story-map rationalization pass
+
+"Roadmap.md and the proceed gate," "Cross-package dependencies," "story-map.md's
+disclosure," and "On borrowed vocabulary" above are the result of a real rationalization
+pass (`review-prompts.md` §3) against this repo's own `roadmap.md`/`story-map.md` kinds,
+which found four real gaps (cross-package scope/placement, evidence sufficiency, vocabulary
+honesty on both kinds) — all now closed there, config-only, zero lines of `src/` touched.
+Full historical narrative, including the Team Topologies false start and a false claim
+caught and fixed mid-session, is in
+[`review-findings.md`](./review-findings.md) section 10.
+
+Dogfooded against this repo's own real packages, not just written: `137-typed-relations` ↔
+`101-refs-symbol-scoping`'s real dependency is recorded in `dependencies.md` and is now a
+real `cairn check` failure if either roadmap's link to it breaks. All three existing
+packages carry `design-status: proceeding` frontmatter (verified directly, all three) and
+the required story-map.md disclosure paragraph.

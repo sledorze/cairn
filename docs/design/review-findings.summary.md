@@ -1,8 +1,8 @@
 # Review findings — summary
 
 Real, dated evidence from applying `review-prompts.md`'s two prompts (structure invitation,
-adversarial judge) to this repo's own `checks.coverage` schema and configuration, across
-nine rounds so far. Split out of `review-prompts.md` once this evidence grew past a lean
+adversarial judge) to this repo's own `checks.coverage` schema and configuration, across ten
+rounds so far. Split out of `review-prompts.md` once this evidence grew past a lean
 reference — an append-only historical record, mirrored by [`docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`](../adr/0005-design-packages-structurally-enforced-by-existing-coverage.md)'s own
 Amendment log for the same rounds.
 
@@ -184,3 +184,20 @@ repetition pairs with real falsifiable claims each time it appears; the `atLeast
 a real report-quality regression, not a free simplification). Step 4: nothing concretely scoped to
 build — this paragraph, recording a genuine "checked again, still converged," is the round's own
 deliverable.
+
+**10. Roadmap/story-map redesign — full narrative behind `CONVENTION.md`'s terse current-state
+sections**: a rationalization pass found four real gaps in `roadmap.md`/`story-map.md` (no
+structural home for a cross-package claim; the full cost of `story-map`/`roadmap` sunk before an
+ROI checkpoint could run; inconsistent vocabulary honesty on both kinds) — closed via
+`dependencies.md` (a new top-level, non-sibling-scoped register) and a `design-package-proceeding`
+kind gating those four docs, both config-only. A first draft borrowed Team Topologies' vocabulary
+for the register and the gate's placement rationale; rejected on review as cargo-cult for a
+single-maintainer repo (the draft had to stretch "team" to mean "a tool"), replaced with plain
+software vocabulary and, for the gate's placement, the Double Diamond (a cognitive sequence, not
+an organizational model — confirmed to sit exactly on `137-typed-relations`'s own real
+Develop→Deliver history). A false, specific claim ("all three packages carry the frontmatter")
+was caught mid-session — root-caused to a lost edit during this same session's own dogfood
+restore steps, fixed by re-adding the real frontmatter and re-verifying directly, not by softening
+the claim. Recorded too: `CONVENTION.md` itself grew from ~535 to 874 lines across two review
+rounds before being cut back to ~660, on the same "would removing this cause a mistake?" discipline
+`AGENTS.md` already states it applies to itself.

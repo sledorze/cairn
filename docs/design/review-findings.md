@@ -1120,3 +1120,115 @@ declares (with each newer capability individually and correctly left unused, not
 did not need to change anything as a result. This paragraph is the round's own deliverable, per the
 task's own instruction that a genuine "checked again, still converged" is a real finding, not a
 non-event.
+
+## 10. Roadmap/story-map redesign — a real rationalization pass, a Team Topologies false start,
+
+a false claim caught, and a ceremony-growth lesson worth keeping
+
+A fresh, context-free agent ran §3's "Problem-space rationalization" prompt against this repo's
+own `roadmap.md`/`story-map.md` kinds and found four real gaps, all now closed in
+`CONVENTION.md`/`dependencies.md`/`.cairnrc.json` (that doc states the terse, current-state
+version of each decision; this section is the full reasoning trail, kept here rather than in
+`CONVENTION.md` per this repo's own doc-role split — a neutral current-state reference versus a
+dated historical record).
+
+**(a)/(d) — roadmap scope/placement, REFUTED.** `137-typed-relations/roadmap.md` once asserted a
+DIFFERENT package's release priority inline ("ADR 0004's own Release 1 (`refs.scope`)... should
+ship first regardless of this design's fate") — a claim nothing structurally tracked, so it went
+stale silently and needed a hand-authored "status update, added after the fact" patch once 101
+actually shipped. Confirmed directly against `Coverage.ts`: `scope: 'sibling'`/`{ under }` have no
+vocabulary for "this fact concerns a DIFFERENT package's state." Fixed with a new top-level,
+non-sibling-scoped doc (`dependencies.md`), not a schema change — investigated first whether
+`{ external: 'path' }` alone was enough (no: satisfied by ANY real file, not a SPECIFIC one).
+
+**(b) — evidence sufficiency, REFUTED for both kinds.** `137-typed-relations/roadmap.md`'s own
+Release 0 checkpoint self-admits: "two full design efforts... have now landed on 'don't build the
+big version' after large writing investment" — yet the convention required full `story-map.md`/
+`roadmap.md` authorship regardless of whether the cheap ROI check had run. Fixed with a new
+`design-package-proceeding` kind (`by: "frontmatter"`, `design-status: proceeding` on
+`_SUMMARY.md`), gating only `story-map`/`roadmap`/`implementation-details`/`knowledge` —
+`problem-space`/`solution-space`/`spikes` stay unconditional. Investigated directly against
+`Config.ts`/`DocMetadata.ts` before deciding this needed no new code: `by: "frontmatter"` kind
+selection already existed (the same mechanism this repo's own ADR `status: proposed | accepted`
+frontmatter already used), and a single doc can already match more than one declared kind at
+once — so changing four rules' `from` field was the entire code-relevant change.
+
+**Where the gate sits, checked against a process model rather than asserted.** The Double Diamond
+(Discover→Define→Develop→Deliver) maps onto this convention's required docs as: Discover/Define =
+`problem-space.md`; Develop = `solution-space.md` + `spikes.md`; Deliver = the four gated docs.
+The gate sits exactly on the Develop→Deliver boundary, and this is not a hypothetical fit: it is
+`137-typed-relations`'s own real history — its Release 0 checkpoint ran AFTER `solution-space.md`/
+`spikes.md` were already validated, and rejected exactly the Deliver-stage work that came after
+(the original 4-release roadmap, most of it). Gating any earlier would block Discover before
+there's even a stated problem; gating between Develop's two docs would force the ROI checkpoint
+to judge a direction that was never tested. Double Diamond is a single thinker's own cognitive
+sequence, not an organizational framework — it carries none of the team-boundary assumption that
+made Team Topologies (below) the wrong fit, which is exactly why it was kept where TT was cut.
+
+**Disclosed limitation, not silently left implicit:** the gate is self-reported — nothing
+distinguishes an honest go/no-go from someone setting the frontmatter reflexively, out of habit.
+Accepted as-is: every self-reported status field in this repo has this property (the ADR `status`
+frontmatter is exactly as self-reported), a solo maintainer fooling the checker only fools
+themselves, and verifying a checkpoint actually happened would need the literal-prose-content
+check this repo doesn't have and isn't building for three data points.
+
+**(c) — vocabulary honesty, REFUTED (roadmap) / inconsistent (story-map, 1 of 3 disclosed it).**
+Fixed with a short, required, verbatim-across-all-three-packages disclosure paragraph (see any
+`story-map.md`'s own opening) stating plainly that its roles are internal engineering roles, not
+customer personas — not structurally enforced (no existing check verifies literal doc prose),
+disclosed as convention-only rather than pretended otherwise.
+
+**The Team Topologies false start, and why it was cut, not merely disclosed.** A first draft of
+both (a)/(d) and (c) borrowed Team Topologies' interaction-mode/team-type vocabulary
+(X-as-a-Service / collaboration / facilitating; stream-aligned / platform / enabling team).
+Adversarial review rejected it on inspection of `git log`: this is a single-maintainer repo — no
+teams, no handoffs, no service boundaries — and the draft's own text had to stretch "team" to
+mean "a tool" just to make the framework apply to the one relation that's actually real, the tell
+that an imported vocabulary is cargo-cult for this repo's actual scale. A related, real,
+independently-confirmed piece of evidence: the same review found `cairn check` itself already
+reporting 2 of the drafted 3 interaction-mode kinds matching ZERO real docs — collapsed to the
+ONE kind (`stable-interface dependency`) this repo actually has a real instance of, per
+`AGENTS.md`'s own "don't design for hypothetical future requirements" discipline. The MECHANISM in
+both cases (a structured, checkable register; a short required, consistent disclosure) was exactly
+as valuable either way — only the borrowed label was wrong, and it was replaced with plain
+software vocabulary, not merely re-explained. General principle extracted from this, applied to
+two LATER additions in the same session without re-litigating it each time: a borrowed
+PROCESS/MODELING convention (Linear Method's cycle discipline; Double Diamond's stage sequence;
+C4/DDD's context-map notation) is fine for a solo-maintainer repo because it carries no claim
+about team size or organizational boundaries; a borrowed ORGANIZATIONAL convention (Team
+Topologies) is not, because its entire vocabulary presupposes teams and handoffs that don't exist
+here.
+
+**A false, specific, checkable claim was caught in this very doc's own drafting — recorded as a
+real incident, not smoothed over.** An earlier version of `CONVENTION.md`'s addendum claimed "All
+three existing packages carry `design-status: proceeding` frontmatter." Checked directly:
+`137-typed-relations/_SUMMARY.md` had NO frontmatter block at all at the time that sentence was
+written — true for only 2 of 3. `cairn check` stayed green regardless (137's links were still
+required by the general link-completeness rule independent of coverage-kind classification), so
+this was never a functional bug, only a false claim in a document whose entire pitch is "verified,
+not asserted." Root-caused, not just patched: 137 legitimately proceeded (a real Release 1
+shipped, matching its two siblings), so the frontmatter was real and accurate — it had been added
+once, then lost during this same session's own RED/GREEN dogfood restore steps (a `cp` from a
+backup file taken mid-experiment, before the frontmatter had been re-added), and nobody re-verified
+the specific claim before writing it into prose. Fixed by re-adding the frontmatter for real and
+re-verifying with `head` on all three files, not by softening the sentence to "2 of 3" (the
+2-of-3 state was itself the bug, not the true state).
+
+**A ceremony-growth lesson, itself worth keeping as a finding, not just a fix.** Across two review
+rounds, `CONVENTION.md` grew from its pre-session length (~535 lines) to 874 — roughly 350 lines
+invoking four distinct named external frameworks (Team Topologies, then Linear Method, Double
+Diamond, and C4/DDD as replacements/additions) to justify individually small, defensible config
+choices each statable in 2-3 sentences. The trend was WORSENING, not converging, round over
+round — each adversarial-review fix added MORE justification prose on top of the previous round's,
+rather than cutting. The false claim above is itself a symptom, not a separate incident: dense,
+self-congratulatory prose is exactly the condition under which a specific, checkable claim buried
+inside it stops getting re-verified. Fixed by applying this repo's own stated file-length
+discipline (`AGENTS.md`'s own note that IT was cut 33% once, by asking "would removing this cause
+a future reader to make a mistake? If not, cut it") to `CONVENTION.md` itself: every DECISION and
+its real evidence (dogfood proof, concrete before/after) was kept; the essay-style buildup was
+cut. For each framework, the general defense above ("process/modeling convention, not
+organizational") replaces three separate long-form defenses; the Team Topologies "rejected"
+record was cut to one paragraph;
+the rest of the reasoning trail — this section — moved here rather than being deleted, per this
+file's own stated role as the place dated, falsifiable evidence belongs once `CONVENTION.md` has
+distilled it into its terse, current-state form.

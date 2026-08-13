@@ -34,7 +34,12 @@ Separation of concerns: pure decisions, IO at the edges.
     `coverageByPath` map, never Markdown content itself), `Freshness` (issue #101 — pure
     `findStaleDocs`: given a doc's `maxAgeDays` and real last-commit date, is it stale;
     deliberately NOT built on `Coverage` above, since it's a per-doc temporal question with
-    no relational/kind-graph logic).
+    no relational/kind-graph logic), `StoryMapTiers` (a real drift found auditing this
+    repo's own story-maps: every one claimed a marked walking-skeleton card per backbone
+    step, none actually had exactly one `(Must)`-tagged card per step — pure
+    `extractBackboneStepTiers`/`findWalkingSkeletonViolations`, reusing `Anchors.ts`'s
+    `extractHeadingsWithPosition`; deliberately narrow intra-document census, not the
+    general typed-relations engine issue #137's Release 0 declined to build).
   - **Shared by both** (top-level `core/`): `sidecar.ts` (the `.cairn/**` path mapping +
     lenient-JSON-codec mechanics `StampStore`/`RefStore` both build on), `hashing.ts`
     (`hashContent` — moved out of `DocSummaries` once it was found to be the one thing
@@ -55,9 +60,9 @@ Separation of concerns: pure decisions, IO at the edges.
   - **`checks/`**: the `CheckPlugin` interface (`isEnabled`/`run`/`format`/`exitCode`,
     optional `jsonUnsupportedMessage`/`stamp`) and its generic runner
     (`runCheckPlugin`/`rejectedJsonMessage`) — `links`/`refs`/`proseRefs`/`coverage`/
-    `docCoverage` each export a plugin descriptor and `cli.ts` drives all five through it;
-    `summaries` stays hand-wired (four CLI verbs — check/stamp/prune/migrate-stamps —
-    don't fit the shape).
+    `docCoverage`/`freshness`/`storyMapTiers` each export a plugin descriptor and `cli.ts`
+    drives all seven through it; `summaries` stays hand-wired (four CLI verbs —
+    check/stamp/prune/migrate-stamps — don't fit the shape).
   - **`summaries/`**: `CheckSummaries` (reads/writes the `.cairn/**` sidecar tree;
     `stampFiles` self-heals a legacy in-content stamp on every ordinary `--stamp`, so
     `--migrate-stamps` is only an optional named alias, never required), `CheckDeletions`
@@ -84,10 +89,14 @@ Separation of concerns: pure decisions, IO at the edges.
     each doc against the FIRST rule glob (declared order), asks `Git.lastCommitDate` for
     its real committer date, hands the result to `Freshness`'s pure `findStaleDocs`; a doc
     with no history (or a real `GitUnavailableError`) is silently excluded, surfaced only
-    as a warning when EVERY checked doc has no git data at all.
+    as a warning when EVERY checked doc has no git data at all. `CheckStoryMapTiers` —
+    opt-in (`checks.storyMapTiers`'s mere presence): finds docs matching its `globs`, reads
+    them, hands the content to `StoryMapTiers`'s pure functions — no markdown-shape logic
+    of its own.
   - **Shared by more than one check**: `JsonReport` (`--json`'s combined shape — only
-    links/summaries participate; refs/proseRefs/coverage/docCoverage reject `--json`
-    outright), `locale` (re-exports `Locale`; en default, fr mirror).
+    links/summaries participate; refs/proseRefs/coverage/docCoverage/freshness/
+    storyMapTiers reject `--json` outright), `locale` (re-exports `Locale`; en default, fr
+    mirror).
 - **Edge**: `config.ts` (disk IO: reads rc/`extends`/`package.json`, decodes via
   `core/Config`, expands root globs), `cli.ts` (excluded from coverage, historically
   dogfooded via real subprocess only — `cli.integration.test.ts` now locks in its two

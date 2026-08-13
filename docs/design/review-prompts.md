@@ -1,7 +1,7 @@
 # Reusable prompts for designing and judging a `checks.coverage` structure
 
-Two prompts for applying cairn's `checks.coverage` (kinds/rules) to any domain's
-documentation, not just software design packages. Both are business-agnostic: they take a
+Three prompts for applying cairn's `checks.coverage` (kinds/rules) to any domain's
+documentation, not just software design packages. All are business-agnostic: they take a
 domain and real source material as input, and neither assumes the reader already knows what
 `docs/design/` or "design package" means.
 
@@ -153,3 +153,96 @@ already believes in the structure is poorly positioned to find its gaps.
 >
 > Report explicitly which parts of claims (a) and (b) hold and which do not — do not
 > average them into a single vague verdict.
+
+## 3. Problem-space rationalization — refute the current framing before writing (or rewriting) problem-space.md
+
+The two prompts above both assume a `docs/design/<slug>/` package already exists and take
+its scope as given — "what structure fits this content." This prompt asks a prerequisite
+question neither of them does: **is the framing of the problem itself even correct**, before
+anyone commits words to a solution built on top of it. Use it before writing
+`problem-space.md` for a new initiative, or to re-examine an EXISTING one whose scope was
+never actually stress-tested — the trigger that motivated this prompt: applying it for real
+against this repo's own `docs/design/*/roadmap.md` files found a genuine boundary violation
+(one package's roadmap asserting a DIFFERENT package's release priority — "ADR 0004's own
+Release 1 ... should ship first regardless of this design's fate" — a claim `checks.coverage`'s
+own `scope: "sibling"` rules structurally cannot see or check, because it crosses a package
+boundary the schema has no vocabulary for) and a self-admitted vocabulary mismatch
+(`CONVENTION.md`'s own Claim 1: "`roadmap.md`'s rationale is dependency sequencing, not
+business tradeoff" — noted as a content gap there, never followed to its placement
+consequence). This prompt exists to catch that class of problem systematically, not rely on
+noticing it by accident while reading something else.
+
+Run it as a fresh, context-free reviewer wherever possible — the person who scoped the
+initiative is poorly positioned to refute their own scoping.
+
+> You are rationalizing the PROBLEM SPACE for **[INITIATIVE/ISSUE]**, given: the existing
+> (or draft) framing — **[PASTE problem-space.md, or the informal description if none exists
+> yet]** — and the real evidence available — **[LINK OR PASTE: issues, incident reports,
+> existing docs that touch this problem, related design packages]**.
+>
+> Do NOT propose a solution. Do NOT draft kinds/rules or a document structure. Your only job
+> here is to determine whether the problem, AS CURRENTLY FRAMED, is the real problem —
+> before anyone commits words to a solution built on top of it.
+>
+> Try to REFUTE each of the following claims about the current framing. Default to
+> refuting, not confirming — a claim survives only if you cannot construct a real
+> counter-example against it.
+>
+> **(a) Scope correctness**: "the initiative's declared scope (what it says it will and
+> won't touch) is the actual boundary of the problem, not an artifact of where someone
+> happened to start writing." Look for evidence the real problem crosses the stated
+> boundary — a claim, decision, or piece of reasoning that logically belongs to this
+> problem but is scoped to live somewhere else (a different doc, a different package, a
+> different layer), or the reverse: content inside the current scope that actually belongs
+> to a DIFFERENT, already-existing problem/package. Quote the specific passage that crosses
+> the boundary, and name where it actually belongs.
+>
+> **(b) Evidence sufficiency**: "the evidence cited for this being a real, worth-solving
+> problem is strong enough to justify the investment implied by the framing." Classify each
+> piece of cited evidence (a filed issue, an incident, a person's stated pain) by how
+> corroborated it is — one person's single report is not the same strength as a
+> reproduced-and-confirmed incident, which is not the same as a pattern recurring across
+> independent contexts. State plainly if the framing's implied investment (a new module, a
+> new config surface, a multi-release roadmap) is disproportionate to the evidence's actual
+> strength — this repo's own recurrence-gate lesson (`AGENTS.md`) is precedent: ask "has
+> this happened more than once, independently?" before any design investment, not after.
+>
+> **(c) Vocabulary honesty**: "the words used to describe this problem and its artifacts
+> (the doc's own filename, section headers, key terms) mean what they claim to mean here."
+> For each product- or process-sounding term borrowed into the framing (e.g. "roadmap,"
+> "story map," "persona," "risk"), check whether the content under that heading actually
+> matches the term's ordinary meaning, or is a narrower/different thing wearing that label.
+> Quote the mismatch, don't just assert it.
+>
+> **(d) Placement correctness**: "the documents/artifacts this problem's solution will
+> produce belong in the location the framing assumes (which directory, which package,
+> sibling-scoped vs. top-level, one doc vs. many)." Check for information that's
+> cross-cutting (spans multiple initiatives, packages, or time horizons) being forced into a
+> single-package-scoped location, or the reverse — genuinely single-scoped content inflated
+> into a shared/top-level location it doesn't need. This is a distinct claim from (a): (a)
+> is about the PROBLEM's logical boundary; (d) is about where the eventual DOCUMENTS live,
+> which can diverge from the problem's own boundary even when (a) holds — this repo's own
+> roadmap finding above is a (d) violation, not an (a) violation: the PROBLEM each package
+> solves is correctly scoped to that package; only the cross-package SEQUENCING CLAIM living
+> inside one package's file is misplaced.
+>
+> For every claim (a)-(d): cite concrete, quoted evidence — file, line, or passage — for
+> each finding, refuted or surviving. A claim that survives your attempt to refute it should
+> say so explicitly, with what you tried and why it held.
+>
+> Take a second, explicit pass, per this repo's own steelman discipline (this file's
+> Adversarial judge prompt above): for each claim you just refuted, argue the STRONGEST case
+> that your refutation is wrong — that the original framing was actually fine, and what
+> looks like a boundary/evidence/vocabulary/placement problem is actually deliberate, or
+> harmless, or already handled elsewhere you didn't check. Update your verdict only where
+> the steelman genuinely holds; otherwise state why it doesn't, citing evidence again.
+>
+> End with:
+>
+> - a list of every claim (a)-(d), each marked SURVIVED or REFUTED, with its one-line reason;
+> - for each REFUTED claim, a concrete rewrite instruction (not a full rewrite) — the
+>   smallest correction to the framing that would make the claim survive, e.g. "move X's
+>   cross-package sequencing claim out of this package's roadmap.md into a new top-level
+>   doc" or "rename this section, its content is Y not Z";
+> - an explicit statement of which claims you could NOT fully check (evidence you didn't
+>   have access to) rather than silently treating them as survived.

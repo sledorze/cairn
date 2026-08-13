@@ -238,6 +238,19 @@
       "additionalProperties": false,
       "description": "Tuning for `--prose-refs` (a CLI-flag opt-in check; this config section only tunes it, it does not enable it — absent means no ignore list, not disabled)."
     },
+    "CairnStoryMapTiersConfig": {
+      "type": "object",
+      "properties": {
+        "globs": {
+          "type": "array",
+          "description": "Which docs to check for the walking-skeleton invariant (one `(Must)`-tagged card per backbone step).",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["globs"],
+      "additionalProperties": false,
+      "description": "Opt-in check that every backbone step under a story-map's `## Cards, by backbone step` section has exactly one `(Must)`-tagged card — the thinnest complete slice at that step. Absent by default — presence enables it."
+    },
     "CairnChecksConfig": {
       "type": "object",
       "properties": {
@@ -272,6 +285,9 @@
         "freshness": { "anyOf": [{ "$ref": "#/$defs/CairnFreshnessConfig" }, { "type": "boolean", "enum": [false] }] },
         "links": { "type": "boolean", "description": "Enable Markdown dead-link checking. Default true." },
         "proseRefs": { "$ref": "#/$defs/CairnProseRefsConfig" },
+        "storyMapTiers": {
+          "anyOf": [{ "$ref": "#/$defs/CairnStoryMapTiersConfig" }, { "type": "boolean", "enum": [false] }]
+        },
         "summaries": {
           "type": "boolean",
           "description": "Enable summary freshness checking (content-hash based). Default true."

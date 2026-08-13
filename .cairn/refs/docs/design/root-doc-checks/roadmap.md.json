@@ -1,11 +1,15 @@
 {
   "refs": [
     {
+      "hash": "233fc7a9c0d5e906a744c2eb814241f81ea0e0f7148fe9a46f3e12599ed567f6",
+      "target": "../dependencies.md"
+    },
+    {
       "hash": "33a43573e86e2769f9c04c9c701557da9fdc3fdb14920526730d3817b53c4cdd",
       "target": "./spikes.md"
     },
     {
-      "hash": "87c0227048b97e3baa5bc0e429ed29cf7b6a4f9c300786994f2344109c34ab5c",
+      "hash": "635f40044ec17b775c1ed0a2f4f74dc9ca668eed9b6cfa8922caea722064409e",
       "target": "./story-map.md"
     }
   ]

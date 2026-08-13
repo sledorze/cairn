@@ -1,3 +1,7 @@
+---
+design-status: proceeding
+---
+
 # Issue #137 design: typed relations
 
 Full design package for [issue #137](https://github.com/sledorze/cairn/issues/137)

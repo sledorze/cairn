@@ -1,27 +1,31 @@
 {
   "refs": [
     {
-      "hash": "4684b3bc2aced3af31ca89b0a4c4172732176cdf5db502b6bc314f5210e747a9",
+      "hash": "b254e5ca3d6e85c8a1e576d5a50a39a610eb2069155cae37615a2042f153500e",
       "target": "./CONVENTION.md"
     },
     {
-      "hash": "349cf86f868c4cd1134e06f5166f2485c970da8301eaa90f5fd42b2b1a9c717a",
+      "hash": "6edeec802816f3df5aa7d7c489d4bc91a306fc2546fee548237ad7c11990ef6e",
       "target": "./review-prompts.md"
     },
     {
-      "hash": "a22a40d712a5bc6e519dade419ad8fb1f3c93b06c28a5d14cdb35db0060acfc5",
+      "hash": "efd43c2edfeaff76f9fe47f8a1cea24e8f1cd3011e8dada2a592cb8fb7304fee",
       "target": "./review-findings.md"
     },
     {
-      "hash": "3f9ece61c2c7b85cc845c9ae3b31efa4d9e5e5496231d79fe53cf33b9c7acd0c",
+      "hash": "233fc7a9c0d5e906a744c2eb814241f81ea0e0f7148fe9a46f3e12599ed567f6",
+      "target": "./dependencies.md"
+    },
+    {
+      "hash": "ed4e81736915deb0a4c14a12cdb93b6319993e86142ec13246dd746bcb9a1c5b",
       "target": "./101-refs-symbol-scoping/_SUMMARY.md"
     },
     {
-      "hash": "e8fa26d52dcd3b042d26be767b516cbdfc26c8662c165ba75fe9923d486b2012",
+      "hash": "2fb0f75dce8a7fc9fc8398fa29c5950e3af7571790c657d8ce088620302afb50",
       "target": "./137-typed-relations/_SUMMARY.md"
     },
     {
-      "hash": "b8fa2c4fe72a79cc002d89a9502bad043ead4e1fc3cbd8bcb49a7eb479c33da2",
+      "hash": "9096204e29902cbfb98c6fa9d6ea31581c17dd21267a6b9383092cf1306efc9e",
       "target": "./root-doc-checks/_SUMMARY.md"
     }
   ]

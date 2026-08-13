@@ -61,6 +61,10 @@
       "target": "../src/core/structure/Freshness.ts"
     },
     {
+      "hash": "6a817fd074e8f80ee432480040550120f995d13f6a0948bb3539e397d7290718",
+      "target": "../src/core/structure/StoryMapTiers.ts"
+    },
+    {
       "hash": "fc3aea5b9b26e13c98480fec4eddf2184a955b882884b22c5b2aa1a1626d88a1",
       "target": "../src/core/sidecar.ts"
     },
@@ -81,7 +85,7 @@
       "target": "../src/core/paths.ts"
     },
     {
-      "hash": "6055c45d602e4f0dec83ec7e8bb789164a6160a5d5dd158cb61635a89ec4058f",
+      "hash": "5f5d79f938afe347e6bda9a644f864e2eae8b1a6b187eb0d0beb6e895f5841cf",
       "target": "../src/core/Config.ts"
     },
     {
@@ -137,6 +141,10 @@
       "target": "../src/program/structure/CheckFreshness.ts"
     },
     {
+      "hash": "447ac03277ccaf7426736150abfd457e2a9fad0126870ba6c7553cc38c525dbe",
+      "target": "../src/program/structure/CheckStoryMapTiers.ts"
+    },
+    {
       "hash": "7dc9543c50bf97550d43212e04ddd56e680e185eaad27da82ae55edc0014b89f",
       "target": "../src/program/JsonReport.ts"
     },
@@ -149,7 +157,7 @@
       "target": "../src/config.ts"
     },
     {
-      "hash": "045f4508d8e0ac97f7756940587f87417d73639c853e703689f849d00f087e50",
+      "hash": "bb21878e8f1b735e74800fa257def0cbfc78ac87ddd88c8a61a05c1c13cc14fd",
       "target": "../src/cli.ts"
     },
     {

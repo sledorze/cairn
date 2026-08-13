@@ -5,8 +5,8 @@ sources") and an existence universe (`known`, "what counts as resolvable for a l
 target") are two different concerns even when one implementation (`DocsFs.listFiles`'s
 directory pruning) happens to feed both — reusing the exclusion mechanism for the
 existence question silently inherits a side effect it was never designed to have. The same
-shape of mistake `docs/design/101-refs-symbol-scoping/problem-space.md` independently
-names for `ignore` vs. `--refs`; recognize it as one recurring lesson, not three unrelated
+shape of mistake `docs/design/101-refs-symbol-scoping/problem-space.md` already
+names for `ignore` vs. `--refs`; recognize it as one recurring lesson, not two unrelated
 ones.
 
 Verification discipline: this design's two most load-bearing claims (today's failure is

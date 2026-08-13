@@ -67,13 +67,15 @@ decode sees both at once); a THIRD, adjacent critique (unifying `scope`'s two va
 general path-relation primitive) was raised and deliberately NOT built — only two data points,
 recorded as noted-but-deferred rather than built or ignored; `CoverageTarget` has three
 variants (a URL target closed another real gap), but only via a plain substring match, not a
-real URL grammar. Six measurable checks (product-term lexicon ratio, persona audit,
-evidence-source classifier, schema variant census, self-reported-gap closure tracking,
-hedge-language census) track both gaps as numbers over time; the schema variant census and
-hedge-language census are now computed for real by `scripts/coverage-metrics.ts` (`pnpm run
-coverage-metrics`) rather than hand-counted — current real output (KindSelector.by: 2,
-CoverageTarget: 3, CoverageRequirement.by: 1, CoverageRule.scope: 2; hedge phrases total 15)
-is quoted in full in this doc. Reusable, business-agnostic prompts for running this kind of
+real URL grammar. Three measurable checks (schema variant census, self-reported-gap closure
+tracking, hedge-language census) track both gaps as numbers over time — trimmed from an
+earlier list of six that also named three never-implemented metrics (product-term lexicon
+ratio, persona audit, evidence-source classifier), dropped as pure prescription with no real
+tooling ever computing them. The schema variant census and hedge-language census ARE
+computed for real, by `scripts/coverage-metrics.ts` (`pnpm run coverage-metrics`); this doc
+deliberately points readers at that live command rather than hand-pasting a snapshot number
+— a pasted hedge-language count once drifted stale (6/15 vs. a real 12/21) undetected.
+Reusable, business-agnostic prompts for running this kind of
 review on any `checks.coverage` structure, plus a validated negative result against
 `README.md`/`docs/architecture.md`, the `atLeast` closure's own dogfood/adversarial-review
 evidence, and `checks.freshness`'s own real dogfood run and dogfooding decision (NOT enabled
@@ -93,3 +95,23 @@ undeclared-kind-id check) remain genuinely unexpressible in plain JSON Schema.
 
 Full historical narrative (what was tried, what failed, what was found) is in
 `docs/adr/0005-design-packages-structurally-enforced-by-existing-coverage.md`'s amendments.
+
+**Addendum: roadmap/story-map rationalization pass.** A real rationalization pass found four
+gaps in `roadmap.md`/`story-map.md`, now closed, config-only: a cross-package sequencing
+claim now lives in a new top-level, non-sibling-scoped [`dependencies.md`](./dependencies.md)
+(with a small Mermaid context-map diagram), tagged via `roadmap.md`'s plain
+`external-dependency-kind: stable-interface` frontmatter (one kind — the only real instance;
+two other conceivable shapes weren't pre-built); `story-map`/`roadmap`/`implementation-details`/
+`knowledge` now require a NEW `design-package-proceeding` kind (`by: "frontmatter"`,
+`design-status: proceeding` on `_SUMMARY.md`, sitting on the Double Diamond's Develop→Deliver
+boundary) instead of the plain `design-package` kind, so a package can stop at
+`problem-space`/`solution-space`/`spikes` and stay green if an ROI checkpoint says no; every
+`story-map.md` carries the same short, required disclosure ("internal engineering role, not a
+customer segment"), honestly convention-only, not structurally enforced. A first draft
+borrowed Team Topologies' vocabulary throughout — rejected on review as cargo-cult for a
+single-maintainer repo (no teams, no handoffs); replaced with plain software vocabulary and,
+for the gate's placement, the Double Diamond (a cognitive sequence, not a team model). A new
+"Lexicon" section gives `design package`/the proceed signal/`stable-interface dependency` one
+canonical definition each. Full historical narrative, including a false claim caught and
+fixed mid-session and this doc's own length being cut back after growing to 874 lines, is in
+[`review-findings.md`](./review-findings.md) section 10.

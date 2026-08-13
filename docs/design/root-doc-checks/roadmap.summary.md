@@ -1,5 +1,10 @@
 # Roadmap summary: issue #151 (root-level docs reachable by cairn)
 
+Opens with a required disclosure: this roadmap sequences ENGINEERING dependency, not
+business tradeoff, and declares no cross-package dependency (no `external-dependency-kind`
+frontmatter) — see [`../dependencies.md`](../dependencies.md) for the relations that do
+exist elsewhere in this repo.
+
 One release, not a multi-stage sequence — `spikes.md` already confirms the primitive is
 small.
 

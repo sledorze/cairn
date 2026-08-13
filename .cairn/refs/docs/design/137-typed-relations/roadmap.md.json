@@ -1,7 +1,11 @@
 {
   "refs": [
     {
-      "hash": "bc8ea6de706065791f8858a3a6b923806153f263c53a2ece07daf37aa8bb814b",
+      "hash": "233fc7a9c0d5e906a744c2eb814241f81ea0e0f7148fe9a46f3e12599ed567f6",
+      "target": "../dependencies.md"
+    },
+    {
+      "hash": "cf6131aba49fcdb958fa54c06f2e33f2f41c74452e2770e9c5c51542a98341c4",
       "target": "./story-map.md"
     },
     {

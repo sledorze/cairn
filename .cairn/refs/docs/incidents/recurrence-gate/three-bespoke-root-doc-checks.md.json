@@ -1,7 +1,7 @@
 {
   "refs": [
     {
-      "hash": "4f328f082cf0e3935f107b635809b8b6f4418e1d3e9c0bd2815ae5e2ef0b126f",
+      "hash": "55870e3817bcb0bf47d230a78bef3e91926933b0add0410c9c0e66f440e8857a",
       "target": "../../../src/jsonIncompatibility.readme.unit.test.ts"
     },
     {
@@ -13,7 +13,7 @@
       "target": "../../../src/program/links/CheckLinks.ts"
     },
     {
-      "hash": "6055c45d602e4f0dec83ec7e8bb789164a6160a5d5dd158cb61635a89ec4058f",
+      "hash": "5f5d79f938afe347e6bda9a644f864e2eae8b1a6b187eb0d0beb6e895f5841cf",
       "target": "../../../src/core/Config.ts"
     }
   ]

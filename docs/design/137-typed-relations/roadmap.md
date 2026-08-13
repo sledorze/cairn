@@ -1,4 +1,18 @@
+---
+external-dependency-kind: stable-interface
+---
+
 # Roadmap: issue #137 (typed relations)
+
+**What this roadmap actually is** (required disclosure, per `CONVENTION.md`'s "judging
+this convention" section): the releases below sequence SHIPPABLE INCREMENTS for one
+package by ENGINEERING DEPENDENCY, not a business-tradeoff prioritization — there is no
+market/customer-value ranking here, just "what needs what to be buildable first." A claim
+about a DIFFERENT package's state (what it depends on, needs from, or should ship before)
+does not live here — see [`../dependencies.md`](../dependencies.md), the top-level register
+this package's Release 2 stable-interface dependency on `101-refs-symbol-scoping` is
+recorded in (frontmatter above; `.cairnrc.json`'s `depends_on` rule structurally requires
+this roadmap to link that register).
 
 **Status update, added after the fact — the Release 0 verdict below is kept UNCHANGED as
 the historical record it explicitly says it is; this note sits above it, not inside it.**
@@ -8,7 +22,10 @@ true when that checkpoint ran. It no longer is: `refs.scope` shipped, followed b
 — all real, merged, dogfooded. The opportunity-cost argument that finding made ("that should
 ship first") is resolved, not open. Nothing else in this checkpoint's six findings depended
 on that one being current, so the overall verdict (option B only, not the fuller vocabulary)
-stands unchanged — only that one finding's premise did.
+stands unchanged — only that one finding's premise did. **This is exactly the kind of stale,
+hand-patched cross-package claim [`../dependencies.md`](../dependencies.md) now exists to
+prevent recurring** — the fact "101's Release 1 shipped" is tracked there going forward, not
+as a second, drifting copy in this paragraph.
 
 Four releases, each independently shippable and each independently valuable — not a
 big-bang vocabulary rollout. Mirrors `101-refs-symbol-scoping/roadmap.md`'s own discipline:

@@ -1,13 +1,13 @@
 // Guards README.md against documenting only SOME of the real `--json` incompatibilities.
-// cli.ts rejects `--json` combined with 7 different flags/checks: 5 are registered in
+// cli.ts rejects `--json` combined with 8 different flags/checks: 6 are registered in
 // `JSON_INCOMPATIBLE_PLUGINS` (each CheckPlugin owns its own `jsonUnsupportedMessage`),
 // plus 2 hand-written guards for `--stamp`/`--migrate-stamps` and `--report-deletions`
 // that aren't part of the plugin registry (see cli.ts's comment on why). An earlier
 // adversarial review of this README found only the 2 hand-written cases undocumented
-// and nearly shipped a test covering just those — missing that all 5 registry-based
-// cases were ALSO completely undocumented. This test enumerates the real registry so a
-// 6th plugin added later without README coverage fails here too, not just the 2 that
-// happened to get noticed once.
+// and nearly shipped a test covering just those — missing that all 5 (now 6)
+// registry-based cases were ALSO completely undocumented. This test enumerates the real
+// registry so a 7th plugin added later without README coverage fails here too, not just
+// the 2 that happened to get noticed once.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { coveragePlugin } from './program/structure/CheckCoverage.ts'
 import { docCoveragePlugin } from './program/structure/CheckDocCoverage.ts'
 import { freshnessPlugin } from './program/structure/CheckFreshness.ts'
+import { storyMapTiersPlugin } from './program/structure/CheckStoryMapTiers.ts'
 import { proseRefsPlugin } from './program/links/CheckProseRefs.ts'
 import { refsPlugin } from './program/links/CheckRefs.ts'
 
@@ -25,7 +26,14 @@ const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8')
 // The registry cli.ts actually wires up (JSON_INCOMPATIBLE_PLUGINS) — kept in sync by
 // hand since cli.ts doesn't export that private const; each plugin's own
 // `jsonUnsupportedMessage` is the real source of truth this test reads from.
-const REGISTRY_PLUGINS = [refsPlugin, proseRefsPlugin, coveragePlugin, docCoveragePlugin, freshnessPlugin]
+const REGISTRY_PLUGINS = [
+  refsPlugin,
+  proseRefsPlugin,
+  coveragePlugin,
+  docCoveragePlugin,
+  freshnessPlugin,
+  storyMapTiersPlugin,
+]
 
 // Not part of the plugin registry (need live GitFs / aren't a CheckPlugin) — literal
 // strings duplicated from cli.ts's two hand-written `--json` guards. Keep these in sync
@@ -48,8 +56,8 @@ const allMessages = [...REGISTRY_PLUGINS.map((p) => p.jsonUnsupportedMessage), .
 const incompatibilityParagraph = readme.split('\n').find((line) => line.includes('cannot be combined'))
 
 describe('README.md documents every real --json incompatibility', () => {
-  it('sanity: there really are 7 known incompatible combinations', () => {
-    expect(allMessages).toHaveLength(7)
+  it('sanity: there really are 8 known incompatible combinations', () => {
+    expect(allMessages).toHaveLength(8)
   })
 
   it('sanity: the documenting paragraph exists', () => {

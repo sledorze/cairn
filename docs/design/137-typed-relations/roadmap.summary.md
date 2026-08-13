@@ -1,5 +1,14 @@
 # Roadmap (issue #137) — summary
 
+Frontmatter: `external-dependency-kind: stable-interface` — this package consumes
+`101-refs-symbol-scoping`'s shipped `refs.scope`/scanner output for its own (on-hold)
+Release 2; the relation itself is recorded in [`../dependencies.md`](../dependencies.md),
+structurally required by `.cairnrc.json`'s `depends_on` rule (plain software vocabulary, not
+an imported org framework — see `CONVENTION.md`). Opens with a required disclosure: this
+roadmap sequences ENGINEERING dependency, not business tradeoff, and a claim about a
+DIFFERENT package's state belongs in `dependencies.md`, not here — the exact gap the
+"status update, added after the fact" paragraph below used to leave open.
+
 **Release 0's ROI checkpoint was actually run**, not just proposed — an independent
 adversarial review against this design's real cost. **Verdict: don't build the full
 vocabulary.** Six findings: evidence base (one maintainer, no outside corroboration)

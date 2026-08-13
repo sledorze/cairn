@@ -186,6 +186,7 @@ describe('loadConfig()', () => {
       freshness: null,
       links: false,
       proseRefs: { ignore: [] },
+      storyMapTiers: null,
       summaries: false,
     }) // deep-merged
     expect(config.roots).toEqual(['docs']) // untouched, falls through to the default
@@ -230,6 +231,7 @@ describe('loadConfig()', () => {
       freshness: null,
       links: false,
       proseRefs: { ignore: [] },
+      storyMapTiers: null,
       summaries: false,
     })
   })
@@ -520,6 +522,61 @@ describe('loadConfig()', () => {
     )
     const config = await run(loadConfig(cwd))
     expect(config.checks.freshness).toEqual({ rules: [{ glob: 'docs/**', maxAgeDays: 30 }] })
+  })
+
+  // Same four tests as `checks.coverage`/`checks.docCoverage`/`checks.freshness` above,
+  // for `checks.storyMapTiers` — replace-wholesale on `extends`, re-disable with `false`
+  // (both via `extends` and with no `extends` at all), and inherit-when-unset.
+  it('replaces (not merges) `checks.storyMapTiers` entirely when the local file also sets it', async () => {
+    const cwd = mkTmp('cairn-extends-storymaptiers-replace-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { storyMapTiers: { globs: ['docs/from-base/*/story-map.md'] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({
+        checks: { storyMapTiers: { globs: ['docs/from-local/*/story-map.md'] } },
+        extends: './base.cairnrc.json',
+      }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.storyMapTiers).toEqual({ globs: ['docs/from-local/*/story-map.md'] })
+  })
+
+  it('re-disables `checks.storyMapTiers` with `false` when a local config overrides an `extends` preset that enabled it', async () => {
+    const cwd = mkTmp('cairn-extends-storymaptiers-disable-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { storyMapTiers: { globs: ['docs/design/*/story-map.md'] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { storyMapTiers: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.storyMapTiers).toBeNull()
+  })
+
+  it('resolves `checks.storyMapTiers: false` to null with no `extends` involved at all', async () => {
+    const cwd = mkTmp('cairn-storymaptiers-disable-no-extends-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { storyMapTiers: false } }))
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.storyMapTiers).toBeNull()
+  })
+
+  it('inherits `checks.storyMapTiers` from an `extends` preset when the local file does not set it', async () => {
+    const cwd = mkTmp('cairn-extends-storymaptiers-inherit-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({ checks: { storyMapTiers: { globs: ['docs/design/*/story-map.md'] } } }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { links: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.storyMapTiers).toEqual({ globs: ['docs/design/*/story-map.md'] })
   })
 
   it('resolves diamond-shaped `extends` (two siblings sharing a base) without a false-positive cycle', async () => {

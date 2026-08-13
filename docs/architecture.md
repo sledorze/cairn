@@ -117,6 +117,20 @@ summary links to every child") — is one-directional and real, not a cycle.
        its kind-matching) — freshness turned out to be a per-doc TEMPORAL
        question with no relational/kind-graph logic at all, so reusing
        `Coverage.ts` would have imported machinery this check never needs.
+     - [`StoryMapTiers.ts`](../src/core/structure/StoryMapTiers.ts) — a real
+       drift found auditing this repo's own `docs/design/*/story-map.md`:
+       every one claimed a marked walking-skeleton card per backbone step,
+       but none actually had exactly one `(Must)`-tagged card per step.
+       `extractBackboneStepTiers` reuses `links/Anchors.ts`'s
+       `extractHeadingsWithPosition` (already used by `DocMetadata.ts`
+       above) to find each `### N. ...` backbone-step heading under a `##
+Cards, by backbone step` section, then regex-counts
+       `(Must|Should|Could)` tags within that step's own text span;
+       `findWalkingSkeletonViolations` flags any step whose `(Must)` count
+       isn't exactly 1. Deliberately narrow, intra-document structural
+       census — not the general typed-relations predicate/comparison engine
+       `docs/design/137-typed-relations/roadmap.md`'s own Release 0 declined
+       to build (no code-target resolution, no cross-file comparison).
    - **Shared by both domains** (top-level `core/`, not inside either
      subdirectory — genuinely used by both, verified by import graph, not
      assumed): [`sidecar.ts`](../src/core/sidecar.ts) (the `.cairn/**` path
@@ -192,8 +206,8 @@ summary links to every child") — is one-directional and real, not a cycle.
      [`runCheckPlugin.ts`](../src/program/checks/runCheckPlugin.ts)
      (`runCheckPlugin`/`rejectedJsonMessage`) runner `cli.ts` drives every
      migrated check through. `links`/`refs`/`proseRefs`/`coverage`/
-     `docCoverage` each export a plugin descriptor from their own file
-     (below); `summaries`
+     `docCoverage`/`freshness`/`storyMapTiers` each export a plugin
+     descriptor from their own file (below); `summaries`
      deliberately stays OUTSIDE this abstraction — see `CheckPlugin.ts`'s own
      header for why (four CLI verbs — check/stamp/prune/migrate-stamps —
      that don't fit `run`/`format`/`exitCode`).
@@ -270,12 +284,18 @@ Freshness.ts`'s pure `findStaleDocs`. A doc with no commit history yet, or
        a real `GitUnavailableError`, is silently excluded from staleness —
        surfaced only as a non-fatal warning when EVERY checked doc comes
        back with no git data at all.
+     - [`CheckStoryMapTiers.ts`](../src/program/structure/CheckStoryMapTiers.ts) —
+       opt-in (`checks.storyMapTiers`'s mere presence, no CLI flag): finds
+       docs matching its configured `globs`, reads their content, and hands
+       it to `core/structure/StoryMapTiers.ts`'s pure
+       `extractBackboneStepTiers`/`findWalkingSkeletonViolations` pair — no
+       markdown-shape logic lives in this file, only IO.
    - **Shared by more than one domain**: [`JsonReport.ts`](../src/program/JsonReport.ts)
      (combines a links/summaries run into the single
      `{ summaries, links, exitCode }` shape `--json` prints — only these two
-     checks participate; `refs`/`proseRefs`/`coverage`/`docCoverage` all
-     reject `--json` outright, via their plugin descriptor's
-     `jsonUnsupportedMessage`),
+     checks participate; `refs`/`proseRefs`/`coverage`/`docCoverage`/
+     `freshness`/`storyMapTiers` all reject `--json` outright, via their
+     plugin descriptor's `jsonUnsupportedMessage`),
      [`locale.ts`](../src/program/locale.ts) (report localisation, English
      default, French mirror).
 

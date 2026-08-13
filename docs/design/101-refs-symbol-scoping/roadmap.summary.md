@@ -1,5 +1,10 @@
 # Roadmap (issue #101) — summary
 
+Opens with a required disclosure: this roadmap sequences ENGINEERING dependency for THIS
+package only, not business tradeoff; it declares no cross-package dependency itself (no
+`external-dependency-kind` frontmatter) — [`../dependencies.md`](../dependencies.md) is
+where `137-typed-relations`' own dependency ON this package's output is recorded instead.
+
 **Release 1 has shipped** (ADR 0004, now `accepted`). Releases 2/3 remain provisional.
 
 Release 1 ships before Release 2 not because Release 2 is too risky
