@@ -63,7 +63,7 @@ jobs:
       # exact versions (v1.0.0..v1.9.0) plus v2 prereleases (v2.0.0-next.*). `@v2` (what
       # this was first written with, based on a since-corrected assumption) failed with
       # "unable to find version v2" on a real run.
-      - uses: changesets/action@v1.9.0
+      - uses: changesets/action@v2.1.0
         with:
           # `publish`, not `publish-script` (the latter is silently ignored, not an
           # error — a real run showed the warning and would have skipped publishing
