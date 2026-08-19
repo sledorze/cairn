@@ -180,28 +180,46 @@ const blank = (chars: string[], start: number, end: number): void => {
  * bracket repetition, so no length cap is needed.
  */
 const maskInlineCode = (content: string): string => {
-  const runs: BacktickRun[] = [...content.matchAll(BACKTICK_RUN_RE)].map((m) => {
-    const start = m.index ?? 0
-    return { end: start + m[0].length, length: m[0].length, start }
-  })
-  const chars = [...content]
-  let i = 0
-  while (i < runs.length) {
-    const opener = runs[i]
-    if (opener === undefined) {
-      break
+  // A manual `.exec()` loop, not `[...content.matchAll(...)]`: TS's own lib
+  // types make `RegExpExecArray.index` (`.exec()`'s return type) a plain
+  // `number`, while `RegExpMatchArray.index` (`matchAll`'s) is `number |
+  // undefined` — the same runtime guarantee either way (a real match always
+  // has a numeric index), but `.exec()`'s typing needs neither a `?? 0`
+  // fallback (an unreachable branch no real input can take, `??`'s own
+  // downside — see `extractLinkDefinitionsWithPosition`'s comment) nor an
+  // `as` assertion to get there. `lastIndex` reset first since
+  // `BACKTICK_RUN_RE` is a shared, stateful `g`-flag regex.
+  const runs: BacktickRun[] = []
+  BACKTICK_RUN_RE.lastIndex = 0
+  for (let m = BACKTICK_RUN_RE.exec(content); m !== null; m = BACKTICK_RUN_RE.exec(content)) {
+    const start = m.index
+    runs.push({ end: start + m[0].length, length: m[0].length, start })
+  }
+  // `content.split('')`, not `[...content]` (oxlint's own `unicorn/prefer-spread`
+  // would rather see the latter) — this MUST stay UTF-16 code-UNIT indexed to
+  // match `blank`'s `start`/`end` (regex `.index`-derived); the spread form is
+  // code-POINT indexed and silently shrinks + misaligns the array the moment an
+  // astral character (e.g. an emoji) appears anywhere earlier in the document —
+  // confirmed for real (see `blank`'s own comment): a genuine correctness bug
+  // this file's own oxlint autofix has re-introduced more than once.
+  // oxlint-disable-next-line unicorn/prefer-spread
+  const chars = content.split('')
+  // `runs.entries()` (real element type, never `BacktickRun | undefined`)
+  // instead of manual `runs[i]` indexing — `noUncheckedIndexedAccess` makes
+  // every indexed access possibly-`undefined` even where the loop's own
+  // bound already guarantees otherwise, which would leave a defensive
+  // branch no real input can ever reach (a bug class this codebase treats
+  // as a real defect, not just untested code — a still-reachable branch
+  // deserves a real test, an UNREACHABLE one deserves not existing).
+  let skipUntil = 0
+  for (const [i, opener] of runs.entries()) {
+    if (i < skipUntil) {
+      continue
     }
-    let j = i + 1
-    let closer = runs[j]
-    while (closer !== undefined && closer.length !== opener.length) {
-      j += 1
-      closer = runs[j]
-    }
-    if (closer === undefined) {
-      i += 1
-    } else {
+    const closer = runs.slice(i + 1).find((run) => run.length === opener.length)
+    if (closer !== undefined) {
       blank(chars, opener.start, closer.end)
-      i = j + 1
+      skipUntil = runs.indexOf(closer) + 1
     }
   }
   return chars.join('')

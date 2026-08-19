@@ -66,9 +66,42 @@ describe('stripCode()', () => {
       expect(extractLinks(stripCode(md))).toEqual([{ target: './MISSING.md', text: 'a/path' }])
     })
 
+    it('masks the CORRECT positions, not just the right total length, when an astral character (surrogate pair) appears before later code spans', () => {
+      // 😀 (U+1F600) is 2 UTF-16 code units — a code-POINT-based char array
+      // (`[...content]`) has one FEWER entry than `content.length` from this
+      // point on, so indexing it with `blank`'s `start`/`end` (always
+      // UTF-16-code-unit offsets, from regex `.index`) lands on the WRONG
+      // character — confirmed directly: for `content` below, UTF-16 index
+      // 10 (a real backtick) maps to `"r"` in `[...content]`, and index 51
+      // (another real backtick) maps to `"x"`. Caught for real, not just
+      // reasoned about: a first version of this test used `.startsWith`/
+      // `.toContain`/`.endsWith` and PASSED even against the buggy
+      // `[...content]` code, because the corruption (a stray leaked
+      // backtick, wrong space counts) still satisfied those loose
+      // substring checks — only exact full-string equality against a
+      // hand-verified expected value actually catches it.
+      const md = 'before 😀 `run\n--rm` after [ok](./MISSING.md) more `x` end'
+      const stripped = stripCode(md)
+      expect(stripped).toBe('before 😀     \n      after [ok](./MISSING.md) more     end')
+      expect(stripped).toHaveLength(md.length)
+      expect(extractLinks(stripped).map((l) => l.target)).toEqual(['./MISSING.md'])
+    })
+
     it('a stray same-line backtick that DOES find a same-length partner masks through the link — this is real CommonMark, not a bug: the backtick pair genuinely consumes the "[" as a code span', () => {
       const md = '--rm` and then [`a/path`](./MISSING.md).'
       expect(extractLinks(stripCode(md))).toEqual([])
+    })
+
+    it('an opener whose IMMEDIATE next run does not match, but a LATER run does — a real double-backtick span containing a lone single backtick', () => {
+      // ``one`two`` — runs: `` (len 2, opener), ` (len 1, immediate next —
+      // does NOT match), `` (len 2, the real closer, one run further along).
+      // Exercises the "keep scanning forward past a non-matching run" path,
+      // distinct from every other test here, which only ever has an
+      // opener's very next run as its closer.
+      const md = '``one`two`` [ok](./MISSING.md)'
+      const stripped = stripCode(md)
+      expect(stripped).toBe('            [ok](./MISSING.md)')
+      expect(extractLinks(stripped).map((l) => l.target)).toEqual(['./MISSING.md'])
     })
   })
 })
