@@ -116,7 +116,7 @@ export interface CheckContentArgs {
 // regardless of backtracking; only a length cap turns each retry's cost
 // into a constant, restoring overall linear behaviour.
 const LINK_RE = /!?\[([^\]]{0,2000})\]\((?:<([^<>\n]{0,2000})>|([^)\s]{1,2000}))(?:\s+"[^"]{0,2000}")?\)/g
-const INLINE_CODE_RE = /`[^`\n]*`/g
+const BACKTICK_RUN_RE = /`+/g
 
 /** A `LINK_RE` match's destination is in capture group 2 (angle-bracket form)
  * or group 3 (bare form) depending on which alternative matched — never both,
@@ -128,14 +128,92 @@ const INLINE_CODE_RE = /`[^`\n]*`/g
  * regex, not a runtime possibility a fallback needs to defend against. */
 const linkTarget = (match: RegExpMatchArray): string => (match[2] ?? match[3]) as string
 
+/** One run of consecutive backtick characters — CommonMark's actual code-span
+ * delimiter is a backtick RUN of some length, not a single backtick. */
+interface BacktickRun {
+  readonly end: number
+  readonly length: number
+  readonly start: number
+}
+
+/** Blank `[start, end)` of `chars` in place, preserving newlines (same
+ * contract `stripCode`'s own docstring states) and total length exactly —
+ * callers downstream (`extractLinksWithPosition` -> `DocMetadata.ts`'s
+ * `offsetToLine`) rely on masked-content offsets lining up 1:1 with the
+ * ORIGINAL content's own line-start table, so this must never change the
+ * document's length or line count. `chars` is a `string.split('')` array —
+ * UTF-16 code UNIT indexed, matching `.length`/regex `.index`, deliberately
+ * NOT `[...str]`'s code-POINT iteration, which would silently shrink the
+ * output — and shift every later offset — the moment a masked span contains
+ * an astral character. */
+const blank = (chars: string[], start: number, end: number): void => {
+  for (let i = start; i < end; i += 1) {
+    if (chars[i] !== '\n') {
+      chars[i] = ' '
+    }
+  }
+}
+
+/**
+ * Mask CommonMark-style inline code spans (`` `code` ``, ``` ``code`` ```,
+ * ...) across the WHOLE document, not line by line (issue #180) — a code
+ * span opened on one line and closed on a later one is ordinary Markdown
+ * reflow, and CommonMark's own rule has no same-line restriction: a span is
+ * delimited by a backtick RUN, and closes at the NEXT run of EQUAL length,
+ * wherever that falls. The prior single-regex form (`` /`[^`\n]*`/g `` )
+ * could never match across a `\n`, so a wrapped span's true closer was
+ * invisible to it — the scan instead re-paired the OPENING run against
+ * whichever backtick happened to come next on the CLOSING line, silently
+ * swallowing whatever (a real link, among other things) sat between them.
+ *
+ * Implemented as a single forward pass over the backtick-RUN list (not a
+ * backtracking regex over the whole document): for each run not yet
+ * consumed, scan forward for the next run of the same length; found ->
+ * that's the closer, mask between them (inclusive) and continue after it;
+ * not found -> this run is literal (an unterminated span opener never masks
+ * anything, matching CommonMark), advance by one run. Worst case is
+ * O(runs^2) if many runs never find a same-length partner — a categorically
+ * different, far smaller risk than `LINK_RE`'s own bounded quantifiers exist
+ * to defend against (adversarial UNCLOSED-bracket input driving regex
+ * backtracking): `runs` here is a document's inline-code-marker count
+ * (realistically low double digits at most), not attacker-controlled
+ * bracket repetition, so no length cap is needed.
+ */
+const maskInlineCode = (content: string): string => {
+  const runs: BacktickRun[] = [...content.matchAll(BACKTICK_RUN_RE)].map((m) => {
+    const start = m.index ?? 0
+    return { end: start + m[0].length, length: m[0].length, start }
+  })
+  const chars = [...content]
+  let i = 0
+  while (i < runs.length) {
+    const opener = runs[i]
+    if (opener === undefined) {
+      break
+    }
+    let j = i + 1
+    let closer = runs[j]
+    while (closer !== undefined && closer.length !== opener.length) {
+      j += 1
+      closer = runs[j]
+    }
+    if (closer === undefined) {
+      i += 1
+    } else {
+      blank(chars, opener.start, closer.end)
+      i = j + 1
+    }
+  }
+  return chars.join('')
+}
+
 /**
  * Blank out fenced (``` / ~~~, via `maskFencedCode`) and inline (`code`)
  * spans so links that only appear inside code examples are NOT treated as
  * real links. Newlines are kept so line-based reasoning is unaffected; other
  * characters become spaces.
  */
-export const stripCode = (content: string): string =>
-  maskFencedCode(content).replaceAll(INLINE_CODE_RE, (block) => ' '.repeat(block.length))
+export const stripCode = (content: string): string => maskInlineCode(maskFencedCode(content))
 
 const LINK_DEF_RE = /^[ \t]*\[([^\]]+)\]:[ \t]*<?([^>\s]+)>?/gm
 

@@ -29,6 +29,48 @@ describe('stripCode()', () => {
   it('leaves ordinary links untouched', () => {
     expect(stripCode('see [home](./a.md)')).toBe('see [home](./a.md)')
   })
+
+  // Issue #180: the prior single-line `INLINE_CODE_RE` (`/`[^`\n]*`/g`) paired
+  // backticks per LINE, losing code-span state across a line break — a code
+  // span opened on one line and closed on the next got re-paired against
+  // whatever backtick came next on the CLOSING line instead, silently
+  // swallowing a real link that sat between them. CommonMark's own rule has
+  // no same-line restriction: a code span is delimited by backtick RUNS of
+  // equal length, wherever they fall.
+  describe('inline code spans across a line break (issue #180)', () => {
+    // Text asserted on `.target` only, not the full link object: a link
+    // whose own visible text is itself backtick-styled is a SEPARATE,
+    // pre-existing, deliberate behavior of plain `extractLinks` (it reads
+    // text from the MASKED string, same as target position, so backtick-
+    // styled text comes back blank) — `extractLinksPreservingText` exists
+    // for that; not what issue #180 is about, so not re-tested here.
+    it('case A — code span kept on one line: link after it is still found', () => {
+      const md = 'Case A: `docker run --rm`, then [`a/path`](./MISSING-A.md).'
+      expect(extractLinks(stripCode(md)).map((l) => l.target)).toEqual(['./MISSING-A.md'])
+    })
+
+    it('case B — the SAME code span wrapped across a line break: link is still found', () => {
+      const md = 'Case B: `docker run\n--rm`, then [`a/path`](./MISSING-B.md).'
+      expect(extractLinks(stripCode(md)).map((l) => l.target)).toEqual(['./MISSING-B.md'])
+    })
+
+    it('preserves newlines and line count across a wrapped span, same as a fenced block', () => {
+      const md = 'before `run\n--rm` after [ok](./a.md)'
+      const stripped = stripCode(md)
+      expect(stripped.split('\n')).toHaveLength(md.split('\n').length)
+      expect(stripped).toContain('[ok](./a.md)')
+    })
+
+    it('a genuinely unterminated span — a single backtick with no partner anywhere in the document — does not swallow a later link', () => {
+      const md = 'a stray ` backtick, then [a/path](./MISSING.md).'
+      expect(extractLinks(stripCode(md))).toEqual([{ target: './MISSING.md', text: 'a/path' }])
+    })
+
+    it('a stray same-line backtick that DOES find a same-length partner masks through the link — this is real CommonMark, not a bug: the backtick pair genuinely consumes the "[" as a code span', () => {
+      const md = '--rm` and then [`a/path`](./MISSING.md).'
+      expect(extractLinks(stripCode(md))).toEqual([])
+    })
+  })
 })
 
 describe('extractLinks()', () => {
