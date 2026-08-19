@@ -237,6 +237,19 @@ comment, one-line doc fix) — NOT "I only added a test," which still needs revi
 test actually proves. Incidents:
 [`docs/incidents/adversarial-review/`](docs/incidents/adversarial-review).
 
+**`cairn check --changed <diff files>` scopes what it PRINTS, never the exit code — address
+only the rule edges shown in `changedGuidance`; if `pnpm check`'s full run still fails for a
+reason `--changed` didn't report, that predates this PR: stop and flag it, don't expand scope
+chasing it.** Same discipline for any propose/critique remediation loop — if a round still
+finds real, unresolved disagreement after several iterations, stop and escalate to the user
+rather than continuing indefinitely. Incident: a draft of this exact rule once read "address
+what it reports" with no such boundary — traced through `CheckCoverage.ts`'s own
+`coverageExitCode` (deliberately corpus-wide even under `--changed`, see that file's own
+comment) to a real scope-creep failure mode before it shipped: a future PR's unrelated,
+pre-existing corpus issue would fail `pnpm ship` with no explanation from `--changed`'s own
+clean, scoped output, and the unscoped instruction gave no signal that chasing it wasn't this
+PR's job.
+
 **Before designing a new capability, run a cheap recurrence gate first; save the full ROI
 attack for after a concrete design exists.** "Has this happened more than once,
 independently?" is answerable before any design work and kills a true one-off cheaply.
