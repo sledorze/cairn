@@ -88,7 +88,7 @@
     "esbuild": "^0.28.1",
     "github-slugger": "^2.0.0",
     "lefthook": "^2.1.0",
-    "oxlint": "1.77.0",
+    "oxlint": "1.78.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
