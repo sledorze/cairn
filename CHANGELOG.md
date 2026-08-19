@@ -1,5 +1,86 @@
 # @sledorze/cairn
 
+## 0.12.0
+
+### Minor Changes
+
+- 47584ab: New `cairn check --changed <path...>` flag (repeatable, relative-to-cwd or absolute):
+  when `checks.coverage` is configured, scopes its report to just the rule edges touching
+  those paths — as a rule's own `from` doc, or as a doc some other rule's edge resolved to
+  (a `satisfiedBy` target) — and prints each matching rule's own `description` as guidance
+  instead of the full corpus report: "if this file changed, here's what a reviewer should
+  re-check, and why." Aimed at AI-review tooling that already knows which files a diff
+  touched and wants targeted guidance rather than the whole coverage report.
+
+  The exit code stays corpus-wide even under `--changed` — it never narrows to just the
+  scoped edges, so a real problem in an untouched file still fails the build exactly like
+  running without the flag. Every cause of that non-zero exit is disclosed by the scoped
+  report itself, one of two ways: an unsatisfied rule that's IN scope shows up directly in
+  the printed edge list, marked "NOT satisfied"; anything NOT shown there — an unsatisfied
+  rule outside scope, or any orphan doc at all (orphans are per-doc facts, never rendered
+  by this report regardless of scope) — is counted in an explicit "N other coverage
+  issue(s) not shown above" line. Deliberately scope-neutral wording: an orphan's own
+  path can itself be one of the changed paths, so a location claim like "outside the
+  changed path(s)" would sometimes be false.
+
+  No effect on any other check, and no effect at all when `checks.coverage` isn't
+  configured or `--changed` isn't passed — purely additive.
+
+- 47584ab: `checks.coverage` reports (both the ordinary `missing` report and the `--changed`-scoped
+  guidance report) now print a single, automatic disclaimer — "Coverage only confirms these
+  links exist — it does not check the linked content's substance..." — whenever at least one
+  shown rule carries a `description`. Printed at most once per report, never once per entry,
+  and never for an orphans-only report (orphans are per-doc facts, not tied to any rule's
+  `description`). Exists because `checks.coverage` only ever verifies a link's existence, never
+  judges the linked content — a rule's own `description` names a way a link could be hollow,
+  but that's guidance for a reviewer, not something the tool itself checks.
+
+  Also: README.md and `docs/design/CONVENTION.md` gained a concise brief on writing a good
+  rule `description` — state which doc makes the claim and which is its evidence (direction),
+  and name one concrete, relationship-specific way a link could be technically present but
+  hollow, rather than a generic "make sure it's good" or a per-rule repeat of what the new
+  disclaimer already says. `cairn init --agent claude`'s scaffolded design-package skill
+  (`DESIGN_PACKAGE_SKILL_BODY`) carries the same brief and revised example rule descriptions,
+  so a library consumer adopting that scaffold sees the same guidance, not just this repo's own
+  polished config.
+
+- a5c3c0a: New opt-in check: `checks.storyMapTiers.globs` — enforces a real story-mapping invariant
+  (Jeff Patton's "walking skeleton": exactly one `(Must)`-tagged card per backbone step, the
+  thinnest slice that works end-to-end) against `## Cards, by backbone step` sections in any
+  doc matching the configured globs. A step with zero, or more than one, `(Must)`-tagged card
+  is reported as a violation — the same class of drift a doc can silently accumulate when it
+  claims a walking skeleton in prose but nothing structurally marks one.
+
+  Opt-in via config presence, no CLI flag — same idiom as `checks.freshness`/
+  `checks.docCoverage`. Rejects `--json` (`jsonUnsupportedMessage`), same as every other
+  structure check today.
+
+  Deliberately narrow: pure intra-document structural census (headings + a `(Must|Should|
+Could)` tag regex, masking fenced code first so a doc's own syntax example is never
+  miscounted) — not a general claims/predicate-checking engine. That larger idea was
+  investigated separately (`docs/design/137-typed-relations/`) and correctly declined for lack
+  of evidence; this check doesn't reopen that decision, it solves a narrower, already-real need
+  in a different shape (no code-target resolution, no comparison predicates).
+
+### Patch Changes
+
+- 6947fea: Fixes a false green in `cairn check --links-only` (and every check built on `stripCode`):
+  an inline code span (`` `code` ``) wrapped across a line break, followed by at least one more
+  backtick on the closing line, could silently swallow a real Markdown link — the link was
+  never reported, even when its target didn't exist. The old inline-code masking paired
+  backticks per LINE, losing the span's open/closed state across the line break; a wrapped
+  span's true closer was invisible to it, so the scan re-paired the OPENING backtick against
+  whatever came next on the CLOSING line instead, blanking out everything between — including
+  a real `[text](target)` link.
+
+  Fixed by masking inline code spans across the whole document, matching CommonMark's actual
+  rule (a span is delimited by a backtick RUN, closing at the next run of equal length,
+  wherever it falls — no same-line restriction) instead of a single-line regex. Wrapping a
+  code span across a line break is ordinary Markdown reflow and must not change link
+  extraction, whether the link comes from `--links-only`'s own dead-link report,
+  `checks.coverage`, `checks.docCoverage`, `checks.storyMapTiers`, or any other check built on
+  the same shared `stripCode` primitive.
+
 ## 0.11.1
 
 ### Patch Changes
