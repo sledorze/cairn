@@ -103,6 +103,14 @@ describe('stripCode()', () => {
       expect(stripped).toBe('            [ok](./MISSING.md)')
       expect(extractLinks(stripped).map((l) => l.target)).toEqual(['./MISSING.md'])
     })
+
+    it('three independently-paired spans in one document — proves the result-accumulation order (result += slice + maskSpan) does not drift, overlap, or lose a region past the second span', () => {
+      const md = 'AAA `code1` BBB `code2` CCC `code3` DDD [ok](./MISSING.md)'
+      const stripped = stripCode(md)
+      expect(stripped).toBe('AAA         BBB         CCC         DDD [ok](./MISSING.md)')
+      expect(stripped).toHaveLength(md.length)
+      expect(extractLinks(stripped).map((l) => l.target)).toEqual(['./MISSING.md'])
+    })
   })
 })
 

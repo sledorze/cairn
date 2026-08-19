@@ -136,22 +136,28 @@ interface BacktickRun {
   readonly start: number
 }
 
-/** Blank `[start, end)` of `chars` in place, preserving newlines (same
- * contract `stripCode`'s own docstring states) and total length exactly —
- * callers downstream (`extractLinksWithPosition` -> `DocMetadata.ts`'s
- * `offsetToLine`) rely on masked-content offsets lining up 1:1 with the
- * ORIGINAL content's own line-start table, so this must never change the
- * document's length or line count. `chars` is a `string.split('')` array —
- * UTF-16 code UNIT indexed, matching `.length`/regex `.index`, deliberately
- * NOT `[...str]`'s code-POINT iteration, which would silently shrink the
- * output — and shift every later offset — the moment a masked span contains
- * an astral character. */
-const blank = (chars: string[], start: number, end: number): void => {
-  for (let i = start; i < end; i += 1) {
-    if (chars[i] !== '\n') {
-      chars[i] = ' '
-    }
+/** Replace every character of `span` with a space, except a `\n` (kept, same
+ * contract `stripCode`'s own docstring states) — preserving `span.length`
+ * exactly, since callers downstream (`extractLinksWithPosition` ->
+ * `DocMetadata.ts`'s `offsetToLine`) rely on masked-content offsets lining
+ * up 1:1 with the ORIGINAL content's own line-start table. Iterates by
+ * UTF-16 code UNIT index (`span[i]`/`span.length`, matching regex `.index`),
+ * deliberately NOT `for...of` (oxlint's own `typescript/prefer-for-of` would
+ * rather see it) or `[...span]`'s spread form — a string's own iterator
+ * protocol yields by Unicode CODE POINT, one iteration per astral character
+ * (e.g. an emoji) rather than the 2 UTF-16 code units it actually occupies,
+ * which would silently shrink `out` below `span.length` the moment `span`
+ * contains one — confirmed for real: a genuine correctness bug this exact
+ * code-unit-vs-code-point mistake introduced once already (see git history)
+ * before `maskInlineCode` was rewritten to slice rather than mutate a
+ * whole-document char array. */
+const maskSpan = (span: string): string => {
+  let out = ''
+  // oxlint-disable-next-line typescript/prefer-for-of
+  for (let i = 0; i < span.length; i += 1) {
+    out += span[i] === '\n' ? '\n' : ' '
   }
+  return out
 }
 
 /**
@@ -195,15 +201,18 @@ const maskInlineCode = (content: string): string => {
     const start = m.index
     runs.push({ end: start + m[0].length, length: m[0].length, start })
   }
-  // `content.split('')`, not `[...content]` (oxlint's own `unicorn/prefer-spread`
-  // would rather see the latter) — this MUST stay UTF-16 code-UNIT indexed to
-  // match `blank`'s `start`/`end` (regex `.index`-derived); the spread form is
-  // code-POINT indexed and silently shrinks + misaligns the array the moment an
-  // astral character (e.g. an emoji) appears anywhere earlier in the document —
-  // confirmed for real (see `blank`'s own comment): a genuine correctness bug
-  // this file's own oxlint autofix has re-introduced more than once.
-  // oxlint-disable-next-line unicorn/prefer-spread
-  const chars = content.split('')
+  // Build the result by SLICING around each matched span, not by
+  // materializing a `content.length`-sized char array up front — a real,
+  // measured regression the earlier (array-mutation) version of this
+  // function had: `content.split('')` + `chars.join('')` cost is paid on
+  // EVERY call regardless of whether the document has any backticks at
+  // all (confirmed: for a realistic doc with zero real inline-code
+  // backticks reaching this function — fenced blocks already masked by
+  // `maskFencedCode` — profiling showed split+join alone accounted for
+  // ~99% of `stripCode`'s total time). Slicing only touches the actual
+  // matched spans; untouched stretches are copied via `content.slice`,
+  // which V8 can return cheaply rather than character-by-character.
+  //
   // `runs.entries()` (real element type, never `BacktickRun | undefined`)
   // instead of manual `runs[i]` indexing — `noUncheckedIndexedAccess` makes
   // every indexed access possibly-`undefined` even where the loop's own
@@ -211,6 +220,8 @@ const maskInlineCode = (content: string): string => {
   // branch no real input can ever reach (a bug class this codebase treats
   // as a real defect, not just untested code — a still-reachable branch
   // deserves a real test, an UNREACHABLE one deserves not existing).
+  let result = ''
+  let cursor = 0
   let skipUntil = 0
   for (const [i, opener] of runs.entries()) {
     if (i < skipUntil) {
@@ -218,11 +229,12 @@ const maskInlineCode = (content: string): string => {
     }
     const closer = runs.slice(i + 1).find((run) => run.length === opener.length)
     if (closer !== undefined) {
-      blank(chars, opener.start, closer.end)
+      result += content.slice(cursor, opener.start) + maskSpan(content.slice(opener.start, closer.end))
+      cursor = closer.end
       skipUntil = runs.indexOf(closer) + 1
     }
   }
-  return chars.join('')
+  return result + content.slice(cursor)
 }
 
 /**

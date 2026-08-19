@@ -1,7 +1,7 @@
 {
   "refs": [
     {
-      "hash": "e5626bbf8a76d8495bf792dea2adf6a115d1a32ced1470c6afa29a4633ab6d67",
+      "hash": "036835d2e672623d7a2dde0c7ed9606e495909fc4fd87fb276e1e6871b7067b7",
       "target": "../../../src/core/links/MarkdownLinks.ts"
     },
     {

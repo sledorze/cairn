@@ -75,7 +75,7 @@ export default defineConfig({
         // included) has its own real-filesystem test.
         functions: 99.05,
         lines: 99.56,
-        statements: 99.4,
+        statements: 99.41,
       },
     },
     // scripts/**/*.test.ts: a genuine exception to "tests live under src/" —
