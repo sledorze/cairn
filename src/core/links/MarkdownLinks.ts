@@ -116,7 +116,7 @@ export interface CheckContentArgs {
 // regardless of backtracking; only a length cap turns each retry's cost
 // into a constant, restoring overall linear behaviour.
 const LINK_RE = /!?\[([^\]]{0,2000})\]\((?:<([^<>\n]{0,2000})>|([^)\s]{1,2000}))(?:\s+"[^"]{0,2000}")?\)/g
-const INLINE_CODE_RE = /`[^`\n]*`/g
+const BACKTICK_RUN_RE = /`+/g
 
 /** A `LINK_RE` match's destination is in capture group 2 (angle-bracket form)
  * or group 3 (bare form) depending on which alternative matched — never both,
@@ -128,14 +128,122 @@ const INLINE_CODE_RE = /`[^`\n]*`/g
  * regex, not a runtime possibility a fallback needs to defend against. */
 const linkTarget = (match: RegExpMatchArray): string => (match[2] ?? match[3]) as string
 
+/** One run of consecutive backtick characters — CommonMark's actual code-span
+ * delimiter is a backtick RUN of some length, not a single backtick. */
+interface BacktickRun {
+  readonly end: number
+  readonly length: number
+  readonly start: number
+}
+
+/** Replace every character of `span` with a space, except a `\n` (kept, same
+ * contract `stripCode`'s own docstring states) — preserving `span.length`
+ * exactly, since callers downstream (`extractLinksWithPosition` ->
+ * `DocMetadata.ts`'s `offsetToLine`) rely on masked-content offsets lining
+ * up 1:1 with the ORIGINAL content's own line-start table. Iterates by
+ * UTF-16 code UNIT index (`span[i]`/`span.length`, matching regex `.index`),
+ * deliberately NOT `for...of` (oxlint's own `typescript/prefer-for-of` would
+ * rather see it) or `[...span]`'s spread form — a string's own iterator
+ * protocol yields by Unicode CODE POINT, one iteration per astral character
+ * (e.g. an emoji) rather than the 2 UTF-16 code units it actually occupies,
+ * which would silently shrink `out` below `span.length` the moment `span`
+ * contains one — confirmed for real: a genuine correctness bug this exact
+ * code-unit-vs-code-point mistake introduced once already (see git history)
+ * before `maskInlineCode` was rewritten to slice rather than mutate a
+ * whole-document char array. */
+const maskSpan = (span: string): string => {
+  let out = ''
+  // oxlint-disable-next-line typescript/prefer-for-of
+  for (let i = 0; i < span.length; i += 1) {
+    out += span[i] === '\n' ? '\n' : ' '
+  }
+  return out
+}
+
+/**
+ * Mask CommonMark-style inline code spans (`` `code` ``, ``` ``code`` ```,
+ * ...) across the WHOLE document, not line by line (issue #180) — a code
+ * span opened on one line and closed on a later one is ordinary Markdown
+ * reflow, and CommonMark's own rule has no same-line restriction: a span is
+ * delimited by a backtick RUN, and closes at the NEXT run of EQUAL length,
+ * wherever that falls. The prior single-regex form (`` /`[^`\n]*`/g `` )
+ * could never match across a `\n`, so a wrapped span's true closer was
+ * invisible to it — the scan instead re-paired the OPENING run against
+ * whichever backtick happened to come next on the CLOSING line, silently
+ * swallowing whatever (a real link, among other things) sat between them.
+ *
+ * Implemented as a single forward pass over the backtick-RUN list (not a
+ * backtracking regex over the whole document): for each run not yet
+ * consumed, scan forward for the next run of the same length; found ->
+ * that's the closer, mask between them (inclusive) and continue after it;
+ * not found -> this run is literal (an unterminated span opener never masks
+ * anything, matching CommonMark), advance by one run. Worst case is
+ * O(runs^2) if many runs never find a same-length partner — a categorically
+ * different, far smaller risk than `LINK_RE`'s own bounded quantifiers exist
+ * to defend against (adversarial UNCLOSED-bracket input driving regex
+ * backtracking): `runs` here is a document's inline-code-marker count
+ * (realistically low double digits at most), not attacker-controlled
+ * bracket repetition, so no length cap is needed.
+ */
+const maskInlineCode = (content: string): string => {
+  // A manual `.exec()` loop, not `[...content.matchAll(...)]`: TS's own lib
+  // types make `RegExpExecArray.index` (`.exec()`'s return type) a plain
+  // `number`, while `RegExpMatchArray.index` (`matchAll`'s) is `number |
+  // undefined` — the same runtime guarantee either way (a real match always
+  // has a numeric index), but `.exec()`'s typing needs neither a `?? 0`
+  // fallback (an unreachable branch no real input can take, `??`'s own
+  // downside — see `extractLinkDefinitionsWithPosition`'s comment) nor an
+  // `as` assertion to get there. `lastIndex` reset first since
+  // `BACKTICK_RUN_RE` is a shared, stateful `g`-flag regex.
+  const runs: BacktickRun[] = []
+  BACKTICK_RUN_RE.lastIndex = 0
+  for (let m = BACKTICK_RUN_RE.exec(content); m !== null; m = BACKTICK_RUN_RE.exec(content)) {
+    const start = m.index
+    runs.push({ end: start + m[0].length, length: m[0].length, start })
+  }
+  // Build the result by SLICING around each matched span, not by
+  // materializing a `content.length`-sized char array up front — a real,
+  // measured regression the earlier (array-mutation) version of this
+  // function had: `content.split('')` + `chars.join('')` cost is paid on
+  // EVERY call regardless of whether the document has any backticks at
+  // all (confirmed: for a realistic doc with zero real inline-code
+  // backticks reaching this function — fenced blocks already masked by
+  // `maskFencedCode` — profiling showed split+join alone accounted for
+  // ~99% of `stripCode`'s total time). Slicing only touches the actual
+  // matched spans; untouched stretches are copied via `content.slice`,
+  // which V8 can return cheaply rather than character-by-character.
+  //
+  // `runs.entries()` (real element type, never `BacktickRun | undefined`)
+  // instead of manual `runs[i]` indexing — `noUncheckedIndexedAccess` makes
+  // every indexed access possibly-`undefined` even where the loop's own
+  // bound already guarantees otherwise, which would leave a defensive
+  // branch no real input can ever reach (a bug class this codebase treats
+  // as a real defect, not just untested code — a still-reachable branch
+  // deserves a real test, an UNREACHABLE one deserves not existing).
+  let result = ''
+  let cursor = 0
+  let skipUntil = 0
+  for (const [i, opener] of runs.entries()) {
+    if (i < skipUntil) {
+      continue
+    }
+    const closer = runs.slice(i + 1).find((run) => run.length === opener.length)
+    if (closer !== undefined) {
+      result += content.slice(cursor, opener.start) + maskSpan(content.slice(opener.start, closer.end))
+      cursor = closer.end
+      skipUntil = runs.indexOf(closer) + 1
+    }
+  }
+  return result + content.slice(cursor)
+}
+
 /**
  * Blank out fenced (``` / ~~~, via `maskFencedCode`) and inline (`code`)
  * spans so links that only appear inside code examples are NOT treated as
  * real links. Newlines are kept so line-based reasoning is unaffected; other
  * characters become spaces.
  */
-export const stripCode = (content: string): string =>
-  maskFencedCode(content).replaceAll(INLINE_CODE_RE, (block) => ' '.repeat(block.length))
+export const stripCode = (content: string): string => maskInlineCode(maskFencedCode(content))
 
 const LINK_DEF_RE = /^[ \t]*\[([^\]]+)\]:[ \t]*<?([^>\s]+)>?/gm
 
