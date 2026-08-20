@@ -11,12 +11,20 @@
 // typo would undermine cairn's own thesis: it's a CI *guarantee*, and a guarantee
 // that silently checks the wrong thing isn't one.
 //
-// This module uses `effect`'s `Schema`/`Result`/`SchemaError` — pure, synchronous,
+// This module uses `effect`'s `Schema`/`Result` — pure, synchronous,
 // side-effect-free combinators (unlike `Effect`/`Layer`/`Runtime`, which represent
 // the effectful, scheduled part of the library) — so it stays within `core/`'s "no
-// IO" contract despite depending on `effect`.
+// IO" contract despite depending on `effect`. `Schema.SchemaError` (the decode-error
+// type `decodeConfig` returns), not a top-level `effect` export `SchemaError` — a
+// real, narrow break between beta.102 and rc.109: `SchemaAST`/`SchemaIssue`/
+// `SchemaParser`/... were ALREADY separate root exports in beta.102, same as now
+// (verified directly against beta.102's own shipped `index.d.ts`, not assumed) — only
+// `SchemaError` itself moved, from its own top-level `effect` export
+// (`export * as SchemaError from "./SchemaError.ts"` in beta.102) to living inside
+// `Schema` instead, confirmed directly against rc.109's own `Schema.d.ts`
+// (`export declare class SchemaError extends ...`).
 
-import type { Result, SchemaError } from 'effect'
+import type { Result } from 'effect'
 import { Schema, SchemaGetter } from 'effect'
 
 import type { KindDef } from './structure/DocMetadata.ts'
@@ -1158,11 +1166,11 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
  * caller constructs.) Formatting a `Failure` for a human is a separate, equally pure
  * concern (`formatConfigError`, below): decoding has no business knowing which file it
  * came from — that's the caller's context, not the decoder's. */
-export const decodeConfig = (raw: unknown): Result.Result<CairnConfigInput, SchemaError.SchemaError> =>
+export const decodeConfig = (raw: unknown): Result.Result<CairnConfigInput, Schema.SchemaError> =>
   Schema.decodeUnknownResult(CairnConfigSchema, { errors: 'all', onExcessProperty: 'error' })(raw)
 
 /** Render a decode failure into a clear, actionable, file-scoped message. */
-export const formatConfigError = (error: SchemaError.SchemaError, file: string): string =>
+export const formatConfigError = (error: Schema.SchemaError, file: string): string =>
   `cairn: invalid config in ${file}:\n${error.message}`
 
 /** Layer a decoded config over a resolved base: `checks`/`naming` deep-merge field by
