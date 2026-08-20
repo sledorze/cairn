@@ -108,17 +108,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           # v1's `.npmrc`-from-`NPM_TOKEN` auto-write is GONE in v2 (confirmed by
           # grepping v2.1.0's real bundled dist/*.js: zero references to NPM_TOKEN or
-          # .npmrc anywhere) — the upstream CHANGELOG states auth should move to
-          # Trusted Publishing (OIDC) instead, which `id-token: write` above and
-          # `publishConfig.provenance` in package.json are already positioned for, but
-          # neither this repo nor this comment has independently CONFIRMED Trusted
-          # Publishing is actually configured on the npm registry side for this
-          # package — that's an npmjs.com-side setting, invisible from here. Left set
-          # (harmless if genuinely unused) rather than removed, since removing it on
-          # an unverified assumption risks breaking auth a different way. Do not treat
-          # the `publish-script` fix alone as "the release pipeline is healed" —
-          # confirm via a real `workflow_dispatch` run that gets PAST this step and
-          # into an actual successful `npm publish`, not just past the input error.
+          # .npmrc anywhere) — and this WAS the real, confirmed follow-up failure the
+          # `publish-script` fix's own commit predicted, not a hypothetical: the very
+          # next real run got past the input-rename error and failed at the actual
+          # `npm publish` step with `ENEEDAUTH: This command requires you to be logged
+          # in`, even with this env var correctly set — npm never associates an env var
+          # with a registry on its own; something has to write that mapping, and
+          # nothing did. Fixed by the repo-root `.npmrc` (see its own comment for the
+          # full investigation) — this env var is what that file's
+          # `${NPM_TOKEN}` substitution reads at publish time; changing its name here
+          # means changing `.npmrc` too, they're not independent.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           # changesets/action's internal `git commit` (for the Version Packages bump)
           # triggers this repo's OWN pre-commit lefthook hook inside the runner (since
