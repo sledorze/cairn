@@ -30,7 +30,16 @@ export const generateSchema = (): unknown => {
   })
   return {
     $defs: definitions,
-    $schema: `${JsonSchema.META_SCHEMA_URI_DRAFT_07}#`,
+    // NOT a template-appended `#` (as this line read before effect 4.0.0-rc.109):
+    // `JsonSchema.META_SCHEMA_URI_DRAFT_07` itself now already ends in `#` — confirmed
+    // directly (`http://json-schema.org/draft-07/schema#`), a real, undocumented
+    // change from the prior beta.102 value (which did NOT include it, hence the old
+    // manual append). Appending another `#` on top produced a genuinely malformed
+    // `schema##` URI in the shipped `schema/cairn.schema.json` for real, caught only
+    // by `config.schema.integration.test.ts`'s committed-file/fresh-output diff, not
+    // by anything upstream — re-verify this constant's own trailing-`#` behavior
+    // again the next time `effect` is bumped, don't assume it stays this way.
+    $schema: JsonSchema.META_SCHEMA_URI_DRAFT_07,
     ...schema,
   }
 }
