@@ -46,6 +46,14 @@
     "no-useless-constructor": "error",
     "no-useless-rename": "error",
     "no-warning-comments": "off",
+    // New in oxlint 1.78.0's "style" category (not present/firing in 1.77.0): this
+    // codebase deliberately writes one declaration per statement, each with its own
+    // doc comment where warranted — combining sequential const/let declarations the
+    // way this rule wants would either lose that per-declaration commenting or force
+    // it onto one crowded line. Confirmed the rule is genuinely new (not a pre-existing
+    // one this repo happened to pass): 1884 errors across 127 files on the 1.78.0 bump,
+    // zero on 1.77.0.
+    "one-var": "off",
     "prefer-destructuring": "off",
     "prefer-named-capture-group": "off",
     "prefer-template": "error",
