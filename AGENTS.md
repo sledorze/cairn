@@ -151,6 +151,17 @@ that the diff looks mechanically correct:
 - **A new restriction must be discoverable, not just correct** — confirm
   `schema/cairn.schema.json` (from `Config.ts`'s `Schema.annotate`) and `--help` mention it,
   not just the changeset/README.
+- **Merging this PR is not the same as confirming the publish it triggers actually
+  succeeded — check the real Release workflow run, not just that the merge went through.**
+  `changeset publish` reads whatever version is currently in `package.json`; once ANY later
+  changeset bumps that further, the failed version is gone from `package.json` for good and
+  becomes permanently unpublishable — the changelog still describes it, npm just 404s it.
+  Incident: `0.12.0`'s full changelog section shipped inside the `0.13.0` tarball describing
+  a version that was never actually on the npm registry (`npm view @sledorze/cairn@0.12.0` →
+  `E404`) — its release run silently failed (see the `.npmrc`/`NPM_TOKEN` fix), and the next
+  successful publish jumped straight to `0.13.0` without anyone noticing the gap. Confirm
+  `npm view <pkg> version` (or the triggered run's own conclusion) before considering this
+  merge done, not just that GitHub shows it merged.
 
 # `--refs` is enforced here, not just available
 

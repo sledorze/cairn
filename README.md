@@ -40,6 +40,14 @@ The `cairn` CLI is fully bundled and needs nothing else. The programmatic API
 `github-slugger`, declared as optional peer dependencies — install them yourself if you
 use that entrypoint: `pnpm add effect github-slugger`.
 
+The stated `effect` floor (see `peerDependencies` in `package.json`) is a **testing
+boundary, not a verified compatibility one**: it's the oldest version this package's own
+CI actually runs against, not necessarily the oldest one that works. A stricter package
+manager (npm) enforces it as a hard `ERESOLVE` if your own `effect` is older; a looser one
+(pnpm, by default) will still install and run an older version without complaint — this
+package has no runtime dependency on `effect` itself (it's a peer, and the CLI is fully
+bundled), so nothing here can currently distinguish those two cases for you.
+
 ## Quick start
 
 ```sh

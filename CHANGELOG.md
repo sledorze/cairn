@@ -29,6 +29,12 @@
 
 ## 0.12.0
 
+> **Never actually published to npm** — this version's release run failed silently (see the
+> `.npmrc`/`NPM_TOKEN` auth fix in `0.13.0`'s history); the next successful publish shipped
+> directly as `0.13.0` without republishing this one. `npm view @sledorze/cairn@0.12.0` 404s.
+> Kept here, unedited otherwise, for historical accuracy — every feature below is real and
+> shipped, just first installable from `0.13.0` onward (see cairn#187).
+
 ### Minor Changes
 
 - 47584ab: New `cairn check --changed <path...>` flag (repeatable, relative-to-cwd or absolute):
