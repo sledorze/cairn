@@ -71,7 +71,7 @@ const makeUnpairedBacktickDoc = (runCount: number): string => {
     // A run length cycling 1..4 means most runs never match their
     // immediate neighbour, forcing the pairing scan to search further
     // ahead — the shape that actually stresses `skipUntil`'s forward scan.
-    lines.push(`${'`'.repeat((i % 4) + 1)  }stray-${i} `)
+    lines.push(`${'`'.repeat((i % 4) + 1)}stray-${i} `)
   }
   return lines.join('')
 }

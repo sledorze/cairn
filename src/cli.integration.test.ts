@@ -727,3 +727,74 @@ describe('cli.ts (real subprocess) — flags with no prior CLI-level test covera
     expect(fs.readFileSync(path.join(p.root, 'CLAUDE.md'), 'utf8')).toContain('@AGENTS.md')
   })
 })
+
+// Issue #155: every feature cairn ships as a config key or Markdown
+// convention is deliberately invisible in `--help` — nothing routes a reader
+// to `CHANGELOG.md`, which ships in the tarball and explains what actually
+// changed. `cairn check` prints a one-time notice when the running version
+// differs from the one this repo was last stamped with. Converts a real
+// manual dogfood pass (a scratch repo, both `--stamp` and non-`--stamp` runs)
+// into a permanent regression check, per this repo's own convention.
+describe('cli.ts (real subprocess) — issue #155 version-change notice', () => {
+  const { version: runningVersion } = JSON.parse(
+    fs.readFileSync(path.join(import.meta.dirname, '..', 'package.json'), 'utf8'),
+  ) as { version: string }
+
+  it('is silent on a repo with no version sidecar at all — first run ever, not an upgrade', () => {
+    const p = project('cli-version-notice-first-run', { 'docs/index.md': '# Index\n' })
+    const result = runCli(p.root, ['check'])
+    expect(result.stdout).not.toContain('→')
+  })
+
+  it('silently records the version on a first --stamp — no notice, nothing to compare against', () => {
+    const p = project('cli-version-notice-first-stamp', { 'docs/index.md': '# Index\n' })
+    const result = runCli(p.root, ['check', '--stamp'])
+    expect(result.stdout).not.toContain('→')
+    const sidecarContent = fs.readFileSync(path.join(p.root, '.cairn/version.json'), 'utf8')
+    expect(JSON.parse(sidecarContent)).toEqual({ version: runningVersion })
+  })
+
+  it('repeats the notice on every plain check until the next --stamp, then falls silent', () => {
+    const p = project('cli-version-notice-repeats', {
+      '.cairn/version.json': JSON.stringify({ version: '0.0.1' }),
+      'docs/index.md': '# Index\n',
+    })
+    const first = runCli(p.root, ['check'])
+    expect(first.stdout).toContain(`cairn 0.0.1 → ${runningVersion}`)
+    // Still no --stamp: repeats verbatim, same as any other reported drift.
+    const second = runCli(p.root, ['check'])
+    expect(second.stdout).toContain(`cairn 0.0.1 → ${runningVersion}`)
+    // --stamp: the notice still fires on THIS run (it's read before the
+    // write), but records the new version so the run after is silent.
+    const stampRun = runCli(p.root, ['check', '--stamp'])
+    expect(stampRun.stdout).toContain(`cairn 0.0.1 → ${runningVersion}`)
+    const afterStamp = runCli(p.root, ['check'])
+    expect(afterStamp.stdout).not.toContain('→')
+  })
+
+  it('never appears under --json, even with a real mismatch recorded', () => {
+    const p = project('cli-version-notice-json', {
+      '.cairn/version.json': JSON.stringify({ version: '0.0.1' }),
+      'docs/index.md': '# Index\n',
+    })
+    const result = runCli(p.root, ['check', '--json'])
+    expect(result.stdout).not.toContain('cairn 0.0.1')
+    expect(() => JSON.parse(result.stdout)).not.toThrow()
+  })
+
+  // Adversarial review finding: `.cairn/version.json` surviving `--prune`
+  // was true today only because `CheckSummaries.ts`'s `parseStamp` happens
+  // to reject its shape (`{version: string}` isn't a valid `StampRecord`),
+  // an incidental, unasserted safety — not a guarantee a future refactor of
+  // either schema couldn't silently break. Makes it explicit.
+  it('--prune never deletes .cairn/version.json — not a per-doc sidecar, not an orphan stamp', () => {
+    const p = project('cli-version-notice-prune', {
+      '.cairn/version.json': JSON.stringify({ version: '0.0.1' }),
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/index.md': '# Index\n',
+    })
+    const result = runCli(p.root, ['check', '--prune'])
+    expect(result.stdout).toContain('removed 0 orphan summary')
+    expect(fs.existsSync(path.join(p.root, '.cairn/version.json'))).toBeTruthy()
+  })
+})

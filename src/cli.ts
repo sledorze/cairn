@@ -45,6 +45,7 @@ import {
 import { buildJsonReport } from './program/JsonReport.ts'
 import type { Locale } from './program/locale.ts'
 import { pick } from './program/locale.ts'
+import { checkVersionNotice, stampVersionNotice } from './program/VersionNotice.ts'
 
 // The 7 checks migrated onto the CheckPlugin abstraction, in the EXACT
 // order their equivalent hand-wired blocks used to run (links, then —
@@ -412,6 +413,34 @@ const runCheck = Effect.fn('runCheck')(function* (parsed: CheckParsed) {
   }
 
   const { absRoots, effectiveIgnore, summaryArgs, trackedFiles } = yield* resolveCheckInputs(cwd, config)
+
+  // Issue #155: printed first, before any check's own findings — a global,
+  // tool-level fact ("something changed since this repo was last stamped"),
+  // not tied to any one check. Repeats every run until the next `--stamp`
+  // (below) records the current version, matching every other `.cairn/**`
+  // sidecar's "report drift every run, silence it only via --stamp"
+  // discipline — this function itself never writes (see its own comment).
+  // `--json` suppresses it, same as every other human-readable line here.
+  if (!parsed.json) {
+    const versionNotice = yield* checkVersionNotice({ base: cwd, runningVersion: version })
+    if (versionNotice !== null) {
+      yield* Console.log(
+        pick(locale, {
+          en: `${versionNotice} — see this package's own CHANGELOG.md for what changed (config keys and conventions rarely show up in --help).`,
+          fr: `${versionNotice} — voir le CHANGELOG.md de ce paquet pour ce qui a changé (les clés de config et conventions apparaissent rarement dans --help).`,
+        }),
+      )
+    }
+  }
+  // Any stamp verb (bare `--stamp`, `--summaries-only --stamp`, `--refs
+  // --stamp`, `--migrate-stamps`) also records the CURRENT version — the
+  // one write this whole feature ever makes, folded into the same explicit
+  // action every other `.cairn/**` sidecar's write already requires, not a
+  // separate auto-write on a bare `check`. `--json` can't reach here
+  // combined with either flag (rejected earlier above), so no conflict.
+  if (parsed.stamp || parsed.migrateStamps) {
+    yield* stampVersionNotice({ base: cwd, runningVersion: version })
+  }
 
   let code = 0
   let linksResult: LinkCheckResult | null = null
