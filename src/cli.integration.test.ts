@@ -754,6 +754,11 @@ describe('cli.ts (real subprocess) — issue #155 version-change notice', () => 
     expect(JSON.parse(sidecarContent)).toEqual({ version: runningVersion })
   })
 
+  // 4 sequential real `tsx` subprocess launches (~1-2.5s each on this
+  // repo's own CI, per every sibling single-runCli test's own timings) —
+  // comfortably over vitest's default 5000ms test timeout under CI load,
+  // confirmed by a real failed run (`Error: Test timed out in 5000ms`),
+  // not a guess. Every other test in this file makes only ONE runCli call.
   it('repeats the notice on every plain check until the next --stamp, then falls silent', () => {
     const p = project('cli-version-notice-repeats', {
       '.cairn/version.json': JSON.stringify({ version: '0.0.1' }),
@@ -770,7 +775,7 @@ describe('cli.ts (real subprocess) — issue #155 version-change notice', () => 
     expect(stampRun.stdout).toContain(`cairn 0.0.1 → ${runningVersion}`)
     const afterStamp = runCli(p.root, ['check'])
     expect(afterStamp.stdout).not.toContain('→')
-  })
+  }, 20_000)
 
   it('never appears under --json, even with a real mismatch recorded', () => {
     const p = project('cli-version-notice-json', {
