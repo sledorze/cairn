@@ -66,7 +66,7 @@ export interface CheckRefsArgs {
    * `stampRefs` — kind guidance is a check-time-only concern, nothing to
    * stamp. */
   readonly kinds?: readonly KindDef[]
-  /** cairn#187 item 2: whether `checks.coverage` was explicitly resolved to
+  /** cairn#190 item 2: whether `checks.coverage` was explicitly resolved to
    * `false` (declined), distinct from never having been configured at all —
    * see `ChecksConfig.coverageExplicitlyDisabled`'s own comment for why
    * `resolved.checks.coverage` alone (`null` either way) can't carry this.
@@ -111,13 +111,13 @@ export interface RefsCheckResult {
    * specific, so it lives where refs-specific data already flows to
    * `formatRefsReport`. */
   readonly kindsConfigured: boolean
-  /** cairn#187 item 2: whether the caller told us `checks.coverage` was
+  /** cairn#190 item 2: whether the caller told us `checks.coverage` was
    * explicitly declined (`false`) rather than merely unconfigured — passed
    * straight through from `CheckRefsArgs.coverageExplicitlyDisabled`, same
    * shape as `kindsConfigured`. `formatRefsReport` uses this to silence the
    * kind-guidance discoverability tip for a repo that already considered
    * and said no, instead of nagging forever. */
-  readonly coverageExplicitlyDisabled?: boolean
+  readonly coverageExplicitlyDisabled: boolean
   readonly stale: readonly FileStaleRefs[]
 }
 
@@ -433,13 +433,13 @@ export const formatRefsReport = (result: RefsCheckResult, options: RefsReportOpt
   // refs AND no kinds configured) — never per-file, matching the existing
   // fix-hint's own "once per report" discipline above.
   //
-  // cairn#187 item 2: also silenced when coverage was explicitly declined
+  // cairn#190 item 2: also silenced when coverage was explicitly declined
   // (`checks.coverage: false`) — a repo that considered `checks.coverage.
   // kinds` and said no gets this tip on every single stale-refs report
   // forever, with no config key to turn it off; `coverageExplicitlyDisabled`
   // is the same "considered, declined" signal `checks.coverage: false`
   // already means everywhere else, just not previously threaded here.
-  if (!result.kindsConfigured && result.coverageExplicitlyDisabled !== true) {
+  if (!result.kindsConfigured && !result.coverageExplicitlyDisabled) {
     lines.push(
       pick(locale, {
         en: 'Tip: configure checks.coverage.kinds to show WHY a citation matters here, not just that it changed.',

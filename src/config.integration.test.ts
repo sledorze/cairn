@@ -408,7 +408,7 @@ describe('loadConfig()', () => {
     expect(config.checks.coverage).toBeNull()
   })
 
-  // cairn#187 item 2: `coverageExplicitlyDisabled` carries the one bit
+  // cairn#190 item 2: `coverageExplicitlyDisabled` carries the one bit
   // `coverage`'s own `null` collapse (tested just above) deliberately
   // throws away — same three cases (no-extends, extends-then-disable,
   // extends-then-replace) as `coverage` itself, since a regression could

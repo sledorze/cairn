@@ -183,14 +183,15 @@ describe('stampRefs() / checkRefs()', () => {
 
 describe('formatRefsReport()', () => {
   it('reports success with the checked count', () => {
-    expect(formatRefsReport({ checked: 3, kindsConfigured: false, stale: [] })).toEqual([
-      '✅ References OK (3 tracked doc(s)).',
-    ])
+    expect(
+      formatRefsReport({ checked: 3, coverageExplicitlyDisabled: false, kindsConfigured: false, stale: [] }),
+    ).toEqual(['✅ References OK (3 tracked doc(s)).'])
   })
 
   it('lists stale references with a short hash diff', () => {
     const lines = formatRefsReport({
       checked: 1,
+      coverageExplicitlyDisabled: false,
       kindsConfigured: false,
       stale: [
         {
@@ -218,6 +219,7 @@ describe('formatRefsReport()', () => {
   it('appends a fix hint pointing at the stamp command', () => {
     const lines = formatRefsReport({
       checked: 1,
+      coverageExplicitlyDisabled: false,
       kindsConfigured: false,
       stale: [
         {
@@ -247,6 +249,7 @@ describe('formatRefsReport()', () => {
     const lines = formatRefsReport(
       {
         checked: 1,
+        coverageExplicitlyDisabled: false,
         kindsConfigured: false,
         stale: [
           {
@@ -272,6 +275,7 @@ describe('formatRefsReport()', () => {
   it('appends the kind-guidance discoverability tip when checks.coverage.kinds is not configured', () => {
     const lines = formatRefsReport({
       checked: 1,
+      coverageExplicitlyDisabled: false,
       kindsConfigured: false,
       stale: [
         {
@@ -294,6 +298,7 @@ describe('formatRefsReport()', () => {
   it('omits the discoverability tip when checks.coverage.kinds IS configured — no nagging once already opted in', () => {
     const lines = formatRefsReport({
       checked: 1,
+      coverageExplicitlyDisabled: false,
       kindsConfigured: true,
       stale: [
         {
@@ -314,11 +319,11 @@ describe('formatRefsReport()', () => {
   })
 
   it('never shows the discoverability tip on a clean run, even with kinds unconfigured — nothing to gain guidance about', () => {
-    const lines = formatRefsReport({ checked: 3, kindsConfigured: false, stale: [] })
+    const lines = formatRefsReport({ checked: 3, coverageExplicitlyDisabled: false, kindsConfigured: false, stale: [] })
     expect(lines.some((l) => l.includes('checks.coverage.kinds'))).toBeFalsy()
   })
 
-  // cairn#187 item 2: `checks.coverage: false` is an already-real, schema-supported way
+  // cairn#190 item 2: `checks.coverage: false` is an already-real, schema-supported way
   // to say "considered, declined" — but the tip used to fire on `!kindsConfigured` alone,
   // unable to tell that apart from "never configured" (both looked identical downstream:
   // `resolved.checks.coverage` is `null` either way). A repo that deliberately opted out
@@ -354,6 +359,7 @@ describe('formatRefsReport()', () => {
   it("renders both the citing doc's kindGuidance and a ref's targetKindGuidance", () => {
     const lines = formatRefsReport({
       checked: 1,
+      coverageExplicitlyDisabled: false,
       kindsConfigured: true,
       stale: [
         {
@@ -385,6 +391,7 @@ describe('formatRefsReport()', () => {
   it('includes the anchor when present', () => {
     const lines = formatRefsReport({
       checked: 1,
+      coverageExplicitlyDisabled: false,
       kindsConfigured: false,
       stale: [
         {
@@ -679,7 +686,7 @@ describe('kind-aware stale-ref guidance', () => {
     }),
   )
 
-  // cairn#187 item 2: threads through the same way `kinds` does — absent
+  // cairn#190 item 2: threads through the same way `kinds` does — absent
   // (the default) preserves today's behavior (`false`), a real caller-
   // supplied `true` carries through untouched.
   effectIt.effect('coverageExplicitlyDisabled defaults to false when not supplied', () =>

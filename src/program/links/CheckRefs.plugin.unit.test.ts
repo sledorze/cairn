@@ -37,7 +37,7 @@ test('refsPlugin.name is "refs"', () => {
 })
 
 test('refsPlugin.format() delegates to formatRefsReport()', () => {
-  const result = { checked: 1, kindsConfigured: false, stale: [] }
+  const result = { checked: 1, coverageExplicitlyDisabled: false, kindsConfigured: false, stale: [] }
   expect(refsPlugin.format(result, { locale: 'en' })).toEqual(formatRefsReport(result, { locale: 'en' }))
 })
 
@@ -96,7 +96,7 @@ describe('refsPlugin.run()', () => {
       }),
   )
 
-  // cairn#187 item 2: nothing exercised `refsPlugin.run`'s wiring of
+  // cairn#190 item 2: nothing exercised `refsPlugin.run`'s wiring of
   // `resolved.checks.coverageExplicitlyDisabled` — mutating that one line to
   // a hardcoded `false` would leave every prior test in this file green.
   effectIt.effect('reaches checkRefs with resolved.checks.coverageExplicitlyDisabled wired through', () =>

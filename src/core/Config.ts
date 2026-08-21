@@ -1066,7 +1066,7 @@ export interface ChecksConfig {
   /** `null` = disabled (the default) — presence of `checks.coverage` in a
    * config file is itself the opt-in, not a separate boolean flag. */
   readonly coverage: CoverageConfig | null
-  /** cairn#187 item 2: `coverage` above collapses BOTH "never configured"
+  /** cairn#190 item 2: `coverage` above collapses BOTH "never configured"
    * and "explicitly `checks.coverage: false`" down to the same `null` — by
    * design, so every consumer of `coverage` keeps a simple two-state check.
    * But `--refs`' own kind-guidance discoverability tip (`CheckRefs.ts`'s

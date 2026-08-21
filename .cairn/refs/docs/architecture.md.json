@@ -85,7 +85,7 @@
       "target": "../src/core/paths.ts"
     },
     {
-      "hash": "f82b9388cf94d16c56dfe283e9fe64bae750dea6cc0a6c599772944dc2f57843",
+      "hash": "87b70dc669142174ee6e01ecaf0ca4f864e87f6cab67a3a09e3ef422a2dcd7af",
       "target": "../src/core/Config.ts"
     },
     {
@@ -121,7 +121,7 @@
       "target": "../src/program/links/CheckLinks.ts"
     },
     {
-      "hash": "8cf6b8dce79a6f9e30aa823bdf82affc40fa7962caa78c7ed202023f1459452b",
+      "hash": "d126a84116d9ea0d7ad9c51eae081c340f80b10e8c34867d3cb889d5a762fc07",
       "target": "../src/program/links/CheckRefs.ts"
     },
     {
