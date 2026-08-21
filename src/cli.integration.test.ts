@@ -781,4 +781,20 @@ describe('cli.ts (real subprocess) — issue #155 version-change notice', () => 
     expect(result.stdout).not.toContain('cairn 0.0.1')
     expect(() => JSON.parse(result.stdout)).not.toThrow()
   })
+
+  // Adversarial review finding: `.cairn/version.json` surviving `--prune`
+  // was true today only because `CheckSummaries.ts`'s `parseStamp` happens
+  // to reject its shape (`{version: string}` isn't a valid `StampRecord`),
+  // an incidental, unasserted safety — not a guarantee a future refactor of
+  // either schema couldn't silently break. Makes it explicit.
+  it('--prune never deletes .cairn/version.json — not a per-doc sidecar, not an orphan stamp', () => {
+    const p = project('cli-version-notice-prune', {
+      '.cairn/version.json': JSON.stringify({ version: '0.0.1' }),
+      '.cairnrc.json': JSON.stringify({ requireDirSummaries: false }),
+      'docs/index.md': '# Index\n',
+    })
+    const result = runCli(p.root, ['check', '--prune'])
+    expect(result.stdout).toContain('removed 0 orphan summary')
+    expect(fs.existsSync(path.join(p.root, '.cairn/version.json'))).toBeTruthy()
+  })
 })
