@@ -1133,6 +1133,7 @@ describe('the built-in defaults', () => {
     expect(DEFAULT_CONFIG).toEqual({
       checks: {
         coverage: null,
+        coverageExplicitlyDisabled: false,
         docCoverage: null,
         freshness: null,
         links: true,

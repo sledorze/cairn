@@ -44,9 +44,19 @@ The stated `effect` floor (see `peerDependencies` in `package.json`) is a **test
 boundary, not a verified compatibility one**: it's the oldest version this package's own
 CI actually runs against, not necessarily the oldest one that works. A stricter package
 manager (npm) enforces it as a hard `ERESOLVE` if your own `effect` is older; a looser one
-(pnpm, by default) will still install and run an older version without complaint — this
-package has no runtime dependency on `effect` itself (it's a peer, and the CLI is fully
-bundled), so nothing here can currently distinguish those two cases for you.
+(pnpm, by default) will still install and run an older version without complaint.
+
+Whether that older version can actually fail depends on which entrypoint you use, and this
+is the same split as the paragraph above: the bundled `cairn` CLI never imports `effect` at
+runtime at all (confirmed by tracing its real module resolution — nothing under
+`effect/**` is ever opened), so for CLI-only usage the floor genuinely can't be tested by
+running it; a mismatch there is silent by construction. The programmatic API is the
+opposite — it keeps its own real, unbundled `import ... from 'effect'` statements and
+loads **your** installed copy at runtime (also confirmed the same way), so an incompatible
+`effect` there is a live compatibility surface: it can fail at the point of use, same as
+any other unmet peer dependency. That's not yet exercised by this package's own CI against
+anything below the stated floor, which is the actual, narrower thing "testing boundary"
+means here.
 
 ## Quick start
 

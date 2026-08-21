@@ -182,6 +182,7 @@ describe('loadConfig()', () => {
     expect(config.thresholdLines).toBe(50) // inherited from the base preset
     expect(config.checks).toEqual({
       coverage: null,
+      coverageExplicitlyDisabled: false,
       docCoverage: null,
       freshness: null,
       links: false,
@@ -227,6 +228,7 @@ describe('loadConfig()', () => {
     const config = await run(loadConfig(cwd))
     expect(config.checks).toEqual({
       coverage: null,
+      coverageExplicitlyDisabled: false,
       docCoverage: null,
       freshness: null,
       links: false,
@@ -404,6 +406,50 @@ describe('loadConfig()', () => {
     fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { coverage: false } }))
     const config = await run(loadConfig(cwd))
     expect(config.checks.coverage).toBeNull()
+  })
+
+  // cairn#190 item 2: `coverageExplicitlyDisabled` carries the one bit
+  // `coverage`'s own `null` collapse (tested just above) deliberately
+  // throws away — same three cases (no-extends, extends-then-disable,
+  // extends-then-replace) as `coverage` itself, since a regression could
+  // easily fix `coverage`'s own merge while leaving this sibling field
+  // stuck on `base`'s value.
+  it('sets `checks.coverageExplicitlyDisabled: true` when `checks.coverage: false`, no `extends` involved', async () => {
+    const cwd = mkTmp('cairn-coverage-explicit-disable-no-extends-')
+    fs.writeFileSync(path.join(cwd, '.cairnrc.json'), JSON.stringify({ checks: { coverage: false } }))
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.coverageExplicitlyDisabled).toBeTruthy()
+  })
+
+  it('sets `checks.coverageExplicitlyDisabled: true` when a local config overrides an `extends` preset that enabled coverage', async () => {
+    const cwd = mkTmp('cairn-coverage-explicit-disable-extends-')
+    fs.writeFileSync(
+      path.join(cwd, 'base.cairnrc.json'),
+      JSON.stringify({
+        checks: {
+          coverage: {
+            kinds: [{ description: 'A x kind, for this test.', id: 'x', select: { by: 'path', glob: '*' } }],
+            rules: [],
+          },
+        },
+      }),
+    )
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { coverage: false }, extends: './base.cairnrc.json' }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.coverageExplicitlyDisabled).toBeTruthy()
+  })
+
+  it('leaves `checks.coverageExplicitlyDisabled: false` when coverage is configured with a real object, not declined', async () => {
+    const cwd = mkTmp('cairn-coverage-explicit-disable-configured-')
+    fs.writeFileSync(
+      path.join(cwd, '.cairnrc.json'),
+      JSON.stringify({ checks: { coverage: { kinds: [], rules: [] } } }),
+    )
+    const config = await run(loadConfig(cwd))
+    expect(config.checks.coverageExplicitlyDisabled).toBeFalsy()
   })
 
   // Same three tests as `checks.coverage` just above, for `checks.docCoverage`

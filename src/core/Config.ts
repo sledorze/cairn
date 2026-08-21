@@ -1066,6 +1066,18 @@ export interface ChecksConfig {
   /** `null` = disabled (the default) — presence of `checks.coverage` in a
    * config file is itself the opt-in, not a separate boolean flag. */
   readonly coverage: CoverageConfig | null
+  /** cairn#190 item 2: `coverage` above collapses BOTH "never configured"
+   * and "explicitly `checks.coverage: false`" down to the same `null` — by
+   * design, so every consumer of `coverage` keeps a simple two-state check.
+   * But `--refs`' own kind-guidance discoverability tip (`CheckRefs.ts`'s
+   * `formatRefsReport`) needs the THIRD state a plain `null` can't carry: a
+   * repo that considered `checks.coverage.kinds` and declined has no way to
+   * silence a tip that otherwise fires forever, on every stale-refs report.
+   * `false` here means "the resolved `checks.coverage: false` was the
+   * winning layer" — computed alongside `coverage` in `layerConfig`, not
+   * derived from it, since `coverage` itself no longer carries the
+   * distinction by the time it's resolved. */
+  readonly coverageExplicitlyDisabled: boolean
   /** `null` = disabled (the default), same convention as `coverage` above. */
   readonly docCoverage: DocCoverageConfig | null
   /** `null` = disabled (the default), same convention as `coverage`/
@@ -1133,6 +1145,7 @@ export interface Overrides {
 export const DEFAULT_CONFIG: ResolvedConfig = {
   checks: {
     coverage: null,
+    coverageExplicitlyDisabled: false,
     docCoverage: null,
     freshness: null,
     links: true,
@@ -1208,6 +1221,15 @@ export const layerConfig = (base: ResolvedConfig, layer: CairnConfigInput): Reso
               kinds: layer.checks.coverage.kinds,
               rules: layer.checks.coverage.rules,
             },
+    // Same three-way shape as `coverage` above, but tracking the ONE bit
+    // `coverage`'s own `null` collapse deliberately throws away: `undefined`
+    // inherits `base` (an ancestor layer's explicit decline, or the
+    // never-configured default, carries forward unchanged); `false` sets
+    // `true` (THIS layer is the one declining it); anything else — a real
+    // coverage config object — clears it back to `false` (configuring
+    // coverage is not declining it, even if an ancestor layer had).
+    coverageExplicitlyDisabled:
+      layer.checks?.coverage === undefined ? base.checks.coverageExplicitlyDisabled : layer.checks.coverage === false,
     // Same three-way (undefined inherits / false disables / anything else
     // replaces wholesale) reasoning as `coverage` above.
     docCoverage:
