@@ -158,8 +158,9 @@ that the diff looks mechanically correct:
   becomes permanently unpublishable — the changelog still describes it, npm just 404s it.
   Incident: `0.12.0`'s full changelog section shipped inside the `0.13.0` tarball describing
   a version that was never actually on the npm registry (`npm view @sledorze/cairn@0.12.0` →
-  `E404`) — its release run silently failed (see the `.npmrc`/`NPM_TOKEN` fix), and the next
-  successful publish jumped straight to `0.13.0` without anyone noticing the gap. Confirm
+  `E404`) — its release run hard-failed (#182's `publish`→`publish-script` input rename,
+  fixed only after this version had already been bumped), and the next successful publish
+  jumped straight to `0.13.0` without anyone noticing the gap. Confirm
   `npm view <pkg> version` (or the triggered run's own conclusion) before considering this
   merge done, not just that GitHub shows it merged.
 
