@@ -77,6 +77,17 @@ The round-trip when you touch a doc:
 You author the prose; the tool verifies and stamps. It never invents content, and it
 never writes into content either.
 
+### Upgrading cairn
+
+Most releases add config keys and Markdown conventions (`checks.coverage.kinds`,
+`refs.scope`, `cairn-refs` fenced blocks, ...), not new flags — deliberately invisible in
+`--help`, so nothing routes a reader to the one place that explains what changed:
+`CHANGELOG.md`, which ships in the package. `cairn check` prints a one-time notice —
+`cairn 0.9.0 → 0.10.0 — see this package's own CHANGELOG.md ...` — whenever the running
+version differs from the one this repo was last stamped with. It repeats on every run,
+same as any other reported drift, until the next `cairn check --stamp` (any stamp mode)
+records the new version and silences it.
+
 ### Commands
 
 | Command                                                     | What it does                                                               |

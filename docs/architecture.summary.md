@@ -96,7 +96,9 @@ Separation of concerns: pure decisions, IO at the edges.
   - **Shared by more than one check**: `JsonReport` (`--json`'s combined shape — only
     links/summaries participate; refs/proseRefs/coverage/docCoverage/freshness/
     storyMapTiers reject `--json` outright), `locale` (re-exports `Locale`; en default, fr
-    mirror).
+    mirror), `VersionNotice` (a single repo-level `.cairn/version.json` sidecar — which
+    cairn version last touched this repo — prints a one-time CHANGELOG.md pointer on
+    mismatch, stamped only via `--stamp`).
 - **Edge**: `config.ts` (disk IO: reads rc/`extends`/`package.json`, decodes via
   `core/Config`, expands root globs), `cli.ts` (excluded from coverage, historically
   dogfooded via real subprocess only — `cli.integration.test.ts` now locks in its two

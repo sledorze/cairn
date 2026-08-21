@@ -153,11 +153,19 @@
       "target": "../src/program/locale.ts"
     },
     {
+      "hash": "a3f005e63f46d0396539d65514a7b0250c90f855131d5ff7d2e7d98e06d5bd9c",
+      "target": "../src/program/VersionNotice.ts"
+    },
+    {
+      "hash": "15146eb726590bce1b911f2a24a7dc3b1158552da43fa1bac2e5815566ffd001",
+      "target": "../src/core/VersionNotice.ts"
+    },
+    {
       "hash": "20a76c98c941cdc5e735a6df1b36ebcb5e15a16eef6fa8fea82b9b1e19830435",
       "target": "../src/config.ts"
     },
     {
-      "hash": "bb21878e8f1b735e74800fa257def0cbfc78ac87ddd88c8a61a05c1c13cc14fd",
+      "hash": "29129b32ca29308f6a7f7c3be01d1761250fcbb9959dd5cb1646333869e08f34",
       "target": "../src/cli.ts"
     },
     {

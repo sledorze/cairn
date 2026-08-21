@@ -297,7 +297,13 @@ Freshness.ts`'s pure `findStaleDocs`. A doc with no commit history yet, or
      `freshness`/`storyMapTiers` all reject `--json` outright, via their
      plugin descriptor's `jsonUnsupportedMessage`),
      [`locale.ts`](../src/program/locale.ts) (report localisation, English
-     default, French mirror).
+     default, French mirror),
+     [`VersionNotice.ts`](../src/program/VersionNotice.ts) (issue #155: reads/
+     writes a single repo-level `.cairn/version.json` sidecar — "which cairn
+     version last touched this repo," not tied to any one check — and prints
+     a one-time notice pointing at `CHANGELOG.md` when it differs from the
+     running version; decision logic lives in
+     [`core/VersionNotice.ts`](../src/core/VersionNotice.ts)).
 
 4. **Edge — config and CLI.**
    - [`config.ts`](../src/config.ts) — reads `.cairnrc.json` / `package.json`'s
