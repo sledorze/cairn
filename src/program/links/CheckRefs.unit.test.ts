@@ -318,6 +318,35 @@ describe('formatRefsReport()', () => {
     expect(lines.some((l) => l.includes('checks.coverage.kinds'))).toBeFalsy()
   })
 
+  // cairn#187 item 2: `checks.coverage: false` is an already-real, schema-supported way
+  // to say "considered, declined" — but the tip used to fire on `!kindsConfigured` alone,
+  // unable to tell that apart from "never configured" (both looked identical downstream:
+  // `resolved.checks.coverage` is `null` either way). A repo that deliberately opted out
+  // had no way to silence a permanent tip that sits directly under the report's own "Fix:"
+  // line, unlike every other opt-in check here that treats `false` as a real answer.
+  it('omits the discoverability tip when coverage was explicitly declined (checks.coverage: false), even though kinds are unconfigured', () => {
+    const lines = formatRefsReport({
+      checked: 1,
+      coverageExplicitlyDisabled: true,
+      kindsConfigured: false,
+      stale: [
+        {
+          file: 'docs/index.md',
+          kindGuidance: [],
+          refs: [
+            {
+              currentHash: 'def456ghijk',
+              recordedHash: 'abc123defgh',
+              target: '../src/x.ts',
+              targetKindGuidance: [],
+            },
+          ],
+        },
+      ],
+    })
+    expect(lines.some((l) => l.includes('checks.coverage.kinds'))).toBeFalsy()
+  })
+
   // Exercises the actual RENDER of kindGuidance/targetKindGuidance (not just
   // that checkRefs computes them, covered elsewhere) — coverage gap found by
   // the coverage ratchet itself when this feature first shipped: the data
@@ -647,6 +676,35 @@ describe('kind-aware stale-ref guidance', () => {
       yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
       const result = yield* checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
       expect(result.kindsConfigured).toBeFalsy()
+    }),
+  )
+
+  // cairn#187 item 2: threads through the same way `kinds` does — absent
+  // (the default) preserves today's behavior (`false`), a real caller-
+  // supplied `true` carries through untouched.
+  effectIt.effect('coverageExplicitlyDisabled defaults to false when not supplied', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/index.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+        '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const result = yield* checkRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      expect(result.coverageExplicitlyDisabled).toBeFalsy()
+    }),
+  )
+
+  effectIt.effect('coverageExplicitlyDisabled carries through when the caller supplies it', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/docs/index.md': { content: '[core](../src/engine.ts)', mtimeMs: 1 },
+        '/r/src/engine.ts': { content: 'export const x = 1\n', mtimeMs: 1 },
+      })
+      yield* stampRefs({ base: '/r', roots: ['/r/docs'] }).pipe(Effect.provide(layer))
+      const result = yield* checkRefs({ base: '/r', coverageExplicitlyDisabled: true, roots: ['/r/docs'] }).pipe(
+        Effect.provide(layer),
+      )
+      expect(result.coverageExplicitlyDisabled).toBeTruthy()
     }),
   )
 

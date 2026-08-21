@@ -96,6 +96,26 @@ describe('refsPlugin.run()', () => {
       }),
   )
 
+  // cairn#187 item 2: nothing exercised `refsPlugin.run`'s wiring of
+  // `resolved.checks.coverageExplicitlyDisabled` — mutating that one line to
+  // a hardcoded `false` would leave every prior test in this file green.
+  effectIt.effect('reaches checkRefs with resolved.checks.coverageExplicitlyDisabled wired through', () =>
+    Effect.gen(function* () {
+      const layer = makeTestDocsFs({
+        '/r/a.md': { content: '# A\n\n[b](./b.md)', mtimeMs: 1 },
+        '/r/b.md': { content: '# B', mtimeMs: 1 },
+      })
+      const resolved = {
+        ...DEFAULT_CONFIG,
+        checks: { ...DEFAULT_CONFIG.checks, coverageExplicitlyDisabled: true },
+      }
+      const args = { base: '/r', cli: CLI, ignore: [], resolved, roots: ['/r'] }
+      yield* stamp(args).pipe(Effect.provide(layer))
+      const result = yield* refsPlugin.run(args).pipe(Effect.provide(layer))
+      expect(result.coverageExplicitlyDisabled).toBeTruthy()
+    }),
+  )
+
   it('reaches checkRefs with roots/ignore wired through — a real stamped, undrifted ref reports checked:1, stale:[]', async () => {
     const layer = makeTestDocsFs({
       '/r/a.md': { content: '# A\n\n[b](./b.md)', mtimeMs: 1 },
@@ -104,7 +124,7 @@ describe('refsPlugin.run()', () => {
     const args = { base: '/r', cli: CLI, ignore: [], resolved: DEFAULT_CONFIG, roots: ['/r'] }
     await Effect.runPromise(stamp(args).pipe(Effect.provide(layer)))
     const result = await Effect.runPromise(refsPlugin.run(args).pipe(Effect.provide(layer)))
-    expect(result).toEqual({ checked: 1, kindsConfigured: false, stale: [] })
+    expect(result).toEqual({ checked: 1, coverageExplicitlyDisabled: false, kindsConfigured: false, stale: [] })
   })
 
   it('reaches checkRefs with trackedFiles narrowing the scanned universe — an untracked-but-stamped doc is excluded from checked', async () => {
@@ -142,7 +162,7 @@ describe('refsPlugin.run()', () => {
         const args = { base: '/r', cli: CLI, ignore: [], resolved, roots: ['/r'] }
         yield* stamp(args).pipe(Effect.provide(layer))
         const result = yield* refsPlugin.run(args).pipe(Effect.provide(layer))
-        expect(result).toEqual({ checked: 1, kindsConfigured: false, stale: [] }) // b.md tracked; noisy.md never recorded
+        expect(result).toEqual({ checked: 1, coverageExplicitlyDisabled: false, kindsConfigured: false, stale: [] }) // b.md tracked; noisy.md never recorded
 
         // A mutant that dropped the `scope` wiring would hash noisy.md
         // whole-file too, and this edit would then report it as stale.
