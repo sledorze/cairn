@@ -67,7 +67,7 @@ jobs:
       # `@v2` (what this was first written with, based on a since-corrected assumption)
       # failed with "unable to find version v2" on a real run — pin the exact tag, not
       # a major alias, every time this gets bumped.
-      - uses: changesets/action@v2.1.0
+      - uses: changesets/action@v2.1.1
         with:
           # `publish-script`, not `publish` — a real, breaking rename between v1 and
           # v2: v1.9.0's inputs were camelCase (`publish`, `setupGitUser`,
