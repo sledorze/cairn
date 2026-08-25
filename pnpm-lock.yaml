@@ -19,8 +19,8 @@ importers:
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
-        specifier: 4.0.0-rc.109
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
+        specifier: 4.0.0-rc.111
+        version: 4.0.0-rc.111(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@sledorze/falsestart':
         specifier: ^0.4.0
         version: 0.4.0(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.109)(redis@6.2.1))(effect@4.0.0-rc.109)
@@ -363,10 +363,10 @@ packages:
       effect: ^4.0.0-rc.111
       redis: '>=5.0.0 <7.0.0'
 
-  '@effect/vitest@4.0.0-rc.109':
-    resolution: {integrity: sha512-vu5ZkidJ/gM/+a0M07Jnq1PV4duFlYc+4Vj9TsJysK4Us7LL5bwV6uXiT7mi1/IM/3HgfAwc7Q9ROj8M65G4pA==}
+  '@effect/vitest@4.0.0-rc.111':
+    resolution: {integrity: sha512-YDaEVT+grREBVMzykRNFtJwGxy02achzT0WXZYwMJA4ukzuB9krkgQ5roc3N6zhC3NQq/j4IyM32/Pcov7AhHw==}
     peerDependencies:
-      effect: ^4.0.0-rc.109
+      effect: ^4.0.0-rc.111
       vitest: '>=4.1.0 <5.0.0'
 
   '@emnapi/core@1.11.1':
@@ -2459,7 +2459,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/vitest@4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)':
+  '@effect/vitest@4.0.0-rc.111(effect@4.0.0-rc.109)(vitest@4.1.11)':
     dependencies:
       effect: 4.0.0-rc.109
       vitest: 4.1.11(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(vite@8.1.4(@types/node@26.3.0)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))
