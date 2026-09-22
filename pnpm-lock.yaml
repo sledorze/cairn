@@ -16,14 +16,14 @@ importers:
         specifier: ^3.0.0
         version: 3.0.3
       '@effect/platform-node':
-        specifier: 4.0.0-rc.112
-        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
+        specifier: 4.0.0-rc.116
+        version: 4.0.0-rc.116(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: 4.0.0-rc.112
         version: 4.0.0-rc.112(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@sledorze/falsestart':
         specifier: ^0.4.0
-        version: 0.4.0(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1))(effect@4.0.0-rc.109)
+        version: 0.4.0(@effect/platform-node@4.0.0-rc.116(effect@4.0.0-rc.109)(redis@6.2.1))(effect@4.0.0-rc.109)
       '@stryker-mutator/core':
         specifier: 9.6.1
         version: 9.6.1(@types/node@26.6.2)
@@ -350,17 +350,17 @@ packages:
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
 
-  '@effect/platform-node-shared@4.0.0-rc.112':
-    resolution: {integrity: sha512-ttjz0xKamFN7vL8pNDYVwddJLjZvqKePc05djlz2VcdaKbLsnYbtMnL1rbOfHgEnIUSHGh7FkjaN4DM1Ov81sQ==}
+  '@effect/platform-node-shared@4.0.0-rc.117':
+    resolution: {integrity: sha512-GyRkEfLBG49MwJe+/XDPiXYcQ44RA9p2z0AurlsWhR1cd1PqOUMEZU1pORL+/R5hR8aH6ZuqoJYD8lAc6h+wlA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.112
+      effect: ^4.0.0-rc.117
 
-  '@effect/platform-node@4.0.0-rc.112':
-    resolution: {integrity: sha512-/BMAcdNGQQskLmI0Zoa95KfTZkr9HV9N4NSxaSrusG6GeW6Ulp9KvZ+Rlaiw8lnOt43CXjFLdfll5/k5rxL4hQ==}
+  '@effect/platform-node@4.0.0-rc.116':
+    resolution: {integrity: sha512-uA66Nh998OcChBVX83tQDkBDvQQcVaMXodP9gNGWVeIwWWquy7bzIkAq/fMZGKs/BVFhFQ0XCp3VIqYjnXu5ng==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.112
+      effect: ^4.0.0-rc.116
       redis: '>=5.0.0 <7.0.0'
 
   '@effect/vitest@4.0.0-rc.112':
@@ -1649,11 +1649,6 @@ packages:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
 
-  mime@4.1.0:
-    resolution: {integrity: sha512-X5ju04+cAzsojXKes0B/S4tcYtFAJ6tTMuSPBEn9CPGlrWr8Fiw7qYeLT0XyH80HSoAoqWCaz+MWKh22P7G1cw==}
-    engines: {node: '>=16'}
-    hasBin: true
-
   minimalistic-assert@1.0.1:
     resolution: {integrity: sha512-UtJcAD4yEaGtjPezWuO9wC4nwUnVH/8/Im3yEHQP4b67cXlD/Qr9hdITCU1xDbSEXg2XKNaP8jsReV7vQd00/A==}
 
@@ -1926,8 +1921,8 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  undici@8.10.1:
-    resolution: {integrity: sha512-YQ3WlbqjYMmNpdvDH64jAgLjxuAR9+649calDWhbshYaeQGO2bR4nI94ORJmwI3J9YhoKQnpyGOK+0zlWS5N5Q==}
+  undici@8.11.0:
+    resolution: {integrity: sha512-AdzuGcAkzhbha3GgCSoUBx2P0quwym6qdFNCQz/fDGZc8w9XJ741wHUbt2kTmfPz+ZIOMkySFkiY7RXmiDDC8w==}
     engines: {node: '>=22.19.0'}
 
   unicorn-magic@0.3.0:
@@ -2444,7 +2439,7 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
-  '@effect/platform-node-shared@4.0.0-rc.112(effect@4.0.0-rc.109)':
+  '@effect/platform-node-shared@4.0.0-rc.117(effect@4.0.0-rc.109)':
     dependencies:
       '@types/ws': 8.18.1
       effect: 4.0.0-rc.109
@@ -2453,13 +2448,12 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)':
+  '@effect/platform-node@4.0.0-rc.116(effect@4.0.0-rc.109)(redis@6.2.1)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.112(effect@4.0.0-rc.109)
+      '@effect/platform-node-shared': 4.0.0-rc.117(effect@4.0.0-rc.109)
       effect: 4.0.0-rc.109
-      mime: 4.1.0
       redis: 6.2.1
-      undici: 8.10.1
+      undici: 8.11.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -2877,13 +2871,13 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
-  '@sledorze/falsestart@0.4.0(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1))(effect@4.0.0-rc.109)':
+  '@sledorze/falsestart@0.4.0(@effect/platform-node@4.0.0-rc.116(effect@4.0.0-rc.109)(redis@6.2.1))(effect@4.0.0-rc.109)':
     dependencies:
       '@ast-grep/napi': 0.45.2
       picomatch: 4.0.7
       yaml: 2.9.0
     optionalDependencies:
-      '@effect/platform-node': 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
+      '@effect/platform-node': 4.0.0-rc.116(effect@4.0.0-rc.109)(redis@6.2.1)
       effect: 4.0.0-rc.109
 
   '@standard-schema/spec@1.1.0': {}
@@ -3490,8 +3484,6 @@ snapshots:
 
   math-intrinsics@1.1.0: {}
 
-  mime@4.1.0: {}
-
   minimalistic-assert@1.0.1: {}
 
   minimatch@10.2.5:
@@ -3771,7 +3763,7 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  undici@8.10.1: {}
+  undici@8.11.0: {}
 
   unicorn-magic@0.3.0: {}
 
