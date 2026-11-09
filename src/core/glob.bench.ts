@@ -1,4 +1,4 @@
-import { bench, describe } from 'vitest'
+import { describe, test } from 'vitest'
 
 import { globToRegExp, matchesAny, matchesGlob } from './glob.ts'
 
@@ -34,43 +34,59 @@ const paths500 = makePaths(500)
 const paths5000 = makePaths(5000)
 
 describe('globToRegExp() — compilation cost by pattern complexity', () => {
-  bench('simple single-segment pattern', () => {
-    globToRegExp(SIMPLE_PATTERN)
+  test('simple single-segment pattern', async ({ bench }) => {
+    await bench('simple single-segment pattern', () => {
+      globToRegExp(SIMPLE_PATTERN)
+    }).run()
   })
 
-  bench('`**` pattern', () => {
-    globToRegExp(STAR_STAR_PATTERN)
+  test('`**` pattern', async ({ bench }) => {
+    await bench('`**` pattern', () => {
+      globToRegExp(STAR_STAR_PATTERN)
+    }).run()
   })
 
-  bench('`**/dir/**` enclosure pattern', () => {
-    globToRegExp(ENCLOSURE_PATTERN)
+  test('`**/dir/**` enclosure pattern', async ({ bench }) => {
+    await bench('`**/dir/**` enclosure pattern', () => {
+      globToRegExp(ENCLOSURE_PATTERN)
+    }).run()
   })
 
-  bench('longer pattern with mixed wildcards', () => {
-    globToRegExp(COMPLEX_PATTERN)
+  test('longer pattern with mixed wildcards', async ({ bench }) => {
+    await bench('longer pattern with mixed wildcards', () => {
+      globToRegExp(COMPLEX_PATTERN)
+    }).run()
   })
 })
 
 describe('matchesGlob() — single call, since it recompiles the regex every time', () => {
-  bench('match against a `**/node_modules/**` pattern', () => {
-    matchesGlob('src/core/node_modules/pkg/index.ts', ENCLOSURE_PATTERN)
+  test('match against a `**/node_modules/**` pattern', async ({ bench }) => {
+    await bench('match against a `**/node_modules/**` pattern', () => {
+      matchesGlob('src/core/node_modules/pkg/index.ts', ENCLOSURE_PATTERN)
+    }).run()
   })
 
-  bench('non-match against a `**/node_modules/**` pattern', () => {
-    matchesGlob('src/core/deep/nested/path/file.ts', ENCLOSURE_PATTERN)
+  test('non-match against a `**/node_modules/**` pattern', async ({ bench }) => {
+    await bench('non-match against a `**/node_modules/**` pattern', () => {
+      matchesGlob('src/core/deep/nested/path/file.ts', ENCLOSURE_PATTERN)
+    }).run()
   })
 })
 
 describe('matchesAny() — scanning cost across candidate-path-list scale', () => {
-  bench('~500 paths against the realistic ignore list', () => {
-    for (const path of paths500) {
-      matchesAny(path, IGNORE_PATTERNS)
-    }
+  test('~500 paths against the realistic ignore list', async ({ bench }) => {
+    await bench('~500 paths against the realistic ignore list', () => {
+      for (const path of paths500) {
+        matchesAny(path, IGNORE_PATTERNS)
+      }
+    }).run()
   })
 
-  bench('~5000 paths against the realistic ignore list', () => {
-    for (const path of paths5000) {
-      matchesAny(path, IGNORE_PATTERNS)
-    }
+  test('~5000 paths against the realistic ignore list', async ({ bench }) => {
+    await bench('~5000 paths against the realistic ignore list', () => {
+      for (const path of paths5000) {
+        matchesAny(path, IGNORE_PATTERNS)
+      }
+    }).run()
   })
 })

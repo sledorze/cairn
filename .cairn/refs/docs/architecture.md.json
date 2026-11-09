@@ -93,7 +93,7 @@
       "target": "../src/io/DocsFs.ts"
     },
     {
-      "hash": "476c805db39b83768162fcddb0ed9fd7e7ff8b5ebe34f3635fdad417580a4150",
+      "hash": "7f90dd631a4df699857101b044b59224aeaade6988f596d4df8fa01f82e0dc25",
       "target": "../src/io/Git.ts"
     },
     {
@@ -165,7 +165,7 @@
       "target": "../src/config.ts"
     },
     {
-      "hash": "29129b32ca29308f6a7f7c3be01d1761250fcbb9959dd5cb1646333869e08f34",
+      "hash": "c70e427c97cb02db1b103ddee1bcb2f964e75534883e0f622ac4f3f9d6130562",
       "target": "../src/cli.ts"
     },
     {
@@ -181,7 +181,7 @@
       "target": "../src/index.ts"
     },
     {
-      "hash": "f2a3b6e340ac4e2dec0ea3453a3e04d5814d80b89064a38bdec132daa8edaf51",
+      "hash": "fdb6917d37b6f6646d58207750acd183a297ed67592a548c8511c94d55aaa24e",
       "target": "../src/devTools/BenchCliCheck.ts"
     }
   ]

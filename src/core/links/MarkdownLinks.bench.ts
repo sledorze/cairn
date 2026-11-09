@@ -1,4 +1,4 @@
-import { bench, describe } from 'vitest'
+import { describe, test } from 'vitest'
 
 import { buildBasenameIndex, checkContent, extractLinkDefinitions, extractLinks, stripCode } from './MarkdownLinks.ts'
 
@@ -87,67 +87,95 @@ const manyPathsIndex = buildBasenameIndex(manyPaths)
 const existsAbs = (abs: string): boolean => abs.includes('/real/')
 
 describe('stripCode()', () => {
-  bench('20 links', () => {
-    stripCode(smallDoc)
+  test('20 links', async ({ bench }) => {
+    await bench('20 links', () => {
+      stripCode(smallDoc)
+    }).run()
   })
 
-  bench('500 links', () => {
-    stripCode(largeDoc)
+  test('500 links', async ({ bench }) => {
+    await bench('500 links', () => {
+      stripCode(largeDoc)
+    }).run()
   })
 
-  bench('20 inline code spans (issue #180 shape, some wrapped)', () => {
-    stripCode(smallInlineCodeDoc)
+  test('20 inline code spans (issue #180 shape, some wrapped)', async ({ bench }) => {
+    await bench('20 inline code spans (issue #180 shape, some wrapped)', () => {
+      stripCode(smallInlineCodeDoc)
+    }).run()
   })
 
-  bench('500 inline code spans (issue #180 shape, some wrapped)', () => {
-    stripCode(largeInlineCodeDoc)
+  test('500 inline code spans (issue #180 shape, some wrapped)', async ({ bench }) => {
+    await bench('500 inline code spans (issue #180 shape, some wrapped)', () => {
+      stripCode(largeInlineCodeDoc)
+    }).run()
   })
 
-  bench('2000 never-pairing backtick runs (worst-case pairing search)', () => {
-    stripCode(unpairedBacktickDoc)
+  test('2000 never-pairing backtick runs (worst-case pairing search)', async ({ bench }) => {
+    await bench('2000 never-pairing backtick runs (worst-case pairing search)', () => {
+      stripCode(unpairedBacktickDoc)
+    }).run()
   })
 })
 
 describe('extractLinks()', () => {
-  bench('20 links', () => {
-    extractLinks(smallDoc)
+  test('20 links', async ({ bench }) => {
+    await bench('20 links', () => {
+      extractLinks(smallDoc)
+    }).run()
   })
 
-  bench('500 links', () => {
-    extractLinks(largeDoc)
+  test('500 links', async ({ bench }) => {
+    await bench('500 links', () => {
+      extractLinks(largeDoc)
+    }).run()
   })
 })
 
 describe('extractLinkDefinitions()', () => {
-  bench('20 links', () => {
-    extractLinkDefinitions(smallDoc)
+  test('20 links', async ({ bench }) => {
+    await bench('20 links', () => {
+      extractLinkDefinitions(smallDoc)
+    }).run()
   })
 
-  bench('500 links', () => {
-    extractLinkDefinitions(largeDoc)
+  test('500 links', async ({ bench }) => {
+    await bench('500 links', () => {
+      extractLinkDefinitions(largeDoc)
+    }).run()
   })
 })
 
 describe('buildBasenameIndex()', () => {
-  bench('300 paths', () => {
-    buildBasenameIndex(fewPaths)
+  test('300 paths', async ({ bench }) => {
+    await bench('300 paths', () => {
+      buildBasenameIndex(fewPaths)
+    }).run()
   })
 
-  bench('3000 paths', () => {
-    buildBasenameIndex(manyPaths)
+  test('3000 paths', async ({ bench }) => {
+    await bench('3000 paths', () => {
+      buildBasenameIndex(manyPaths)
+    }).run()
   })
 })
 
 describe('checkContent()', () => {
-  bench('20 links, no index', () => {
-    checkContent({ content: smallDoc, existsAbs, fileAbs: '/repo/docs/dir-0/file.md' })
+  test('20 links, no index', async ({ bench }) => {
+    await bench('20 links, no index', () => {
+      checkContent({ content: smallDoc, existsAbs, fileAbs: '/repo/docs/dir-0/file.md' })
+    }).run()
   })
 
-  bench('500 links, no index', () => {
-    checkContent({ content: largeDoc, existsAbs, fileAbs: '/repo/docs/dir-0/file.md' })
+  test('500 links, no index', async ({ bench }) => {
+    await bench('500 links, no index', () => {
+      checkContent({ content: largeDoc, existsAbs, fileAbs: '/repo/docs/dir-0/file.md' })
+    }).run()
   })
 
-  bench('500 links, with 3000-path index', () => {
-    checkContent({ content: largeDoc, existsAbs, fileAbs: '/repo/docs/dir-0/file.md', index: manyPathsIndex })
+  test('500 links, with 3000-path index', async ({ bench }) => {
+    await bench('500 links, with 3000-path index', () => {
+      checkContent({ content: largeDoc, existsAbs, fileAbs: '/repo/docs/dir-0/file.md', index: manyPathsIndex })
+    }).run()
   })
 })

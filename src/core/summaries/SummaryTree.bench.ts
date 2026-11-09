@@ -1,6 +1,6 @@
 import * as nodePath from 'node:path'
 
-import { bench, describe } from 'vitest'
+import { describe, test } from 'vitest'
 
 import { hashContent } from '../hashing.ts'
 import { isSummaryFile, summaryPathFor } from './DocSummaries.ts'
@@ -91,19 +91,27 @@ const largeFresh = buildFreshTree(LARGE)
 const largeRaw = sourceOnly(largeFresh.files)
 
 describe('planSummaries()', () => {
-  bench('~100 files, flat/shallow, first run (no summaries, no stamps)', () => {
-    planSummaries({ files: smallRaw, roots: [SMALL.root] })
+  test('~100 files, flat/shallow, first run (no summaries, no stamps)', async ({ bench }) => {
+    await bench('~100 files, flat/shallow, first run (no summaries, no stamps)', () => {
+      planSummaries({ files: smallRaw, roots: [SMALL.root] })
+    }).run()
   })
 
-  bench('~100 files, flat/shallow, steady state (fully stamped)', () => {
-    planSummaries({ files: smallFresh.files, roots: [SMALL.root], stamps: smallFresh.stamps })
+  test('~100 files, flat/shallow, steady state (fully stamped)', async ({ bench }) => {
+    await bench('~100 files, flat/shallow, steady state (fully stamped)', () => {
+      planSummaries({ files: smallFresh.files, roots: [SMALL.root], stamps: smallFresh.stamps })
+    }).run()
   })
 
-  bench('~2000 files, deep/nested, first run (no summaries, no stamps)', () => {
-    planSummaries({ files: largeRaw, roots: [LARGE.root] })
+  test('~2000 files, deep/nested, first run (no summaries, no stamps)', async ({ bench }) => {
+    await bench('~2000 files, deep/nested, first run (no summaries, no stamps)', () => {
+      planSummaries({ files: largeRaw, roots: [LARGE.root] })
+    }).run()
   })
 
-  bench('~2000 files, deep/nested, steady state (fully stamped)', () => {
-    planSummaries({ files: largeFresh.files, roots: [LARGE.root], stamps: largeFresh.stamps })
+  test('~2000 files, deep/nested, steady state (fully stamped)', async ({ bench }) => {
+    await bench('~2000 files, deep/nested, steady state (fully stamped)', () => {
+      planSummaries({ files: largeFresh.files, roots: [LARGE.root], stamps: largeFresh.stamps })
+    }).run()
   })
 })

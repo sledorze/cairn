@@ -22,7 +22,14 @@ const outFile = path.resolve(import.meta.dirname, '../schema/cairn.schema.json')
  * rewriter (`#/definitions/` -> `#/$defs/`) — instead of string-replacing the serialized
  * JSON, which would also mangle any legitimate description text containing that substring. */
 export const generateSchema = (): unknown => {
-  const document2020 = Schema.toJsonSchemaDocument(CairnConfigSchema)
+  // `onExcessProperty: 'error'` matches the real runtime decoder's own option
+  // (`core/Config.ts`'s `Schema.decodeUnknownResult(CairnConfigSchema, {
+  // errors: 'all', onExcessProperty: 'error' })`) — effect 4.1.2's new default,
+  // `'ignore'`, generates an open (`additionalProperties: true`) schema that
+  // would silently drift from the actual strict-unknown-key decode behavior
+  // this file's own header comment promises ("never silently drift from the
+  // runtime decoder it documents").
+  const document2020 = Schema.toJsonSchemaDocument(CairnConfigSchema, { onExcessProperty: 'error' })
   const document07 = JsonSchema.toDocumentDraft07(document2020)
   const { definitions, schema } = JsonSchema.fromSchemaDraft07({
     ...document07.schema,

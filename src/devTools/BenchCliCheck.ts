@@ -21,7 +21,7 @@ import * as path from 'node:path'
 
 import { Data, Effect, FileSystem, Schema } from 'effect'
 import type * as PlatformError from 'effect/PlatformError'
-import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
+import { ChildProcess, ChildProcessSpawner } from 'effect/process'
 
 export const FEATURE_COUNT = 30
 export const DECISION_COUNT = 10
