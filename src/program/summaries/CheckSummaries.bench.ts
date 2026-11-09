@@ -6,7 +6,7 @@
 // "does the sidecar move keep things fast."
 
 import { Effect } from 'effect'
-import { bench, describe } from 'vitest'
+import { describe, test } from 'vitest'
 
 import { hashContent } from '../../core/hashing.ts'
 import { isSummaryFile, summaryPathFor } from '../../core/summaries/DocSummaries.ts'
@@ -107,19 +107,27 @@ const run = (files: Record<string, TestFile>, roots: readonly string[]): Promise
 }
 
 describe('checkSummaries() (real end-to-end path, sidecar I/O included)', () => {
-  bench('~100 files, first run (no summaries, no .cairn/**)', async () => {
-    await run(smallRaw, [SMALL.root])
+  test('~100 files, first run (no summaries, no .cairn/**)', async ({ bench }) => {
+    await bench('~100 files, first run (no summaries, no .cairn/**)', async () => {
+      await run(smallRaw, [SMALL.root])
+    }).run()
   })
 
-  bench('~100 files, steady state (fully stamped, sidecars read from .cairn/**)', async () => {
-    await run(smallFresh, [SMALL.root])
+  test('~100 files, steady state (fully stamped, sidecars read from .cairn/**)', async ({ bench }) => {
+    await bench('~100 files, steady state (fully stamped, sidecars read from .cairn/**)', async () => {
+      await run(smallFresh, [SMALL.root])
+    }).run()
   })
 
-  bench('~2000 files, first run (no summaries, no .cairn/**)', async () => {
-    await run(largeRaw, [LARGE.root])
+  test('~2000 files, first run (no summaries, no .cairn/**)', async ({ bench }) => {
+    await bench('~2000 files, first run (no summaries, no .cairn/**)', async () => {
+      await run(largeRaw, [LARGE.root])
+    }).run()
   })
 
-  bench('~2000 files, steady state (fully stamped, sidecars read from .cairn/**)', async () => {
-    await run(largeFresh, [LARGE.root])
+  test('~2000 files, steady state (fully stamped, sidecars read from .cairn/**)', async ({ bench }) => {
+    await bench('~2000 files, steady state (fully stamped, sidecars read from .cairn/**)', async () => {
+      await run(largeFresh, [LARGE.root])
+    }).run()
   })
 })

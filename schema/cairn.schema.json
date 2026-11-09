@@ -86,11 +86,7 @@
       "properties": {
         "any": {
           "type": "array",
-          "allOf": [
-            {
-              "description": "An array `to` must be non-empty — a rule with zero alternatives can never be satisfied. Enforced at decode time; not visible here as a structural `minItems`, see `jsonSchemaHint`'s own comment for why."
-            }
-          ],
+          "description": "An array `to` must be non-empty — a rule with zero alternatives can never be satisfied. Enforced at decode time; not visible here as a structural `minItems`, see `jsonSchemaHint`'s own comment for why.",
           "items": { "$ref": "#/$defs/CairnCoverageTarget" }
         }
       },
@@ -106,26 +102,15 @@
           "properties": {
             "n": {
               "type": "integer",
-              "allOf": [
-                {
-                  "minimum": 1,
-                  "description": "The minimum number of `atLeast.of` targets that must each independently have at least one satisfying link. A positive integer — `n: 0` would make the rule vacuously satisfied by nothing, defeating the point of requiring a minimum."
-                }
-              ]
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "description": "The minimum number of `atLeast.of` targets that must each independently have at least one satisfying link. A positive integer — `n: 0` would make the rule vacuously satisfied by nothing, defeating the point of requiring a minimum."
             },
-            "of": {
-              "type": "array",
-              "allOf": [{ "uniqueItems": true }],
-              "items": { "$ref": "#/$defs/CairnCoverageTarget" }
-            }
+            "of": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/CairnCoverageTarget" } }
           },
           "required": ["n", "of"],
           "additionalProperties": false,
-          "allOf": [
-            {
-              "description": "`atLeast.of` must be non-empty, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here. (`atLeast.of`'s own no-duplicate-target requirement is enforced separately, on `of` itself — see that field's own `atLeastOfUniqueFilter`.)"
-            }
-          ]
+          "description": "`atLeast.of` must be non-empty, and `atLeast.n` must not exceed `atLeast.of.length` — cross-field constraints between `n` and `of` that JSON Schema cannot express structurally. Enforced at decode time; see `jsonSchemaHint`'s own comment for why this shows up only as prose here. (`atLeast.of`'s own no-duplicate-target requirement is enforced separately, on `of` itself — see that field's own `atLeastOfUniqueFilter`.)"
         }
       },
       "required": ["atLeast"],
@@ -137,11 +122,7 @@
         { "$ref": "#/$defs/CairnCoverageTarget" },
         {
           "type": "array",
-          "allOf": [
-            {
-              "description": "An array `to` must be non-empty — a rule with zero alternatives can never be satisfied. Enforced at decode time; not visible here as a structural `minItems`, see `jsonSchemaHint`'s own comment for why."
-            }
-          ],
+          "description": "An array `to` must be non-empty — a rule with zero alternatives can never be satisfied. Enforced at decode time; not visible here as a structural `minItems`, see `jsonSchemaHint`'s own comment for why.",
           "items": { "$ref": "#/$defs/CairnCoverageTarget" }
         },
         { "$ref": "#/$defs/CairnCoverageTargetAny" },
@@ -207,12 +188,9 @@
         },
         "maxAgeDays": {
           "type": "integer",
-          "allOf": [
-            {
-              "exclusiveMinimum": 0,
-              "description": "A doc last touched (per its git history — real content changes, not filesystem mtime) more than this many days ago is reported stale. A positive integer."
-            }
-          ]
+          "maximum": 9007199254740991,
+          "exclusiveMinimum": 0,
+          "description": "A doc last touched (per its git history — real content changes, not filesystem mtime) more than this many days ago is reported stale. A positive integer."
         }
       },
       "required": ["glob", "maxAgeDays"],
@@ -362,12 +340,9 @@
         },
         "thresholdLines": {
           "type": "integer",
-          "allOf": [
-            {
-              "minimum": 0,
-              "description": "Line count above which a file needs a summary. Non-negative integer. Default 30."
-            }
-          ]
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Line count above which a file needs a summary. Non-negative integer. Default 30."
         }
       },
       "additionalProperties": false,

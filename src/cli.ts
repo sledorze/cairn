@@ -12,7 +12,7 @@ import * as path from 'node:path'
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Console, Data, Effect, Option, Runtime } from 'effect'
-import { Argument, Command, Flag } from 'effect/unstable/cli'
+import { Argument, Command, Flag } from 'effect/cli'
 
 import type { SummaryPlan } from './core/summaries/SummaryTree.ts'
 import type { Overrides, ResolvedConfig } from './config.ts'
@@ -77,72 +77,89 @@ if (refsStamp === undefined) {
 
 // --- shared `check` flags/args ---
 
-const rootsArgs = Argument.string('roots').pipe(
+const rootsArgs = Argument.String('roots').pipe(
   Argument.withDescription('Documentation root(s) to check (globs allowed); falls back to config `roots`.'),
   Argument.variadic(),
 )
-const rootOption = Flag.string('root').pipe(
+const rootOption = Flag.String('root').pipe(
   Flag.withDescription('Add a documentation root (repeatable); merged with positional roots.'),
   Flag.atLeast(0),
 )
-const changedOption = Flag.string('changed').pipe(
+const changedOption = Flag.String('changed').pipe(
   Flag.withDescription(
     "Scope checks.coverage output to rule edges touching this path (repeatable, relative-to-cwd or absolute): prints each matching rule's own `description` as AI-review guidance (\"if this file changed, here's what to re-check, and why\") instead of the full corpus report. No effect on any other check, or when checks.coverage isn't configured.",
   ),
   Flag.atLeast(0),
 )
-const fixOption = Flag.boolean('fix').pipe(Flag.withDescription('Auto-repair unambiguous dead links.'))
-const stampOption = Flag.boolean('stamp').pipe(
+const fixOption = Flag.Boolean('fix').pipe(
+  Flag.withDefault(false),
+  Flag.withDescription('Auto-repair unambiguous dead links.'),
+)
+const stampOption = Flag.Boolean('stamp').pipe(
+  Flag.withDefault(false),
   Flag.withDescription('Rewrite the freshness stamp of existing summaries into their `.cairn/**` sidecar, bottom-up.'),
 )
-const pruneOption = Flag.boolean('prune').pipe(
+const pruneOption = Flag.Boolean('prune').pipe(
+  Flag.withDefault(false),
   Flag.withDescription(
     'Delete orphan summaries and orphan .cairn/** sidecars (source doc deleted, renamed, or below threshold).',
   ),
 )
-const migrateStampsOption = Flag.boolean('migrate-stamps').pipe(
+const migrateStampsOption = Flag.Boolean('migrate-stamps').pipe(
+  Flag.withDefault(false),
   Flag.withDescription(
     'One-off: strip the legacy in-content `<!-- source-sha256 -->` stamp from every summary, then stamp the .cairn/** sidecar tree.',
   ),
 )
-const explainOption = Flag.boolean('explain').pipe(
+const explainOption = Flag.Boolean('explain').pipe(
+  Flag.withDefault(false),
   Flag.withDescription('Explain why each stale/missing summary is not ok.'),
 )
-const jsonOption = Flag.boolean('json').pipe(
+const jsonOption = Flag.Boolean('json').pipe(
+  Flag.withDefault(false),
   Flag.withDescription('Machine-readable combined report: { summaries, links, exitCode }.'),
 )
-const linksOnlyOption = Flag.boolean('links-only').pipe(Flag.withDescription('Check only Markdown links.'))
-const summariesOnlyOption = Flag.boolean('summaries-only').pipe(Flag.withDescription('Check only summary freshness.'))
-const refsOption = Flag.boolean('refs').pipe(
+const linksOnlyOption = Flag.Boolean('links-only').pipe(
+  Flag.withDefault(false),
+  Flag.withDescription('Check only Markdown links.'),
+)
+const summariesOnlyOption = Flag.Boolean('summaries-only').pipe(
+  Flag.withDefault(false),
+  Flag.withDescription('Check only summary freshness.'),
+)
+const refsOption = Flag.Boolean('refs').pipe(
+  Flag.withDefault(false),
   Flag.withDescription(
     'Opt-in (issue #39 Scenario I, v1/whole-file): with --stamp, record each doc\'s real reference targets\' content hashes into .cairn/**; without --stamp, report any whose target content has drifted since — "may be stale," distinct from a broken link.',
   ),
 )
-const proseRefsOption = Flag.boolean('prose-refs').pipe(
+const proseRefsOption = Flag.Boolean('prose-refs').pipe(
+  Flag.withDefault(false),
   Flag.withDescription(
     'Opt-in, safe for permanent use (issue #47, #105): report a bare-backtick prose file citation (e.g. `src/x.ts`, no [text](path) syntax) whose target does not resolve — a citation that does resolve is always silent. Reported with the Markdown link syntax that would make it checkable going forward. checks.proseRefs.ignore (config) exempts an illustrative, never-real citation (e.g. a sample path in a format table).',
   ),
 )
-const reportDeletionsOption = Flag.boolean('report-deletions').pipe(
+const reportDeletionsOption = Flag.Boolean('report-deletions').pipe(
+  Flag.withDefault(false),
   Flag.withDescription(
     'Opt-in, informational only, never affects exit code (issue #106): a doc deleted since --deletions-since (default HEAD) may have carried a heading or outbound link found nowhere else in the remaining corpus — report which, so a lossy deletion/consolidation is at least visible, not silently gone.',
   ),
 )
-const deletionsSinceOption = Flag.string('deletions-since').pipe(
+const deletionsSinceOption = Flag.String('deletions-since').pipe(
   Flag.withDescription(
     'Git ref --report-deletions compares the working tree against. Default HEAD (catches an uncommitted deletion); pass a PR base branch (e.g. origin/main) in CI to catch deletions already committed.',
   ),
   Flag.optional,
 )
-const configPathOption = Flag.string('config').pipe(
+const configPathOption = Flag.String('config').pipe(
   Flag.withDescription('Path to a config file (default: .cairnrc.json / .cairnrc / package.json#cairn).'),
   Flag.optional,
 )
-const thresholdOption = Flag.integer('threshold').pipe(
+const thresholdOption = Flag.Int('threshold').pipe(
   Flag.withDescription('Line count above which a file needs a summary (overrides config).'),
   Flag.optional,
 )
-const localeOption = Flag.choice('locale', LOCALES).pipe(
+const localeOption = Flag.Literals('locale', LOCALES).pipe(
   Flag.withDescription('Report language (overrides config).'),
   Flag.optional,
 )
@@ -657,7 +674,7 @@ const checkCommand = Command.make('check', checkConfigShape, runCheck).pipe(
 
 // --- `init` ---
 
-const agentOption = Flag.choice('agent', AGENT_TARGETS).pipe(
+const agentOption = Flag.Literals('agent', AGENT_TARGETS).pipe(
   Flag.withDescription('Which agent(s) to scaffold guidance for.'),
   Flag.withDefault('all'),
 )
@@ -689,7 +706,7 @@ const initCommand = Command.make(
 
 // --- `config` ---
 
-const configPathArg = Argument.string('path').pipe(
+const configPathArg = Argument.String('path').pipe(
   Argument.withDescription('Optional path to a config file (overrides the default lookup).'),
   Argument.optional,
 )

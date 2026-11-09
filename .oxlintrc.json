@@ -132,6 +132,19 @@
         "vitest/no-duplicate-hooks": "off",
         "vitest/no-standalone-expect": "off"
       }
+    },
+    {
+      // Vitest 5 removed the top-level `bench()` import: a benchmark is now a plain
+      // `test(...)` whose callback destructures the `bench` fixture and calls
+      // `bench(name, fn).run()` with no assertion at all — that's the measurement, not
+      // a mistake. `vitest/consistent-test-it` (wants `it`, not `test`, inside
+      // `describe`) and `vitest/expect-expect` (wants an assertion) both fire on every
+      // one of these by design; neither rule models the fixture-based bench API.
+      "files": ["src/**/*.bench.ts"],
+      "rules": {
+        "vitest/consistent-test-it": "off",
+        "vitest/expect-expect": "off"
+      }
     }
   ]
 }

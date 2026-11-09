@@ -84,5 +84,17 @@ export default defineConfig({
     // permanent test per this repo's own "convert every dogfooding proof
     // into a test" rule, and belongs directly alongside the script it tests.
     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+    // Vitest 5's default per-file isolation (a fresh forked worker per test
+    // file) adds real, measured startup cost per file (~15s average on this
+    // suite's 72 files) — Vitest's own built-in performance hint flags it. At
+    // this suite's scale that overhead dwarfs actual test time (a 24x wall-
+    // clock regression vs Vitest 4, 877s vs ~36s, confirmed by direct
+    // before/after timing) and, worse, starves the suite's own wall-clock
+    // perf-regression guards (e.g. `Anchors.unit.test.ts`'s ReDoS timing
+    // assertions) under the resulting CPU contention, failing them by 6x+
+    // their threshold with no real logic regression. Tests here don't rely
+    // on process-level isolation between files (no shared mutable module
+    // state across test files), so disabling it is safe.
+    isolate: false,
   },
 })

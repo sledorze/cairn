@@ -21,13 +21,15 @@ const repoRoot = path.resolve(import.meta.dirname, '..')
 const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8')
 const cliSource = fs.readFileSync(path.join(repoRoot, 'src', 'cli.ts'), 'utf8')
 
-// `Flag.boolean('x')` / `Flag.string('x')` / `Flag.integer('x')` /
-// `Flag.choice('x', ...)` — every flag-DECLARING kind `cli.ts` actually
-// uses (confirmed by grep across the file). Deliberately NOT `Flag\.\w+\(`
-// (matches any `Flag.*` call): `Flag.withDefault('all')` — a value, not a
-// flag name — is a real false positive that exact broader pattern hit on
-// first run; anchoring to the 4 kinds that actually name a flag avoids it.
-const FLAG_DECL_RE = /Flag\.(?:boolean|string|integer|choice)\(\s*'([\w-]+)'/g
+// `Flag.Boolean('x')` / `Flag.String('x')` / `Flag.Int('x')` /
+// `Flag.Literals('x', ...)` — every flag-DECLARING kind `cli.ts` actually
+// uses (confirmed by grep across the file; renamed from the lowercase
+// `boolean`/`string`/`integer`/`choice` kinds by the `effect/cli` upgrade to
+// `effect@4.1.2`). Deliberately NOT `Flag\.\w+\(` (matches any `Flag.*`
+// call): `Flag.withDefault('all')` — a value, not a flag name — is a real
+// false positive that exact broader pattern hit on first run; anchoring to
+// the 4 kinds that actually name a flag avoids it.
+const FLAG_DECL_RE = /Flag\.(?:Boolean|String|Int|Literals)\(\s*'([\w-]+)'/g
 
 const declaredFlags = [...cliSource.matchAll(FLAG_DECL_RE)].map((m) => m[1])
 

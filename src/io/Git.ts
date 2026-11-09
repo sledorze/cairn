@@ -7,7 +7,7 @@
 import * as nodePath from 'node:path'
 
 import { Context, Data, Effect, FileSystem, Layer, Stream } from 'effect'
-import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
+import { ChildProcess, ChildProcessSpawner } from 'effect/process'
 
 import { toPosix } from '../core/paths.ts'
 import { scrubbedGitEnv } from './gitEnv.ts'
